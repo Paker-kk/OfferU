@@ -1,0 +1,190 @@
+# =============================================
+# Resume 路由 — 简历管理 API
+# =============================================
+# GET    /api/resume/        获取简历列表
+# POST   /api/resume/        创建/更新简历
+# GET    /api/resume/{id}    获取单份简历
+# POST   /api/resume/export  导出简历为 PDF
+# POST   /api/resume/parse   Agent 解析简历内容
+# =============================================
+# PDF 导出流程：
+#   1. 读取 content_json（教育、工作、技能等结构化字段）
+#   2. 渲染 Jinja2 HTML 模板
+#   3. 使用 WeasyPrint 将 HTML 转换为 PDF
+#   4. 返回 StreamingResponse(application/pdf)
+# =============================================
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
+from io import BytesIO
+from jinja2 import Template
+
+from app.database import get_db
+from app.models.models import Resume
+
+router = APIRouter()
+
+
+class ResumeCreate(BaseModel):
+    user_name: str
+    content_json: dict
+    template_id: str = "default"
+
+
+# ---- HTML 模板：简洁A4简历模板 ----
+RESUME_HTML_TEMPLATE = Template("""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+         font-size: 10pt; line-height: 1.5; color: #222; }
+  h1 { font-size: 20pt; margin: 0 0 4pt; }
+  h2 { font-size: 12pt; border-bottom: 1.5px solid #333; padding-bottom: 3pt;
+       margin: 14pt 0 6pt; text-transform: uppercase; letter-spacing: 1px; }
+  .header { text-align: center; margin-bottom: 12pt; }
+  .header p { margin: 2pt 0; color: #555; font-size: 9pt; }
+  .entry { margin-bottom: 8pt; }
+  .entry-title { font-weight: bold; }
+  .entry-meta { color: #666; font-size: 9pt; }
+  .entry-desc { margin-top: 2pt; }
+  .skills-list { display: flex; flex-wrap: wrap; gap: 6pt; }
+  .skill-tag { background: #f0f0f0; padding: 2pt 8pt; border-radius: 3pt; font-size: 9pt; }
+  ul { padding-left: 16pt; margin: 2pt 0; }
+  li { margin-bottom: 2pt; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>{{ name }}</h1>
+    <p>{{ phone }}{% if phone and email %} · {% endif %}{{ email }}</p>
+    {% if objective %}<p>{{ objective }}</p>{% endif %}
+  </div>
+
+  {% if education %}
+  <h2>教育经历</h2>
+  {% for edu in education %}
+  <div class="entry">
+    <div class="entry-title">{{ edu.school }}{% if edu.degree %} — {{ edu.degree }}{% endif %}</div>
+    <div class="entry-meta">{{ edu.startDate }}{% if edu.endDate %} ~ {{ edu.endDate }}{% endif %}</div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if experience %}
+  <h2>工作经历</h2>
+  {% for exp in experience %}
+  <div class="entry">
+    <div class="entry-title">{{ exp.company }}{% if exp.role %} — {{ exp.role }}{% endif %}</div>
+    <div class="entry-meta">{{ exp.startDate }}{% if exp.endDate %} ~ {{ exp.endDate }}{% endif %}</div>
+    {% if exp.desc %}<div class="entry-desc">{{ exp.desc }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if skills %}
+  <h2>技能</h2>
+  <div class="skills-list">
+    {% for skill in skills %}
+    <span class="skill-tag">{{ skill }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</body>
+</html>
+""")
+
+
+@router.get("/")
+async def list_resumes(db: AsyncSession = Depends(get_db)):
+    """获取所有简历"""
+    result = await db.execute(select(Resume).order_by(Resume.updated_at.desc()))
+    resumes = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "user_name": r.user_name,
+            "template_id": r.template_id,
+            "created_at": str(r.created_at),
+            "updated_at": str(r.updated_at),
+        }
+        for r in resumes
+    ]
+
+
+@router.post("/")
+async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
+    """创建或更新简历"""
+    resume = Resume(
+        user_name=data.user_name,
+        content_json=data.content_json,
+        template_id=data.template_id,
+    )
+    db.add(resume)
+    await db.commit()
+    await db.refresh(resume)
+    return {"id": resume.id, "message": "Resume created"}
+
+
+@router.post("/export")
+async def export_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    导出简历为 PDF
+    流程：DB读取 → Jinja2渲染HTML → WeasyPrint转PDF → StreamingResponse
+    """
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    content = resume.content_json or {}
+    html_str = RESUME_HTML_TEMPLATE.render(
+        name=content.get("name", resume.user_name),
+        phone=content.get("phone", ""),
+        email=content.get("email", ""),
+        objective=content.get("objective", ""),
+        education=content.get("education", []),
+        experience=content.get("experience", []),
+        skills=content.get("skills", []),
+    )
+
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        raise HTTPException(status_code=500, detail="WeasyPrint not installed")
+
+    pdf_bytes = HTML(string=html_str).write_pdf()
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=resume_{resume_id}.pdf"},
+    )
+
+
+@router.post("/parse")
+async def parse_resume(file_content: str = ""):
+    """Agent 解析上传的简历内容（TODO: 接入 LLM Agent）"""
+    return {"message": "Resume parse endpoint - pending implementation"}
+
+
+@router.get("/{resume_id}")
+async def get_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
+    """获取单份简历详情"""
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return {
+        "id": resume.id,
+        "user_name": resume.user_name,
+        "content_json": resume.content_json,
+        "template_id": resume.template_id,
+        "created_at": str(resume.created_at),
+        "updated_at": str(resume.updated_at),
+    }

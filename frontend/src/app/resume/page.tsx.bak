@@ -1,0 +1,294 @@
+﻿// =============================================
+// 简历编辑器页 — 黑底白字简洁模板
+// =============================================
+// 表单填写 + 实时预览 + PDF导出
+// 状态管理：React useState 实时双向绑定
+// =============================================
+
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Card, CardBody, Input, Textarea, Button, Divider } from "@nextui-org/react";
+import { FileDown, Eye, Plus, Trash2 } from "lucide-react";
+import { createResume } from "@/lib/hooks";
+
+/** 简历数据结构 */
+interface ResumeData {
+  name: string;
+  phone: string;
+  email: string;
+  linkedin: string;
+  education: { school: string; degree: string; major: string; startDate: string; endDate: string }[];
+  experience: { company: string; position: string; description: string; startDate: string; endDate: string }[];
+  skills: string;
+  summary: string;
+}
+
+const emptyResume: ResumeData = {
+  name: "", phone: "", email: "", linkedin: "",
+  education: [{ school: "", degree: "", major: "", startDate: "", endDate: "" }],
+  experience: [{ company: "", position: "", description: "", startDate: "", endDate: "" }],
+  skills: "",
+  summary: "",
+};
+
+export default function ResumePage() {
+  const [data, setData] = useState<ResumeData>(emptyResume);
+  const [saving, setSaving] = useState(false);
+  const [lastSavedId, setLastSavedId] = useState<number | null>(null);
+
+  /** 更新基本信息字段 */
+  const updateField = (field: keyof ResumeData, value: string) => {
+    setData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /** 更新教育/经历数组中的某一项 */
+  const updateArrayItem = <K extends "education" | "experience">(
+    key: K, index: number, field: string, value: string
+  ) => {
+    setData((prev) => {
+      const arr = [...prev[key]];
+      (arr[index] as any)[field] = value;
+      return { ...prev, [key]: arr };
+    });
+  };
+
+  /** 添加教育/经历 */
+  const addItem = (key: "education" | "experience") => {
+    setData((prev) => ({
+      ...prev,
+      [key]: [
+        ...prev[key],
+        key === "education"
+          ? { school: "", degree: "", major: "", startDate: "", endDate: "" }
+          : { company: "", position: "", description: "", startDate: "", endDate: "" },
+      ],
+    }));
+  };
+
+  /** 删除教育/经历 */
+  const removeItem = (key: "education" | "experience", index: number) => {
+    setData((prev) => ({
+      ...prev,
+      [key]: prev[key].filter((_, i) => i !== index),
+    }));
+  };
+
+  /** 保存到后端 */
+  const handleSave = async () => {
+    setSaving(true);
+    const res = await createResume({ user_name: data.name, content_json: data, template_id: "dark" });
+    if (res?.id) setLastSavedId(res.id);
+    setSaving(false);
+  };
+
+  /** 导出 PDF —— 调后端 WeasyPrint 接口，下载二进制 */
+  const handleExportPDF = async () => {
+    if (!lastSavedId) {
+      await handleSave();
+    }
+    const id = lastSavedId;
+    if (!id) return;
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const res = await fetch(`${API_BASE}/api/resume/export?resume_id=${id}`, { method: "POST" });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `resume_${id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", damping: 15 }}
+      className="space-y-6"
+    >
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">简历编辑器</h1>
+        <div className="flex gap-2">
+          <Button startContent={<FileDown size={16} />} variant="flat" size="sm" onPress={handleExportPDF}>
+            导出PDF
+          </Button>
+          <Button
+            startContent={<Eye size={16} />}
+            color="primary"
+            size="sm"
+            isLoading={saving}
+            onPress={handleSave}
+          >
+            保存
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 左侧：编辑区 */}
+        <div className="space-y-4">
+          {/* 基本信息 */}
+          <Card className="bg-white/5 border border-white/10">
+            <CardBody className="space-y-4">
+              <h3 className="text-lg font-semibold">基本信息</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="姓名" variant="bordered" value={data.name} onValueChange={(v) => updateField("name", v)} />
+                <Input label="电话" variant="bordered" value={data.phone} onValueChange={(v) => updateField("phone", v)} />
+                <Input label="邮箱" variant="bordered" value={data.email} onValueChange={(v) => updateField("email", v)} />
+                <Input label="LinkedIn" variant="bordered" value={data.linkedin} onValueChange={(v) => updateField("linkedin", v)} />
+              </div>
+              <Textarea label="个人简介" variant="bordered" minRows={2} value={data.summary} onValueChange={(v) => updateField("summary", v)} />
+            </CardBody>
+          </Card>
+
+          {/* 教育经历 */}
+          <Card className="bg-white/5 border border-white/10">
+            <CardBody className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">教育经历</h3>
+                <Button size="sm" variant="light" startContent={<Plus size={14} />} onPress={() => addItem("education")}>
+                  添加
+                </Button>
+              </div>
+              {data.education.map((edu, i) => (
+                <div key={i} className="space-y-3 p-3 rounded-lg bg-white/5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/50">#{i + 1}</span>
+                    {data.education.length > 1 && (
+                      <Button size="sm" variant="light" isIconOnly onPress={() => removeItem("education", i)}>
+                        <Trash2 size={14} className="text-red-400" />
+                      </Button>
+                    )}
+                  </div>
+                  <Input label="学校" variant="bordered" size="sm" value={edu.school} onValueChange={(v) => updateArrayItem("education", i, "school", v)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="学位" variant="bordered" size="sm" value={edu.degree} onValueChange={(v) => updateArrayItem("education", i, "degree", v)} />
+                    <Input label="专业" variant="bordered" size="sm" value={edu.major} onValueChange={(v) => updateArrayItem("education", i, "major", v)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="起始" variant="bordered" size="sm" value={edu.startDate} onValueChange={(v) => updateArrayItem("education", i, "startDate", v)} />
+                    <Input label="结束" variant="bordered" size="sm" value={edu.endDate} onValueChange={(v) => updateArrayItem("education", i, "endDate", v)} />
+                  </div>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+
+          {/* 工作经历 */}
+          <Card className="bg-white/5 border border-white/10">
+            <CardBody className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">工作经历</h3>
+                <Button size="sm" variant="light" startContent={<Plus size={14} />} onPress={() => addItem("experience")}>
+                  添加
+                </Button>
+              </div>
+              {data.experience.map((exp, i) => (
+                <div key={i} className="space-y-3 p-3 rounded-lg bg-white/5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/50">#{i + 1}</span>
+                    {data.experience.length > 1 && (
+                      <Button size="sm" variant="light" isIconOnly onPress={() => removeItem("experience", i)}>
+                        <Trash2 size={14} className="text-red-400" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="公司" variant="bordered" size="sm" value={exp.company} onValueChange={(v) => updateArrayItem("experience", i, "company", v)} />
+                    <Input label="职位" variant="bordered" size="sm" value={exp.position} onValueChange={(v) => updateArrayItem("experience", i, "position", v)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="起始" variant="bordered" size="sm" value={exp.startDate} onValueChange={(v) => updateArrayItem("experience", i, "startDate", v)} />
+                    <Input label="结束" variant="bordered" size="sm" value={exp.endDate} onValueChange={(v) => updateArrayItem("experience", i, "endDate", v)} />
+                  </div>
+                  <Textarea label="描述" variant="bordered" size="sm" minRows={2} value={exp.description} onValueChange={(v) => updateArrayItem("experience", i, "description", v)} />
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+
+          {/* 技能 */}
+          <Card className="bg-white/5 border border-white/10">
+            <CardBody className="space-y-4">
+              <h3 className="text-lg font-semibold">技能</h3>
+              <Textarea label="技能列表（逗号分隔）" variant="bordered" value={data.skills} onValueChange={(v) => updateField("skills", v)} />
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* 右侧：实时预览（黑底白字模板） */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2, type: "spring", damping: 15 }}
+        >
+          <Card className="bg-black border border-white/20 sticky top-6">
+            <CardBody className="p-8 min-h-[600px] font-mono">
+              {/* 名字 + 联系方式 */}
+              <h2 className="text-2xl font-bold text-white mb-1">
+                {data.name || "姓名"}
+              </h2>
+              <p className="text-sm text-white/60 mb-1">
+                {[data.phone, data.email, data.linkedin].filter(Boolean).join(" · ") || "联系方式"}
+              </p>
+              {data.summary && (
+                <p className="text-xs text-white/50 mt-2 mb-2 italic">{data.summary}</p>
+              )}
+              <Divider className="my-4 bg-white/20" />
+
+              {/* 教育 */}
+              <h3 className="text-sm font-bold text-white/80 uppercase tracking-widest mb-2">
+                教育经历
+              </h3>
+              {data.education.map((edu, i) => (
+                <div key={i} className="mb-3">
+                  <p className="text-sm text-white font-semibold">
+                    {edu.school || "学校"} — {edu.degree || "学位"}, {edu.major || "专业"}
+                  </p>
+                  <p className="text-xs text-white/40">
+                    {edu.startDate || "起始"} — {edu.endDate || "结束"}
+                  </p>
+                </div>
+              ))}
+              <Divider className="my-3 bg-white/10" />
+
+              {/* 经历 */}
+              <h3 className="text-sm font-bold text-white/80 uppercase tracking-widest mb-2">
+                工作经历
+              </h3>
+              {data.experience.map((exp, i) => (
+                <div key={i} className="mb-3">
+                  <p className="text-sm text-white font-semibold">
+                    {exp.position || "职位"} @ {exp.company || "公司"}
+                  </p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {exp.startDate || "起始"} — {exp.endDate || "结束"}
+                  </p>
+                  {exp.description && (
+                    <p className="text-xs text-white/60 whitespace-pre-wrap">{exp.description}</p>
+                  )}
+                </div>
+              ))}
+              <Divider className="my-3 bg-white/10" />
+
+              {/* 技能 */}
+              <h3 className="text-sm font-bold text-white/80 uppercase tracking-widest mb-2">
+                技能
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {(data.skills || "待填写").split(",").map((s, i) => (
+                  <span key={i} className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/70">
+                    {s.trim()}
+                  </span>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}

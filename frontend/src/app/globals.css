@@ -1,0 +1,76 @@
+/* =============================================
+   DailyJobMatch Pro - 全局样式
+   暗色主题为主，配合 NextUI + TailwindCSS
+   ============================================= */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #e6e7eb;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* 自定义滚动条（暗色风格） */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 编辑面板自定义滚动条 — 更细腻 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* FullCalendar 暗色主题覆写 */
+.fullcalendar-dark .fc {
+  --fc-border-color: rgba(255, 255, 255, 0.1);
+  --fc-button-bg-color: rgba(255, 255, 255, 0.1);
+  --fc-button-border-color: rgba(255, 255, 255, 0.15);
+  --fc-button-text-color: #e6e7eb;
+  --fc-button-hover-bg-color: rgba(255, 255, 255, 0.2);
+  --fc-button-hover-border-color: rgba(255, 255, 255, 0.25);
+  --fc-button-active-bg-color: #3b82f6;
+  --fc-button-active-border-color: #3b82f6;
+  --fc-today-bg-color: rgba(59, 130, 246, 0.1);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(255, 255, 255, 0.03);
+  --fc-event-text-color: #fff;
+  color: #e6e7eb;
+}
+
+.fullcalendar-dark .fc .fc-col-header-cell-cushion,
+.fullcalendar-dark .fc .fc-daygrid-day-number {
+  color: #e6e7eb;
+}
+
+.fullcalendar-dark .fc .fc-toolbar-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}

@@ -1,0 +1,47 @@
+{
+  "name": "dailyjobmatch-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@fullcalendar/core": "^6.1.10",
+    "@fullcalendar/daygrid": "^6.1.10",
+    "@fullcalendar/interaction": "^6.1.10",
+    "@fullcalendar/react": "^6.1.10",
+    "@fullcalendar/timegrid": "^6.1.10",
+    "@nextui-org/react": "^2.4.0",
+    "@react-pdf/renderer": "^3.4.0",
+    "@tiptap/extension-link": "^2.27.2",
+    "@tiptap/extension-placeholder": "^2.6.0",
+    "@tiptap/extension-text-align": "^2.6.0",
+    "@tiptap/extension-underline": "^2.6.0",
+    "@tiptap/react": "^2.6.0",
+    "@tiptap/starter-kit": "^2.6.0",
+    "framer-motion": "^11.0.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.400.0",
+    "next": "14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "recharts": "^2.12.0",
+    "swr": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5"
+  }
+}
