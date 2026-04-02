@@ -1,0 +1,14 @@
+# OfferU - Backend Dependencies
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.30.0
+aiosqlite==0.20.0
+pydantic-settings==2.5.0
+httpx==0.27.0
+openai>=2.30.0
+python-multipart==0.0.9
+weasyprint>=60.0
+jinja2>=3.1.0
+python-docx>=1.1.0
+pypdf>=4.0.0
