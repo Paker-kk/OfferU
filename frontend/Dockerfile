@@ -1,5 +1,5 @@
 # =============================================
-# DailyJobMatch Pro - Frontend Dockerfile
+# OfferU - Frontend Dockerfile
 # =============================================
 
 FROM node:20-alpine AS builder
