@@ -114,9 +114,9 @@ export default function SettingsPage() {
       sources_enabled: sourcesEnabled,
       llm_provider: llmProvider,
       llm_model: llmModel,
-      deepseek_api_key: deepseekApiKey,
-      openai_api_key: openaiApiKey,
-      ollama_base_url: ollamaBaseUrl,
+      deepseek_api_key: deepseekApiKey.trim(),
+      openai_api_key: openaiApiKey.trim(),
+      ollama_base_url: ollamaBaseUrl.trim(),
     });
     await mutate();
     setSaving(false);
@@ -204,7 +204,7 @@ export default function SettingsPage() {
             <h4 className="text-sm font-medium text-white/60">API Key 配置</h4>
           </div>
           <p className="text-xs text-white/40">
-            Key 仅保存在本地服务器内存中，不会上传到任何第三方。页面显示为脱敏值，输入新值将覆盖旧值。
+            Key 保存在本地服务器，重启不丢失，不会上传到任何第三方。页面显示为脱敏值，输入新值将覆盖旧值。
           </p>
 
           {llmProvider === "deepseek" && (
@@ -212,6 +212,8 @@ export default function SettingsPage() {
               label="DeepSeek API Key"
               variant="bordered"
               placeholder="sk-..."
+              description={deepseekApiKey && !deepseekApiKey.includes("*") && !deepseekApiKey.startsWith("sk-") ? "DeepSeek Key 通常以 sk- 开头" : undefined}
+              color={deepseekApiKey && !deepseekApiKey.includes("*") && !deepseekApiKey.startsWith("sk-") ? "warning" : undefined}
               value={deepseekApiKey}
               onValueChange={setDeepseekApiKey}
               type={showDeepseekKey ? "text" : "password"}
@@ -231,6 +233,8 @@ export default function SettingsPage() {
               label="OpenAI API Key"
               variant="bordered"
               placeholder="sk-..."
+              description={openaiApiKey && !openaiApiKey.includes("*") && !openaiApiKey.startsWith("sk-") ? "OpenAI Key 通常以 sk- 开头" : undefined}
+              color={openaiApiKey && !openaiApiKey.includes("*") && !openaiApiKey.startsWith("sk-") ? "warning" : undefined}
               value={openaiApiKey}
               onValueChange={setOpenaiApiKey}
               type={showOpenaiKey ? "text" : "password"}

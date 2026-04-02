@@ -18,6 +18,7 @@ backend/*.db
 .env
 .env.local
 .env.*.local
+backend/config.json
 
 # ---- IDE / 编辑器 ----
 .vscode/

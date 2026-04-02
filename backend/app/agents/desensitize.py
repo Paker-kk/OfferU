@@ -48,10 +48,15 @@ def desensitize(text: str) -> Tuple[str, dict]:
         return placeholder
 
     # 按长度从长到短替换，避免短模式误匹配长模式的子串
+    # 银行卡（16-19位）在身份证（18位）之后处理，利用 lookbehind/ahead 区分
     result = _ID_CARD.sub(lambda m: _replace(m, "id"), text)
     result = _EMAIL.sub(lambda m: _replace(m, "email"), result)
     result = _PHONE_INTL.sub(lambda m: _replace(m, "phone"), result)
     result = _PHONE_CN.sub(lambda m: _replace(m, "phone"), result)
+    result = _BANK_CARD.sub(lambda m: _replace(m, "bank"), result)
+    # TODO: 地址/学校/公司等命名实体需要 NLP (spaCy / LLM) 识别
+    # 正则无法可靠匹配"北京大学""字节跳动"等专有名词
+    # 后续迭代引入 NER 模型处理
 
     return result, mapping
 

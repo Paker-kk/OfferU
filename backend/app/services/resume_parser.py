@@ -4,13 +4,17 @@
 # 支持 .pdf 和 .docx 格式
 # 提取纯文本内容，用于 AI 分析或导入到编辑器
 # =============================================
+# 注意：pypdf / python-docx 都是同步库，
+# 使用 asyncio.to_thread 避免阻塞事件循环
+# =============================================
 
+import asyncio
 import io
 from typing import Optional
 
 
-async def parse_pdf(file_bytes: bytes) -> str:
-    """从 PDF 文件提取纯文本"""
+def _parse_pdf_sync(file_bytes: bytes) -> str:
+    """同步：从 PDF 文件提取纯文本"""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(file_bytes))
@@ -22,8 +26,8 @@ async def parse_pdf(file_bytes: bytes) -> str:
     return "\n\n".join(texts)
 
 
-async def parse_docx(file_bytes: bytes) -> str:
-    """从 Word (.docx) 文件提取纯文本"""
+def _parse_docx_sync(file_bytes: bytes) -> str:
+    """同步：从 Word (.docx) 文件提取纯文本"""
     from docx import Document
 
     doc = Document(io.BytesIO(file_bytes))
@@ -44,12 +48,13 @@ async def parse_docx(file_bytes: bytes) -> str:
 async def parse_resume_file(filename: str, file_bytes: bytes) -> Optional[str]:
     """
     根据文件扩展名自动选择解析器
+    使用 asyncio.to_thread 将同步 IO 卸载到线程池，不阻塞事件循环
 
     返回: 提取的纯文本，格式不支持返回 None
     """
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        return await parse_pdf(file_bytes)
+        return await asyncio.to_thread(_parse_pdf_sync, file_bytes)
     elif lower.endswith(".docx"):
-        return await parse_docx(file_bytes)
+        return await asyncio.to_thread(_parse_docx_sync, file_bytes)
     return None

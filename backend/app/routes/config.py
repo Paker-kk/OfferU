@@ -4,6 +4,15 @@
 # GET  /api/config/  获取当前配置（含多 LLM Provider 模型列表）
 # PUT  /api/config/  更新配置
 # =============================================
+# 持久化策略：
+#   配置保存到 backend/config.json 文件
+#   启动时从文件加载 → 内存缓存 → 修改时写回文件
+#   API Key 等敏感字段仅存本地，不进 Git（已在 .gitignore）
+# =============================================
+
+import json
+import os
+from pathlib import Path
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -11,6 +20,9 @@ from pydantic import BaseModel
 from app.config import get_settings
 
 router = APIRouter()
+
+# 配置文件路径（backend/ 目录下）
+_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
 
 # ---- 多 LLM 提供商的可选模型 ----
 # 前端根据用户选择的 provider 渲染对应模型下拉
@@ -63,16 +75,39 @@ class ConfigUpdate(BaseModel):
     ollama_base_url: str = "http://localhost:11434"
 
 
-# 内存中存储配置（后续可持久化到数据库）
-# 初始化时从 .env 加载已有 API Key
-_settings_init = get_settings()
-_current_config = ConfigUpdate(
-    deepseek_api_key=_settings_init.deepseek_api_key,
-    openai_api_key=_settings_init.openai_api_key,
-    ollama_base_url=_settings_init.ollama_base_url,
-    llm_provider=_settings_init.llm_provider,
-    llm_model=_settings_init.llm_model,
-)
+# ---- 持久化：加载 / 保存配置文件 ----
+
+def _load_config() -> ConfigUpdate:
+    """
+    启动时加载配置：优先读 config.json，不存在则从 .env Settings 初始化
+    """
+    if _CONFIG_FILE.exists():
+        try:
+            raw = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+            return ConfigUpdate(**raw)
+        except (json.JSONDecodeError, Exception):
+            pass  # 文件损坏则回退到默认值
+    # 首次启动：从 .env 加载
+    s = get_settings()
+    return ConfigUpdate(
+        deepseek_api_key=s.deepseek_api_key,
+        openai_api_key=s.openai_api_key,
+        ollama_base_url=s.ollama_base_url,
+        llm_provider=s.llm_provider,
+        llm_model=s.llm_model,
+    )
+
+
+def _save_config(cfg: ConfigUpdate) -> None:
+    """将配置写入 config.json 持久化"""
+    _CONFIG_FILE.write_text(
+        json.dumps(cfg.model_dump(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+# 启动时加载
+_current_config = _load_config()
 
 
 def _mask_key(key: str) -> str:
@@ -103,6 +138,8 @@ async def update_config(data: ConfigUpdate):
     if not data.openai_api_key or "*" in data.openai_api_key:
         data.openai_api_key = _current_config.openai_api_key
     _current_config = data
+    # 持久化到 config.json
+    _save_config(_current_config)
     # 同步 LLM 配置到全局 Settings（运行时覆盖）
     settings = get_settings()
     settings.llm_provider = data.llm_provider
