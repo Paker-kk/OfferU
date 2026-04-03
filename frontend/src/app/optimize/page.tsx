@@ -14,11 +14,11 @@ import {
 } from "@nextui-org/react";
 import {
   Sparkles, FileText, Briefcase, Check, AlertTriangle, ArrowRight, Upload,
-  Target, BarChart3, ShieldAlert,
+  Target, BarChart3, ShieldAlert, PenLine, ArrowUpDown, ChevronDown, ChevronUp,
 } from "lucide-react";
 import {
   useResumes, aiOptimizeResume, aiOptimizeText, parseResumeFile, AiOptimizeResult,
-  aiAnalyzeResume, aiAnalyzeText, SkillAnalyzeResult,
+  aiAnalyzeResume, aiAnalyzeText, SkillAnalyzeResult, RewriteSuggestion,
 } from "@/lib/hooks";
 
 export default function OptimizePage() {
@@ -35,6 +35,10 @@ export default function OptimizePage() {
   const [parsing, setParsing] = useState(false);
   // 分析模式：optimize = 旧的优化建议，analyze = 新 Skill Pipeline 深度分析
   const [analysisMode, setAnalysisMode] = useState<string>("analyze");
+  // HITL: 跟踪用户确认/拒绝的建议索引
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<number>>(new Set());
+  const [rejectedSuggestions, setRejectedSuggestions] = useState<Set<number>>(new Set());
+  const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,6 +66,9 @@ export default function OptimizePage() {
     setError("");
     setResult(null);
     setAnalyzeResult(null);
+    setAcceptedSuggestions(new Set());
+    setRejectedSuggestions(new Set());
+    setExpandedSuggestion(null);
     try {
       if (analysisMode === "analyze") {
         // Skill Pipeline 深度分析
@@ -523,11 +530,193 @@ export default function OptimizePage() {
                 </Card>
               )}
             </div>
+
+            {/* ===== HITL: 内容改写建议 ===== */}
+            {(analyzeResult.content_rewrite?.suggestions?.length ?? 0) > 0 && (
+              <Card className="bg-white/[0.02] border border-white/[0.06]">
+                <CardBody className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <PenLine size={14} className="text-blue-400" />
+                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                        内容优化建议 ({analyzeResult.content_rewrite!.suggestions.length})
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-white/30">
+                      <span className="text-emerald-400">已采纳 {acceptedSuggestions.size}</span>
+                      <span>/</span>
+                      <span className="text-red-400">已拒绝 {rejectedSuggestions.size}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {analyzeResult.content_rewrite!.suggestions.map((sug, idx) => {
+                      const isExpanded = expandedSuggestion === idx;
+                      const isAccepted = acceptedSuggestions.has(idx);
+                      const isRejected = rejectedSuggestions.has(idx);
+                      return (
+                        <div
+                          key={idx}
+                          className={`rounded-xl border p-3 transition-all ${
+                            isAccepted ? "border-emerald-500/30 bg-emerald-500/5" :
+                            isRejected ? "border-red-500/20 bg-red-500/5 opacity-50" :
+                            "border-white/[0.06] hover:border-white/10"
+                          }`}
+                        >
+                          {/* 建议头部 */}
+                          <button
+                            className="w-full flex items-center justify-between text-left"
+                            onClick={() => setExpandedSuggestion(isExpanded ? null : idx)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Chip
+                                size="sm"
+                                variant="flat"
+                                className={
+                                  sug.type === "inject"
+                                    ? "bg-purple-500/10 text-purple-300 text-[10px]"
+                                    : "bg-blue-500/10 text-blue-300 text-[10px]"
+                                }
+                              >
+                                {sug.type === "inject" ? "关键词注入" : "经历改写"}
+                              </Chip>
+                              <span className="text-[11px] text-white/40">
+                                {sug.section_title}{sug.item_label ? ` · ${sug.item_label}` : ""}
+                              </span>
+                              {sug.injected_keywords?.length > 0 && (
+                                <span className="text-[10px] text-purple-300/60">
+                                  +{sug.injected_keywords.join(", ")}
+                                </span>
+                              )}
+                            </div>
+                            {isExpanded ? <ChevronUp size={14} className="text-white/30" /> : <ChevronDown size={14} className="text-white/30" />}
+                          </button>
+
+                          {/* 展开详情 */}
+                          {isExpanded && (
+                            <div className="mt-3 space-y-2">
+                              <div className="rounded-lg bg-red-500/5 border border-red-500/10 p-3">
+                                <span className="text-[10px] text-red-400/60 uppercase font-semibold">原文</span>
+                                <p className="text-xs text-white/50 mt-1">{sug.original}</p>
+                              </div>
+                              <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-3">
+                                <span className="text-[10px] text-emerald-400/60 uppercase font-semibold">建议</span>
+                                <p className="text-xs text-white/70 mt-1">{sug.suggested}</p>
+                              </div>
+                              <p className="text-[11px] text-white/35 italic">{sug.reason}</p>
+
+                              {/* HITL 操作按钮 */}
+                              {!isAccepted && !isRejected && (
+                                <div className="flex items-center gap-2 pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="flat"
+                                    className="bg-emerald-500/10 text-emerald-300 text-[11px]"
+                                    startContent={<Check size={12} />}
+                                    onPress={() => {
+                                      setAcceptedSuggestions(prev => new Set(prev).add(idx));
+                                      setExpandedSuggestion(null);
+                                    }}
+                                  >
+                                    采纳
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="flat"
+                                    className="bg-red-500/10 text-red-300 text-[11px]"
+                                    onPress={() => {
+                                      setRejectedSuggestions(prev => new Set(prev).add(idx));
+                                      setExpandedSuggestion(null);
+                                    }}
+                                  >
+                                    拒绝
+                                  </Button>
+                                </div>
+                              )}
+                              {isAccepted && (
+                                <div className="flex items-center gap-1 text-[11px] text-emerald-400/60">
+                                  <Check size={12} /> 已采纳
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
+            )}
+
+            {/* ===== 模块重排建议 ===== */}
+            {analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error && analyzeResult.section_reorder.changes?.length > 0 && (
+              <Card className="bg-white/[0.02] border border-white/[0.06]">
+                <CardBody className="p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpDown size={14} className="text-amber-400" />
+                    <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                      模块排序建议
+                    </h4>
+                  </div>
+
+                  {analyzeResult.section_reorder.reason && (
+                    <p className="text-xs text-white/50">{analyzeResult.section_reorder.reason}</p>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 当前顺序 */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] text-white/40 uppercase font-semibold">当前顺序</span>
+                      <div className="space-y-1">
+                        {analyzeResult.section_reorder.current_order?.map((sec, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-white/50 bg-white/[0.02] rounded-lg px-3 py-1.5 border border-white/[0.04]">
+                            <span className="text-white/25 text-[10px] w-4">{i + 1}</span>
+                            {sec}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 建议顺序 */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] text-amber-400/60 uppercase font-semibold">建议顺序</span>
+                      <div className="space-y-1">
+                        {analyzeResult.section_reorder.suggested_order?.map((sec, i) => {
+                          const change = analyzeResult.section_reorder?.changes?.find(c => c.section === sec);
+                          return (
+                            <div key={i} className={`flex items-center gap-2 text-xs rounded-lg px-3 py-1.5 border ${
+                              change?.action === "move_up" ? "text-emerald-300 bg-emerald-500/5 border-emerald-500/10" :
+                              change?.action === "move_down" ? "text-amber-300 bg-amber-500/5 border-amber-500/10" :
+                              "text-white/50 bg-white/[0.02] border-white/[0.04]"
+                            }`}>
+                              <span className="text-white/25 text-[10px] w-4">{i + 1}</span>
+                              {sec}
+                              {change?.action === "move_up" && <ChevronUp size={12} className="text-emerald-400/60 ml-auto" />}
+                              {change?.action === "move_down" && <ChevronDown size={12} className="text-amber-400/60 ml-auto" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 详细变更理由 */}
+                  {analyzeResult.section_reorder.changes.filter(c => c.action !== "keep").length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      {analyzeResult.section_reorder.changes.filter(c => c.action !== "keep").map((c, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[11px] text-white/40">
+                          <ArrowRight size={10} className="mt-0.5 flex-shrink-0 text-amber-400/50" />
+                          <span><span className="text-white/60">{c.section}</span>: {c.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ===== 旧版优化建议结果 ===== */}
       <AnimatePresence>
         {result && (
           <motion.div

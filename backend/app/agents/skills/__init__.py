@@ -21,6 +21,8 @@ from app.agents.desensitize import desensitize, restore
 from app.agents.skills.base import BaseSkill
 from app.agents.skills.jd_analyzer import JDAnalyzerSkill
 from app.agents.skills.resume_matcher import ResumeMatcherSkill
+from app.agents.skills.content_rewriter import ContentRewriterSkill
+from app.agents.skills.section_reorder import SectionReorderSkill
 from app.config import get_settings
 
 import json
@@ -39,6 +41,8 @@ class SkillPipeline:
         self._skills: list[BaseSkill] = [
             JDAnalyzerSkill(),
             ResumeMatcherSkill(),
+            ContentRewriterSkill(),
+            SectionReorderSkill(),
         ]
 
     async def run(

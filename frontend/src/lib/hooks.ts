@@ -413,6 +413,38 @@ export interface MatchAnalysis {
 export interface SkillAnalyzeResult {
   jd_analysis: JdAnalysis;
   match_analysis: MatchAnalysis;
+  content_rewrite?: ContentRewriteResult;
+  section_reorder?: SectionReorderResult;
+}
+
+/** 内容改写建议（Skill 3 输出） */
+export interface RewriteSuggestion {
+  type: "rewrite" | "inject";
+  section_title: string;
+  item_label: string;
+  original: string;
+  suggested: string;
+  reason: string;
+  injected_keywords: string[];
+}
+
+export interface ContentRewriteResult {
+  suggestions: RewriteSuggestion[];
+}
+
+/** 模块重排建议（Skill 4 输出） */
+export interface ReorderChange {
+  section: string;
+  action: "move_up" | "move_down" | "keep";
+  reason: string;
+}
+
+export interface SectionReorderResult {
+  current_order: string[];
+  suggested_order: string[];
+  reason: string;
+  changes: ReorderChange[];
+  error?: string;
 }
 
 /** Skill Pipeline 深度分析（基于已有简历 ID） */
