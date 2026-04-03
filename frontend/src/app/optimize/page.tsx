@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import {
   useResumes, aiOptimizeResume, aiOptimizeText, parseResumeFile, AiOptimizeResult,
-  aiAnalyzeResume, aiAnalyzeText, SkillAnalyzeResult, RewriteSuggestion,
+  aiAnalyzeResume, aiAnalyzeText, SkillAnalyzeResult, RewriteSuggestion, aiApplyBatch,
 } from "@/lib/hooks";
 
 export default function OptimizePage() {
@@ -39,6 +39,8 @@ export default function OptimizePage() {
   const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<number>>(new Set());
   const [rejectedSuggestions, setRejectedSuggestions] = useState<Set<number>>(new Set());
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -69,6 +71,7 @@ export default function OptimizePage() {
     setAcceptedSuggestions(new Set());
     setRejectedSuggestions(new Set());
     setExpandedSuggestion(null);
+    setApplyResult(null);
     try {
       if (analysisMode === "analyze") {
         // Skill Pipeline 深度分析
@@ -711,6 +714,63 @@ export default function OptimizePage() {
                       ))}
                     </div>
                   )}
+                </CardBody>
+              </Card>
+            )}
+
+            {/* ===== 一键应用 ===== */}
+            {mode === "select" && selectedResumeId && (
+              acceptedSuggestions.size > 0 ||
+              (analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error && (analyzeResult.section_reorder.suggested_order?.length ?? 0) > 0)
+            ) && (
+              <Card className="bg-white/[0.02] border border-emerald-500/20">
+                <CardBody className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-semibold text-white/60">
+                        一键应用到简历
+                      </h4>
+                      <p className="text-[11px] text-white/35">
+                        {acceptedSuggestions.size > 0 && `${acceptedSuggestions.size} 条内容建议`}
+                        {acceptedSuggestions.size > 0 && analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error && " + "}
+                        {analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error && "模块重排"}
+                      </p>
+                      {applyResult && (
+                        <p className="text-[11px] text-emerald-400/80 mt-1">{applyResult}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      color="success"
+                      variant="flat"
+                      className="text-[11px] font-semibold"
+                      startContent={<Check size={14} />}
+                      isLoading={applying}
+                      isDisabled={applying || (acceptedSuggestions.size === 0 && !(analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error))}
+                      onPress={async () => {
+                        if (!selectedResumeId) return;
+                        setApplying(true);
+                        setApplyResult(null);
+                        try {
+                          const acceptedList = analyzeResult.content_rewrite?.suggestions?.filter((_, idx) => acceptedSuggestions.has(idx)) || [];
+                          const hasReorder = analyzeResult.section_reorder && !(analyzeResult.section_reorder as any).error;
+                          const result = await aiApplyBatch(selectedResumeId, {
+                            suggestions: acceptedList,
+                            ...(hasReorder && analyzeResult.section_reorder?.suggested_order
+                              ? { reorder: { suggested_order: analyzeResult.section_reorder.suggested_order } }
+                              : {}),
+                          });
+                          setApplyResult(result.message);
+                        } catch (err: any) {
+                          setApplyResult(`应用失败: ${err.message}`);
+                        } finally {
+                          setApplying(false);
+                        }
+                      }}
+                    >
+                      应用已采纳建议
+                    </Button>
+                  </div>
                 </CardBody>
               </Card>
             )}

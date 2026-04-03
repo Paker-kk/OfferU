@@ -25,6 +25,7 @@
 # =============================================
 
 import os
+import re
 import uuid
 from io import BytesIO
 from typing import Optional
@@ -1008,6 +1009,99 @@ async def ai_apply_suggestion(
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown suggestion type: {suggestion_type}")
+
+
+@router.post("/{resume_id}/ai/apply-batch")
+async def ai_apply_batch(
+    resume_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    批量应用 Skill Pipeline 的已采纳建议
+    ─────────────────────────────────────────────
+    前端 HITL: 用户逐条审核 → 点击「一键应用」→ 发送已采纳列表
+
+    payload:
+      {
+        "suggestions": [
+          { "type": "rewrite"/"inject", "section_title": "...", "original": "...", "suggested": "..." }
+        ],
+        "reorder": { "suggested_order": ["段落1", "段落2", ...] }  // 可选
+      }
+    """
+    resume = await _get_resume_or_404(resume_id, db)
+    applied = 0
+    failed = 0
+
+    # --- 1. 应用内容改写/注入建议 ---
+    suggestions = payload.get("suggestions", [])
+    for sug in suggestions:
+        section_title = sug.get("section_title", "")
+        original = sug.get("original", "")
+        suggested = sug.get("suggested", "")
+
+        if not section_title or not original or not suggested:
+            failed += 1
+            continue
+
+        # 按 title 模糊匹配 section
+        result = await db.execute(
+            select(ResumeSection).where(
+                ResumeSection.resume_id == resume_id,
+                ResumeSection.title.icontains(section_title),
+            )
+        )
+        section = result.scalar_one_or_none()
+        if not section:
+            failed += 1
+            continue
+
+        # 在 content_json 中查找包含 original 文本的条目
+        content = list(section.content_json or [])
+        matched = False
+        for item in content:
+            desc = item.get("description", "")
+            if not desc:
+                continue
+            # 纯文本比较（去除 HTML 标签后匹配）
+            plain_desc = re.sub(r"<[^>]+>", "", desc).strip()
+            plain_original = re.sub(r"<[^>]+>", "", original).strip()
+            if plain_original and plain_original in plain_desc:
+                # 替换：将 original 片段替换为 suggested
+                item["description"] = desc.replace(
+                    original, suggested
+                ) if original in desc else suggested
+                matched = True
+                break
+
+        if matched:
+            section.content_json = content
+            applied += 1
+        else:
+            failed += 1
+
+    # --- 2. 应用模块重排 ---
+    reorder = payload.get("reorder")
+    if reorder and reorder.get("suggested_order"):
+        suggested_order = reorder["suggested_order"]
+        for idx, sec_title in enumerate(suggested_order):
+            result = await db.execute(
+                select(ResumeSection).where(
+                    ResumeSection.resume_id == resume_id,
+                    ResumeSection.title.icontains(sec_title),
+                )
+            )
+            section = result.scalar_one_or_none()
+            if section:
+                section.sort_order = idx
+
+    await db.commit()
+    return {
+        "message": f"已应用 {applied} 条建议" + (f"，{failed} 条未匹配" if failed else ""),
+        "applied": applied,
+        "failed": failed,
+    }
 
 
 # =============================================

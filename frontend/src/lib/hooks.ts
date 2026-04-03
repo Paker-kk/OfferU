@@ -328,6 +328,26 @@ export async function aiApplySuggestion(
   return res.json();
 }
 
+/** 批量应用已采纳的 AI 建议（一键应用） */
+export async function aiApplyBatch(
+  resumeId: number,
+  payload: {
+    suggestions: RewriteSuggestion[];
+    reorder?: { suggested_order: string[] };
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/apply-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "批量应用失败");
+  }
+  return res.json();
+}
+
 /** 上传 PDF/Word 简历文件并解析为文本 */
 export async function parseResumeFile(file: File): Promise<{ filename: string; text: string; length: number }> {
   const formData = new FormData();
