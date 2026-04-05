@@ -30,11 +30,11 @@ export function JobCard({ job }: { job: Job }) {
     <Card
       isPressable
       onPress={() => router.push(`/jobs/${job.id}`)}
-      className="bg-white/5 border border-white/10 hover:border-white/20 transition-colors"
+      className="bg-white/5 border border-white/10 hover:border-white/20 transition-colors h-[240px]"
     >
-      <CardBody className="p-5 space-y-3">
+      <CardBody className="p-5 flex flex-col gap-2.5 overflow-hidden">
         {/* 头部：公司Logo + 标题 + 来源 */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 shrink-0">
           <Avatar
             src={job.company_logo || undefined}
             name={job.company?.[0] || "?"}
@@ -60,16 +60,13 @@ export function JobCard({ job }: { job: Job }) {
           </Chip>
         </div>
 
-        {/* 薪资（醒目展示） */}
-        {job.salary_text && (
-          <div className="flex items-center gap-1.5 text-green-400 font-semibold text-sm">
-            <DollarSign size={14} />
-            <span>{job.salary_text}</span>
-          </div>
-        )}
-
-        {/* 标签行：地点 + 学历 + 经验 + 岗位类型 */}
-        <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+        {/* 薪资 + 标签行 */}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-white/50 shrink-0">
+          {job.salary_text && (
+            <span className="flex items-center gap-0.5 text-green-400 font-semibold text-sm">
+              <DollarSign size={14} />{job.salary_text}
+            </span>
+          )}
           {job.location && (
             <span className="flex items-center gap-0.5">
               <MapPin size={12} />{job.location}
@@ -92,13 +89,13 @@ export function JobCard({ job }: { job: Job }) {
           )}
         </div>
 
-        {/* 摘要 */}
-        {job.summary && (
-          <p className="text-sm text-white/60 line-clamp-2">{job.summary}</p>
-        )}
+        {/* 摘要 — 固定空间，不足留白 */}
+        <p className="text-sm text-white/60 line-clamp-2 flex-1 min-h-0">
+          {job.summary || "\u00A0"}
+        </p>
 
-        {/* 关键词 + 岗位类型/校招标签 */}
-        <div className="flex flex-wrap gap-1.5">
+        {/* 关键词 + 岗位类型/校招标签 — 始终在底部 */}
+        <div className="flex flex-wrap gap-1.5 shrink-0 max-h-[28px] overflow-hidden">
           {job.is_campus && (
             <Chip size="sm" variant="flat" color="success" className="text-xs">
               校招
@@ -109,7 +106,7 @@ export function JobCard({ job }: { job: Job }) {
               {job.job_type}
             </Chip>
           )}
-          {job.keywords?.slice(0, 4).map((kw) => (
+          {job.keywords?.slice(0, 3).map((kw) => (
             <Chip
               key={kw}
               size="sm"

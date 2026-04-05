@@ -404,10 +404,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                   {/* 快速创建 */}
                   <Card
                     isPressable
-                    className="bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all"
+                    className="bg-white/5 border border-white/10 hover:border-blue-500/30 transition-all h-[160px]"
                     onPress={() => setResumeMode("create")}
                   >
-                    <CardBody className="p-5 text-center space-y-3">
+                    <CardBody className="p-5 text-center space-y-3 flex flex-col items-center justify-center">
                       <PenTool size={32} className="text-blue-400 mx-auto" />
                       <div>
                         <p className="font-semibold text-sm">快速创建</p>
@@ -421,10 +421,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                   {/* 上传识别 */}
                   <Card
                     isPressable
-                    className="bg-white/5 border border-white/10 hover:border-purple-500/30 transition-all"
+                    className="bg-white/5 border border-white/10 hover:border-purple-500/30 transition-all h-[160px]"
                     onPress={() => setResumeMode("upload")}
                   >
-                    <CardBody className="p-5 text-center space-y-3">
+                    <CardBody className="p-5 text-center space-y-3 flex flex-col items-center justify-center">
                       <Upload size={32} className="text-purple-400 mx-auto" />
                       <div>
                         <p className="font-semibold text-sm">上传识别</p>
@@ -478,7 +478,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         <button
                           key={t.id}
                           onClick={() => setSelectedTemplate(t.id)}
-                          className={`p-3 rounded-xl border text-center transition-all ${
+                          className={`p-3 rounded-xl border text-center transition-all h-[72px] flex flex-col items-center justify-center ${
                             selectedTemplate === t.id
                               ? "border-blue-500/50 bg-blue-500/10"
                               : "border-white/10 bg-white/3 hover:border-white/20"
