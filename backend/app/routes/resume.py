@@ -757,7 +757,10 @@ async def ai_optimize_resume(
 
     # ── 3. 调用 AI Agent ──
     resume_data = _serialize_resume_full(resume)
-    ai_result = await optimize_resume_with_context(resume_data, jd_text)
+    try:
+        ai_result = await optimize_resume_with_context(resume_data, jd_text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not ai_result:
         raise HTTPException(
@@ -781,7 +784,10 @@ async def ai_optimize_text(data: AiOptimizeTextRequest):
     if not data.resume_text.strip() or not data.jd_text.strip():
         raise HTTPException(status_code=400, detail="简历和 JD 文本不能为空")
 
-    ai_result = await optimize_resume(data.resume_text.strip(), data.jd_text.strip())
+    try:
+        ai_result = await optimize_resume(data.resume_text.strip(), data.jd_text.strip())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not ai_result:
         raise HTTPException(
@@ -854,11 +860,14 @@ async def ai_analyze_resume(
 
     # ── 4. 执行 Skill Pipeline ──
     pipeline = SkillPipeline()
-    result = await pipeline.run(
-        resume_text=resume_text,
-        resume_data=resume_data,
-        jd_text=jd_text,
-    )
+    try:
+        result = await pipeline.run(
+            resume_text=resume_text,
+            resume_data=resume_data,
+            jd_text=jd_text,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # 检查是否有致命错误
     for key, val in result.items():
@@ -886,11 +895,14 @@ async def ai_analyze_text(data: AiOptimizeTextRequest):
         raise HTTPException(status_code=400, detail="简历和 JD 文本不能为空")
 
     pipeline = SkillPipeline()
-    result = await pipeline.run(
-        resume_text=data.resume_text.strip(),
-        resume_data=None,
-        jd_text=data.jd_text.strip(),
-    )
+    try:
+        result = await pipeline.run(
+            resume_text=data.resume_text.strip(),
+            resume_data=None,
+            jd_text=data.jd_text.strip(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return result
 

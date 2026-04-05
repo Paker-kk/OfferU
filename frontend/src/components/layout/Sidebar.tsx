@@ -5,16 +5,14 @@
 // 支持两种模式：
 //   1. 完整展开模式 (w-64) — 普通页面
 //   2. 图标收缩模式 (w-16) — 简历编辑页等需要最大化内容区的页面
-//      悬停时临时展开为 overlay 面板，不影响主内容区宽度
 // MG滑动动画使用 Framer Motion
 // =============================================
 
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   FileText,
@@ -52,10 +50,6 @@ function shouldCollapse(pathname: string): boolean {
 export function Sidebar() {
   const pathname = usePathname();
   const collapsed = shouldCollapse(pathname);
-  const [hovered, setHovered] = useState(false);
-
-  // 当收缩模式下，悬停时显示展开的 overlay 面板
-  const showExpanded = !collapsed || hovered;
 
   return (
     <>
@@ -64,8 +58,6 @@ export function Sidebar() {
         className={`hidden md:flex flex-col border-r border-white/10 bg-black/20 backdrop-blur-xl gap-2 transition-all duration-300 ease-in-out relative ${
           collapsed ? "w-16 p-2" : "w-64 p-4"
         }`}
-        onMouseEnter={() => collapsed && setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
       >
         {/* Logo */}
         <div className={`flex items-center gap-3 py-4 mb-4 ${collapsed ? "justify-center px-0" : "px-3"}`}>
@@ -99,8 +91,8 @@ export function Sidebar() {
               >
                 {isActive && (
                   <motion.div
-                    layoutId="sidebar-active"
                     className="absolute inset-0 bg-white/10 rounded-xl border border-white/10"
+                    layoutId={collapsed ? undefined : "sidebar-active"}
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
                   />
                 )}
@@ -115,47 +107,6 @@ export function Sidebar() {
           );
         })}
       </aside>
-
-      {/* 收缩模式下的悬停展开 overlay 面板 — 使用 fixed 定位避免被 main 容器遮挡 */}
-      <AnimatePresence>
-        {collapsed && hovered && (
-          <motion.div
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.15 }}
-            className="hidden md:block fixed left-16 top-0 bottom-0 w-52 bg-black/90 backdrop-blur-xl border-r border-white/10 p-4 z-[100] shadow-2xl"
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-          >
-            {/* overlay Logo */}
-            <div className="flex items-center gap-3 px-3 py-4 mb-4">
-              <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                OfferU
-              </span>
-            </div>
-            {/* overlay 导航项 */}
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link key={item.href} href={item.href}>
-                  <div
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
-                      isActive
-                        ? "text-white bg-white/10"
-                        : "text-white/50 hover:text-white/80 hover:bg-white/5"
-                    }`}
-                  >
-                    <Icon size={18} className="flex-shrink-0" />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* 移动端底部导航 */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-t border-white/10">

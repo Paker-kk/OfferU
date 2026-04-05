@@ -19,7 +19,7 @@ import {
 import {
   useResumes, aiOptimizeResume, aiOptimizeText, parseResumeFile, AiOptimizeResult,
   aiAnalyzeResume, aiAnalyzeText, SkillAnalyzeResult, RewriteSuggestion, aiApplyBatch,
-  useJobs, Job,
+  useJobs, Job, useConfig,
 } from "@/lib/hooks";
 
 export default function OptimizePage() {
@@ -32,6 +32,16 @@ export default function OptimizePage() {
   const { data: jobsData } = useJobs({ keyword: jobSearchKeyword, page: 1 });
   const jobList: Job[] = Array.isArray(jobsData?.items) ? jobsData.items : [];
   const { data: resumes } = useResumes();
+  const { data: config } = useConfig();
+  // 检查 LLM API Key 是否已配置
+  const isApiKeyConfigured = (() => {
+    if (!config) return true; // 加载中，先放行
+    const provider = config.llm_provider || "deepseek";
+    if (provider === "deepseek") return !!config.deepseek_api_key;
+    if (provider === "openai") return !!config.openai_api_key;
+    if (provider === "ollama") return true; // Ollama 不需要 key
+    return true;
+  })();
   const [selectedResumeId, setSelectedResumeId] = useState<number | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [jdText, setJdText] = useState("");
@@ -347,6 +357,19 @@ export default function OptimizePage() {
         </Card>
       </div>
 
+      {/* API Key 未配置提示 */}
+      {!isApiKeyConfigured && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 max-w-2xl mx-auto">
+          <AlertTriangle size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-amber-300 font-medium">未配置 AI 服务</p>
+            <p className="text-xs text-amber-300/60 mt-1">
+              请前往 <a href="/settings" className="underline text-amber-300/80 hover:text-amber-200">设置页面</a> 配置 LLM API Key（DeepSeek / OpenAI），否则 AI 分析功能无法使用。
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 分析模式选择 + 按钮 */}
       <div className="flex flex-col items-center gap-3">
         <Tabs
@@ -385,7 +408,7 @@ export default function OptimizePage() {
           size="lg"
           startContent={analysisMode === "analyze" ? <Target size={18} /> : <Sparkles size={18} />}
           isLoading={loading}
-          isDisabled={!canSubmit}
+          isDisabled={!canSubmit || !isApiKeyConfigured}
           onPress={handleOptimize}
           className="px-8"
         >
