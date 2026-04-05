@@ -132,7 +132,7 @@ export function OnboardingChecklist() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5 hover:border-white/10 transition-all"
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-white/5 hover:border-white/10 transition-all min-h-[64px]"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${step.bg}`}>

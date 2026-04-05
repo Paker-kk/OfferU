@@ -81,8 +81,8 @@ export default function DashboardPage() {
           { label: "关键词", value: topJobs.reduce((acc, j) => acc + (j.keywords?.length ?? 0), 0), icon: Layers, color: "text-yellow-400" },
         ].map((stat) => (
           <motion.div key={stat.label} variants={item}>
-            <Card className="bg-white/5 border border-white/10">
-              <CardBody className="flex flex-row items-center gap-4 p-4">
+            <Card className="bg-white/5 border border-white/10 h-full">
+              <CardBody className="flex flex-row items-center gap-4 p-4 min-h-[80px]">
                 <div className={`p-3 rounded-xl bg-white/5 ${stat.color}`}>
                   <stat.icon size={24} />
                 </div>
@@ -126,6 +126,7 @@ export default function DashboardPage() {
                 variants={item}
                 whileHover={{ y: -4 }}
                 transition={{ type: "spring", stiffness: 300 }}
+                className="h-full"
               >
                 <JobCard job={job} />
               </motion.div>
