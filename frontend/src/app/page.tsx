@@ -13,6 +13,7 @@ import { Briefcase, TrendingUp, Zap, Layers } from "lucide-react";
 import { Card, CardBody, CardHeader, Button, Tabs, Tab } from "@nextui-org/react";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { JobCard } from "@/components/jobs/JobCard";
+import { OnboardingChecklist, OnboardingTriggerButton } from "@/components/onboarding/OnboardingChecklist";
 import { useJobs, useJobStats, useJobTrend } from "@/lib/hooks";
 import Link from "next/link";
 
@@ -47,22 +48,28 @@ export default function DashboardPage() {
       animate="show"
       className="space-y-6"
     >
+      {/* Onboarding 引导卡片 */}
+      <OnboardingChecklist />
+
       {/* 页面标题 */}
       <motion.div variants={item} className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-white/50 mt-1">OfferU 岗位采集概览</p>
         </div>
-        <Tabs
-          selectedKey={period}
-          onSelectionChange={(key) => setPeriod(key as string)}
-          variant="underlined"
-          size="sm"
-        >
-          <Tab key="today" title="今日" />
-          <Tab key="week" title="本周" />
-          <Tab key="month" title="本月" />
-        </Tabs>
+        <div className="flex items-center gap-3">
+          <OnboardingTriggerButton />
+          <Tabs
+            selectedKey={period}
+            onSelectionChange={(key) => setPeriod(key as string)}
+            variant="underlined"
+            size="sm"
+          >
+            <Tab key="today" title="今日" />
+            <Tab key="week" title="本周" />
+            <Tab key="month" title="本月" />
+          </Tabs>
+        </div>
       </motion.div>
 
       {/* 统计卡片 */}
