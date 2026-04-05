@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import {
   useResume, updateResume, updateSection, createSection,
-  deleteSection, uploadResumePhoto, useJobs,
+  deleteSection, uploadResumePhoto, useJobs, useConfig,
   aiOptimizeResume, aiApplySuggestion,
   AiSuggestion, AiOptimizeResult,
   useResumeTemplates, applyTemplate,
@@ -208,6 +208,15 @@ export default function ResumeEditorPage() {
   const [appliedSuggestions, setAppliedSuggestions] = useState<Set<number>>(new Set());
   const { data: jobsData } = useJobs({ page: 1, period: "month" });
   const { data: templates } = useResumeTemplates();
+  const { data: config } = useConfig();
+  const isApiKeyConfigured = (() => {
+    if (!config) return true;
+    const provider = config.llm_provider || "deepseek";
+    if (provider === "deepseek") return !!config.deepseek_api_key;
+    if (provider === "openai") return !!config.openai_api_key;
+    if (provider === "ollama") return true;
+    return true;
+  })();
 
   /** 应用模板 — 覆盖当前样式配置 */
   const handleApplyTemplate = async (templateId: number) => {
@@ -1069,6 +1078,15 @@ export default function ResumeEditorPage() {
               粘贴目标岗位的 JD（职位描述），AI 将分析 ATS 匹配度并生成优化建议。
             </p>
 
+            {!isApiKeyConfigured && (
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <AlertTriangle size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-300/80">
+                  未配置 AI 服务。请先前往 <a href="/settings" className="underline">设置页面</a> 配置 LLM API Key。
+                </p>
+              </div>
+            )}
+
             {/* 从已有职位选择 */}
             {jobsData?.items && jobsData.items.length > 0 && (
               <Select
@@ -1136,7 +1154,7 @@ export default function ResumeEditorPage() {
               size="sm"
               startContent={<Sparkles size={14} />}
               isLoading={aiLoading}
-              isDisabled={!jdText.trim() && !selectedJobId}
+              isDisabled={(!jdText.trim() && !selectedJobId) || !isApiKeyConfigured}
               onPress={handleAiOptimize}
             >
               开始优化

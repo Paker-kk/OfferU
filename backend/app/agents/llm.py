@@ -33,11 +33,15 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     model = settings.llm_model
 
     if provider == "deepseek":
+        if not settings.deepseek_api_key:
+            raise ValueError("DeepSeek API Key 未配置，请在设置页面填写")
         client = AsyncOpenAI(
             api_key=settings.deepseek_api_key,
             base_url="https://api.deepseek.com",
         )
     elif provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OpenAI API Key 未配置，请在设置页面填写")
         client = AsyncOpenAI(
             api_key=settings.openai_api_key,
         )
