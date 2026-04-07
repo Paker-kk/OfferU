@@ -3,12 +3,13 @@
 // =============================================
 // 展示：标题、公司、来源标签、关键词 Chips
 // hover 提升动画
+// 支持批量选择模式（checkbox）
 // =============================================
 
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Card, CardBody, Chip, Avatar } from "@nextui-org/react";
+import { Card, CardBody, Chip, Avatar, Checkbox } from "@nextui-org/react";
 import { MapPin, Briefcase, GraduationCap, DollarSign, Building2 } from "lucide-react";
 import type { Job } from "@/lib/hooks";
 
@@ -22,17 +23,45 @@ const sourceColorMap: Record<string, "primary" | "success" | "warning" | "danger
   corporate: "primary",
 };
 
-export function JobCard({ job }: { job: Job }) {
+interface JobCardProps {
+  job: Job;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: number) => void;
+}
+
+export function JobCard({ job, selectable, selected, onToggle }: JobCardProps) {
   const router = useRouter();
   const sourceColor = sourceColorMap[job.source] || "primary";
 
   return (
     <Card
       isPressable
-      onPress={() => router.push(`/jobs/${job.id}`)}
-      className="bg-white/5 border border-white/10 hover:border-white/20 transition-colors h-[240px]"
+      onPress={() => {
+        if (selectable && onToggle) {
+          onToggle(job.id);
+        } else {
+          router.push(`/jobs/${job.id}`);
+        }
+      }}
+      className={`bg-white/5 border transition-colors h-[240px] ${
+        selectable && selected
+          ? "border-blue-500 ring-2 ring-blue-500/30"
+          : "border-white/10 hover:border-white/20"
+      }`}
     >
       <CardBody className="p-5 flex flex-col gap-2.5 overflow-hidden">
+        {/* 批量选择 Checkbox */}
+        {selectable && (
+          <div className="absolute top-2 right-2 z-10">
+            <Checkbox
+              isSelected={selected}
+              onValueChange={() => onToggle?.(job.id)}
+              size="sm"
+              color="primary"
+            />
+          </div>
+        )}
         {/* 头部：公司Logo + 标题 + 来源 */}
         <div className="flex items-start gap-3 shrink-0">
           <Avatar

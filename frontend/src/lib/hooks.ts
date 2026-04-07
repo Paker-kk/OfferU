@@ -677,3 +677,91 @@ export async function saveBossCookie(cookie: string) {
   if (!res.ok) throw new Error("保存 Cookie 失败");
   return res.json();
 }
+
+// ---- 批量 AI 简历定制 (SSE 流式) ----
+
+export interface BatchOptimizeEntry {
+  job_id: number;
+  job_title: string;
+  company: string;
+  new_resume_id: number | null;
+  ats_score: number | null;
+  suggestions_applied: number;
+  status: "success" | "skipped" | "failed" | "pending";
+  error: string | null;
+  index: number;
+  total: number;
+}
+
+export interface BatchOptimizeResponse {
+  total: number;
+  success: number;
+  results: BatchOptimizeEntry[];
+}
+
+/**
+ * 批量 AI 简历定制 — SSE 流式版本
+ * 通过 onProgress 回调实时接收每个岗位的处理结果
+ */
+export async function batchOptimizeResume(
+  resumeId: number,
+  jobIds: number[],
+  autoApply = true,
+  onProgress?: (entry: BatchOptimizeEntry) => void
+): Promise<BatchOptimizeResponse> {
+  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/batch-optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds, auto_apply: autoApply }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `批量优化失败 (${res.status})`);
+  }
+
+  // 解析 SSE 流
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("浏览器不支持流式响应");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: BatchOptimizeResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // 按双换行分割 SSE 事件
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() || "";
+
+    for (const part of parts) {
+      const lines = part.trim().split("\n");
+      let eventType = "";
+      let data = "";
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) eventType = line.slice(7);
+        else if (line.startsWith("data: ")) data = line.slice(6);
+      }
+
+      if (!data) continue;
+
+      try {
+        const parsed = JSON.parse(data);
+        if (eventType === "progress" && onProgress) {
+          onProgress(parsed as BatchOptimizeEntry);
+        } else if (eventType === "done") {
+          finalResult = parsed as BatchOptimizeResponse;
+        }
+      } catch {
+        // 跳过无法解析的行
+      }
+    }
+  }
+
+  return finalResult || { total: jobIds.length, success: 0, results: [] };
+}

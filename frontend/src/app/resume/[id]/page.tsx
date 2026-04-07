@@ -36,7 +36,9 @@ import {
   aiOptimizeResume, aiApplySuggestion,
   AiSuggestion, AiOptimizeResult,
   useResumeTemplates, applyTemplate,
+  type Job,
 } from "@/lib/hooks";
+import { BatchOptimizeModal } from "@/components/jobs/BatchOptimizeModal";
 import SectionEditor from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
 import StyleToolbar, { DEFAULT_STYLE_CONFIG, MIN_STYLE_CONFIG } from "../components/StyleToolbar";
@@ -207,6 +209,10 @@ export default function ResumeEditorPage() {
   const [aiError, setAiError] = useState("");
   const [appliedSuggestions, setAppliedSuggestions] = useState<Set<number>>(new Set());
   const { data: jobsData } = useJobs({ page: 1, period: "month" });
+
+  // ---- 批量 AI 定制状态 ----
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const allJobs: Job[] = jobsData?.items ?? [];
   const { data: templates } = useResumeTemplates();
   const { data: config } = useConfig();
   const isApiKeyConfigured = (() => {
@@ -608,6 +614,15 @@ export default function ResumeEditorPage() {
               className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 text-purple-300 border border-purple-500/20"
             >
               AI 优化
+            </Button>
+            <Button
+              startContent={<Sparkles size={14} />}
+              variant="flat"
+              size="sm"
+              onPress={() => setIsBatchModalOpen(true)}
+              className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20 text-blue-300 border border-blue-500/20"
+            >
+              批量定制
             </Button>
             <div className="w-px h-5 bg-white/10 mx-1" />
             <Button
@@ -1162,6 +1177,13 @@ export default function ResumeEditorPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* 批量 AI 定制弹窗 — 从简历编辑器直接触发 */}
+      <BatchOptimizeModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        selectedJobs={allJobs}
+      />
     </div>
   );
 }

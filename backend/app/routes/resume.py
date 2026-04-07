@@ -1117,6 +1117,221 @@ async def ai_apply_batch(
 
 
 # =============================================
+# 批量 AI 简历定制 — 核心差异化功能
+# =============================================
+# 用户选择一份基础简历 + 多个目标岗位 →
+# 系统为每个岗位克隆一份简历副本 →
+# SkillPipeline 逐份分析 + 自动应用优化建议 →
+# 返回所有生成结果（ATS 评分、新简历 ID）
+# =============================================
+
+
+class BatchOptimizeRequest(BaseModel):
+    """批量 AI 简历定制请求体"""
+    job_ids: list[int] = Field(..., min_length=1, max_length=20)
+    auto_apply: bool = True  # 是否自动应用 AI 建议
+
+
+@router.post("/{resume_id}/ai/batch-optimize")
+async def ai_batch_optimize(
+    resume_id: int,
+    data: BatchOptimizeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    批量 AI 简历定制 — SSE 流式版本
+    ─────────────────────────────────────────────
+    返回 text/event-stream，逐个岗位实时推送进度：
+      event: progress  → 单个岗位处理完成
+      event: done      → 全部完成，附带汇总
+
+    前端通过 fetch + ReadableStream 消费事件。
+    """
+    import copy
+    import json as _json
+    import logging
+    from app.agents.skills import SkillPipeline
+
+    logger = logging.getLogger(__name__)
+
+    # ── 1. 预校验（在生成器外完成，否则异常无法正常返回 HTTP 错误） ──
+    source = await _get_resume_or_404(resume_id, db, load_sections=True)
+    source_data = _serialize_resume_full(source)
+
+    result = await db.execute(select(Job).where(Job.id.in_(data.job_ids)))
+    jobs_map = {j.id: j for j in result.scalars().all()}
+
+    missing_ids = set(data.job_ids) - set(jobs_map.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"以下岗位不存在: {list(missing_ids)}",
+        )
+
+    job_ids = list(data.job_ids)
+    auto_apply = data.auto_apply
+
+    # ── 2. SSE 生成器 ──
+    async def _stream():
+        pipeline = SkillPipeline()
+        all_results = []
+
+        for idx, job_id in enumerate(job_ids):
+            job = jobs_map[job_id]
+            jd_text = (job.raw_description or "").strip()
+
+            entry = {
+                "job_id": job_id,
+                "job_title": job.title,
+                "company": job.company,
+                "new_resume_id": None,
+                "ats_score": None,
+                "suggestions_applied": 0,
+                "status": "pending",
+                "error": None,
+                "index": idx,
+                "total": len(job_ids),
+            }
+
+            if not jd_text:
+                entry["status"] = "skipped"
+                entry["error"] = "岗位无 JD 文本"
+                all_results.append(entry)
+                yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
+                continue
+
+            try:
+                # ── 克隆简历 ──
+                new_resume = Resume(
+                    user_name=source.user_name,
+                    title=f"{source.title} - {job.company} {job.title}",
+                    photo_url=source.photo_url,
+                    summary=source.summary,
+                    contact_json=copy.deepcopy(source.contact_json),
+                    template_id=source.template_id,
+                    style_config=copy.deepcopy(source.style_config),
+                    is_primary=False,
+                    language=source.language,
+                )
+                db.add(new_resume)
+                await db.flush()
+
+                for sec in source.sections:
+                    new_section = ResumeSection(
+                        resume_id=new_resume.id,
+                        section_type=sec.section_type,
+                        sort_order=sec.sort_order,
+                        title=sec.title,
+                        visible=sec.visible,
+                        content_json=copy.deepcopy(sec.content_json),
+                    )
+                    db.add(new_section)
+
+                await db.flush()
+                entry["new_resume_id"] = new_resume.id
+
+                # ── 运行 SkillPipeline ──
+                cloned = await _get_resume_or_404(new_resume.id, db, load_sections=True)
+                cloned_data = _serialize_resume_full(cloned)
+                cloned_text = _flatten_resume_to_text(cloned_data)
+
+                pipeline_result = await pipeline.run(
+                    resume_text=cloned_text,
+                    resume_data=cloned_data,
+                    jd_text=jd_text,
+                )
+
+                match_analysis = pipeline_result.get("match_analysis", {})
+                entry["ats_score"] = match_analysis.get("ats_score")
+
+                # ── 自动应用建议 ──
+                if auto_apply:
+                    applied_count = 0
+
+                    content_rewrite = pipeline_result.get("content_rewrite", {})
+                    suggestions = content_rewrite.get("suggestions", [])
+                    for sug in suggestions:
+                        section_title = sug.get("section_title", "")
+                        original = sug.get("original", "")
+                        suggested = sug.get("suggested", "")
+                        if not section_title or not suggested:
+                            continue
+
+                        sec_result = await db.execute(
+                            select(ResumeSection).where(
+                                ResumeSection.resume_id == new_resume.id,
+                                ResumeSection.title.icontains(section_title),
+                            )
+                        )
+                        section = sec_result.scalar_one_or_none()
+                        if not section:
+                            continue
+
+                        content = list(section.content_json or [])
+                        for item in content:
+                            desc = item.get("description", "")
+                            if not desc:
+                                continue
+                            plain_desc = re.sub(r"<[^>]+>", "", desc).strip()
+                            plain_original = re.sub(r"<[^>]+>", "", original).strip()
+                            if plain_original and plain_original in plain_desc:
+                                item["description"] = desc.replace(
+                                    original, suggested
+                                ) if original in desc else suggested
+                                applied_count += 1
+                                break
+
+                        section.content_json = content
+
+                    section_reorder = pipeline_result.get("section_reorder", {})
+                    suggested_order = section_reorder.get("suggested_order", [])
+                    if suggested_order:
+                        for sort_idx, sec_title in enumerate(suggested_order):
+                            sec_result = await db.execute(
+                                select(ResumeSection).where(
+                                    ResumeSection.resume_id == new_resume.id,
+                                    ResumeSection.title.icontains(sec_title),
+                                )
+                            )
+                            section = sec_result.scalar_one_or_none()
+                            if section:
+                                section.sort_order = sort_idx
+
+                    entry["suggestions_applied"] = applied_count
+
+                entry["status"] = "success"
+
+            except Exception as e:
+                logger.error(f"批量优化岗位 {job_id} 失败: {e}")
+                entry["status"] = "failed"
+                entry["error"] = str(e)
+
+            all_results.append(entry)
+            # 每完成一个岗位即时推送
+            yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
+
+        await db.commit()
+
+        # 全部完成后推送汇总
+        success_count = sum(1 for r in all_results if r["status"] == "success")
+        summary = {
+            "total": len(job_ids),
+            "success": success_count,
+            "results": all_results,
+        }
+        yield f"event: done\ndata: {_json.dumps(summary, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # nginx 不缓冲
+        },
+    )
+
+
+# =============================================
 # 简历文件解析 — PDF / Word 上传提取文本
 # =============================================
 
