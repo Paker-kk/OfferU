@@ -35,9 +35,19 @@ export function OnboardingChecklist() {
   // 同步真实数据到 onboarding 状态
   useEffect(() => {
     if (!onboarding.hydrated) return;
+    const list = Array.isArray((config as any)?.llm_api_configs)
+      ? ((config as any).llm_api_configs as any[])
+      : [];
+    const active = list.find((item) => item?.is_active)
+      || list.find((item) => item?.id === (config as any)?.active_llm_config_id);
     const hasApiKey = !!(
-      config?.deepseek_api_key ||
-      config?.openai_api_key
+      (active && (String(active.provider_id || "").toLowerCase() === "ollama" || active.api_key))
+      || (config as any)?.deepseek_api_key
+      || (config as any)?.openai_api_key
+      || (config as any)?.qwen_api_key
+      || (config as any)?.siliconflow_api_key
+      || (config as any)?.gemini_api_key
+      || (config as any)?.zhipu_api_key
     );
     const hasResume = Array.isArray(resumes) && resumes.length > 0;
     const hasJobs = !!(jobsData?.items && jobsData.items.length > 0);
