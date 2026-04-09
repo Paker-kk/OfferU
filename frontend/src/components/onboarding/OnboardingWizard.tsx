@@ -12,10 +12,12 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Autocomplete,
+  AutocompleteItem,
   Button,
   Input,
   Card,
@@ -36,7 +38,7 @@ import {
   Rocket,
   CheckCircle2,
 } from "lucide-react";
-import { updateConfig, createResume } from "@/lib/hooks";
+import { createResume, updateConfig, useConfig } from "@/lib/hooks";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -44,6 +46,137 @@ interface OnboardingWizardProps {
 }
 
 const TOTAL_STEPS = 4; // 0=welcome, 1=apikey, 2=resume, 3=scrape
+
+const CUSTOM_OPTION = "__custom__";
+
+interface ProviderModelPreset {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+interface ProviderPreset {
+  id: string;
+  name: string;
+  description?: string;
+  default_base_url: string;
+  models: ProviderModelPreset[];
+  key_prefix?: string;
+}
+
+const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    description: "Mainstream global provider",
+    default_base_url: "https://api.openai.com/v1",
+    models: [
+      { id: "gpt-4.1-mini", name: "GPT-4.1 Mini" },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini" },
+      { id: "gpt-4.1", name: "GPT-4.1" },
+    ],
+    key_prefix: "sk-",
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    description: "Cost-effective Chinese model",
+    default_base_url: "https://api.deepseek.com",
+    models: [
+      { id: "deepseek-chat", name: "DeepSeek Chat" },
+      { id: "deepseek-reasoner", name: "DeepSeek Reasoner" },
+    ],
+    key_prefix: "sk-",
+  },
+  {
+    id: "qwen",
+    name: "通义千问",
+    description: "Alibaba DashScope",
+    default_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: [
+      { id: "qwen-plus", name: "Qwen Plus" },
+      { id: "qwen-turbo", name: "Qwen Turbo" },
+      { id: "qwen-max", name: "Qwen Max" },
+    ],
+    key_prefix: "sk-",
+  },
+  {
+    id: "siliconflow",
+    name: "硅基流动",
+    description: "Model aggregation provider",
+    default_base_url: "https://api.siliconflow.com/v1",
+    models: [
+      { id: "deepseek-ai/DeepSeek-V3.2", name: "DeepSeek-V3.2" },
+      { id: "Qwen/Qwen3-32B", name: "Qwen3-32B" },
+    ],
+    key_prefix: "sk-",
+  },
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    description: "Gemini OpenAI-compatible endpoint",
+    default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+    models: [
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+    ],
+    key_prefix: "",
+  },
+  {
+    id: "zhipu",
+    name: "智谱",
+    description: "BigModel Open Platform",
+    default_base_url: "https://open.bigmodel.cn/api/paas/v4",
+    models: [
+      { id: "glm-5.1", name: "GLM-5.1" },
+      { id: "glm-4.6", name: "GLM-4.6" },
+    ],
+    key_prefix: "",
+  },
+  {
+    id: "ollama",
+    name: "Ollama",
+    description: "Local inference",
+    default_base_url: "http://localhost:11434/v1",
+    models: [
+      { id: "qwen2.5:7b", name: "Qwen2.5 7B" },
+      { id: "llama3.1:8b", name: "Llama 3.1 8B" },
+    ],
+    key_prefix: "",
+  },
+];
+
+const DEFAULT_PROVIDER_PRESET =
+  FALLBACK_PROVIDER_PRESETS.find((preset) => preset.id === "deepseek") || FALLBACK_PROVIDER_PRESETS[0];
+
+function normalizeProviderId(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "custom";
+}
+
+function createConfigId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeBaseUrl(value: string, providerId: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (providerId === "ollama" && !trimmed.endsWith("/v1")) {
+    return `${trimmed}/v1`;
+  }
+  return trimmed;
+}
+
+function toLegacyOllamaBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/v1")) {
+    return trimmed.slice(0, -3);
+  }
+  return trimmed;
+}
 
 // 预设模板
 const RESUME_TEMPLATES = [
@@ -54,14 +187,27 @@ const RESUME_TEMPLATES = [
 
 export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) {
   const router = useRouter();
+  const { data: configData } = useConfig();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1); // 1=forward, -1=back
 
-  // Step 1: API Key
-  const [apiKey, setApiKey] = useState("");
+  // Step 1: AI config
+  const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>(FALLBACK_PROVIDER_PRESETS);
+  const [formProviderChoice, setFormProviderChoice] = useState<string>(DEFAULT_PROVIDER_PRESET.id);
+  const [formCustomServiceName, setFormCustomServiceName] = useState("");
+  const [formModelChoice, setFormModelChoice] = useState<string>(DEFAULT_PROVIDER_PRESET.models[0]?.id || "");
+  const [formCustomModel, setFormCustomModel] = useState("");
+  const [formUrlChoice, setFormUrlChoice] = useState<string>(DEFAULT_PROVIDER_PRESET.default_base_url);
+  const [formBaseUrl, setFormBaseUrl] = useState(DEFAULT_PROVIDER_PRESET.default_base_url);
+  const [formApiKey, setFormApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  const [savingKey, setSavingKey] = useState(false);
-  const [keySaved, setKeySaved] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [configSaveError, setConfigSaveError] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const providerSelectionRef = useRef(false);
+  const modelSelectionRef = useRef(false);
+  const urlSelectionRef = useRef(false);
 
   // Step 2: Resume quick-create
   const [resumeMode, setResumeMode] = useState<"choose" | "create" | "upload">("choose");
@@ -83,19 +229,270 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     setStep((s) => Math.max(s - 1, 0));
   };
 
-  // 保存 API Key
-  const handleSaveApiKey = async () => {
-    if (!apiKey.trim()) return;
-    setSavingKey(true);
+  const currentFormPreset = useMemo(
+    () => providerPresets.find((preset) => preset.id === formProviderChoice),
+    [providerPresets, formProviderChoice]
+  );
+
+  const formModelOptions = useMemo(
+    () => currentFormPreset?.models || [],
+    [currentFormPreset]
+  );
+
+  const providerOptions = useMemo(
+    () => providerPresets.map((preset) => ({ id: preset.id, name: preset.name, description: preset.description || "" })),
+    [providerPresets]
+  );
+
+  const modelOptions = useMemo(
+    () => formModelOptions.map((model) => ({ id: model.id, name: model.name, description: model.description || "" })),
+    [formModelOptions]
+  );
+
+  const urlOptions = useMemo(() => {
+    if (!currentFormPreset?.default_base_url) {
+      return [] as { id: string; name: string }[];
+    }
+    return [{ id: currentFormPreset.default_base_url, name: `默认 URL（${currentFormPreset.default_base_url}）` }];
+  }, [currentFormPreset]);
+
+  const resolvedFormServiceName = useMemo(() => {
+    if (formProviderChoice === CUSTOM_OPTION) {
+      return formCustomServiceName.trim();
+    }
+    return currentFormPreset?.name || "";
+  }, [currentFormPreset, formCustomServiceName, formProviderChoice]);
+
+  const resolvedFormProviderId = useMemo(() => {
+    if (formProviderChoice === CUSTOM_OPTION) {
+      return normalizeProviderId(formCustomServiceName);
+    }
+    return formProviderChoice;
+  }, [formCustomServiceName, formProviderChoice]);
+
+  const resolvedFormModel = useMemo(() => {
+    if (formModelChoice === CUSTOM_OPTION) {
+      return formCustomModel.trim();
+    }
+    return formModelChoice;
+  }, [formCustomModel, formModelChoice]);
+
+  const resolvedFormBaseUrl = useMemo(() => {
+    if (formUrlChoice === CUSTOM_OPTION) {
+      return formBaseUrl.trim();
+    }
+    return formUrlChoice.trim();
+  }, [formBaseUrl, formUrlChoice]);
+
+  useEffect(() => {
+    const presetsFromServer = Array.isArray((configData as any)?.provider_presets)
+      ? ((configData as any).provider_presets as ProviderPreset[])
+      : [];
+    if (presetsFromServer.length > 0) {
+      setProviderPresets(presetsFromServer);
+    }
+  }, [configData]);
+
+  const validateAiForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+
+    if (!resolvedFormServiceName) {
+      errors.service_name = "服务名称不能为空";
+    }
+
+    if (!resolvedFormModel) {
+      errors.model = "模型名称不能为空";
+    }
+
+    if (!resolvedFormBaseUrl) {
+      errors.base_url = "API URL 不能为空";
+    } else if (!/^https?:\/\//i.test(resolvedFormBaseUrl)) {
+      errors.base_url = "API URL 需以 http:// 或 https:// 开头";
+    }
+
+    if (resolvedFormProviderId !== "ollama") {
+      if (!formApiKey.trim()) {
+        errors.api_key = "API 密钥不能为空";
+      }
+      if (formApiKey.includes("*")) {
+        errors.api_key = "请填写完整密钥，不能使用脱敏值";
+      }
+      const prefix = currentFormPreset?.key_prefix || "";
+      if (prefix && formApiKey.trim() && !formApiKey.trim().startsWith(prefix)) {
+        errors.api_key = `该服务密钥通常以 ${prefix} 开头`;
+      }
+    }
+
+    return errors;
+  };
+
+  useEffect(() => {
+    if (step !== 1) return;
+    setFormErrors(validateAiForm());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, formProviderChoice, formCustomServiceName, formModelChoice, formCustomModel, formUrlChoice, formBaseUrl, formApiKey]);
+
+  const resetAiStepStatus = () => {
+    setConfigSaved(false);
+    setConfigSaveError("");
+  };
+
+  const handleProviderChoiceChange = (value: string) => {
+    resetAiStepStatus();
+    setFormProviderChoice(value);
+    if (value === CUSTOM_OPTION) {
+      setFormCustomServiceName(resolvedFormServiceName);
+      setFormModelChoice(CUSTOM_OPTION);
+      setFormCustomModel(resolvedFormModel);
+      setFormUrlChoice(CUSTOM_OPTION);
+      setFormBaseUrl(resolvedFormBaseUrl);
+      return;
+    }
+
+    const preset = providerPresets.find((item) => item.id === value);
+    if (!preset) return;
+
+    setFormCustomServiceName("");
+    setFormModelChoice(preset.models[0]?.id || CUSTOM_OPTION);
+    setFormCustomModel("");
+    setFormUrlChoice(preset.default_base_url);
+    setFormBaseUrl(preset.default_base_url);
+
+    if (preset.id === "ollama") {
+      setFormApiKey("");
+    }
+  };
+
+  const handleServiceInputChange = (value: string) => {
+    resetAiStepStatus();
+    if (formProviderChoice !== CUSTOM_OPTION) {
+      setFormProviderChoice(CUSTOM_OPTION);
+      setFormModelChoice(CUSTOM_OPTION);
+      setFormCustomModel(resolvedFormModel);
+      setFormUrlChoice(CUSTOM_OPTION);
+      setFormBaseUrl(resolvedFormBaseUrl);
+    }
+    setFormCustomServiceName(value);
+  };
+
+  const handleModelInputChange = (value: string) => {
+    resetAiStepStatus();
+    if (formModelChoice !== CUSTOM_OPTION) {
+      setFormCustomModel(resolvedFormModel);
+      setFormModelChoice(CUSTOM_OPTION);
+    }
+    setFormCustomModel(value);
+  };
+
+  const handleUrlInputChange = (value: string) => {
+    resetAiStepStatus();
+    if (formUrlChoice !== CUSTOM_OPTION) {
+      setFormBaseUrl(resolvedFormBaseUrl);
+      setFormUrlChoice(CUSTOM_OPTION);
+    }
+    setFormBaseUrl(value);
+  };
+
+  const handleSaveAiConfig = async () => {
+    const errors = validateAiForm();
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+
+    setSavingConfig(true);
+    setConfigSaveError("");
+
+    const providerId = resolvedFormProviderId;
+    const nextConfig = {
+      id: createConfigId(),
+      provider_id: providerId,
+      service_name: resolvedFormServiceName,
+      model: resolvedFormModel,
+      base_url: normalizeBaseUrl(resolvedFormBaseUrl, providerId),
+      api_key: providerId === "ollama" ? "" : formApiKey.trim(),
+      is_active: true,
+      extra_params: {},
+    };
+
+    const incomingConfigs = Array.isArray((configData as any)?.llm_api_configs)
+      ? ((configData as any).llm_api_configs as any[])
+      : [];
+
+    const normalizedExisting = incomingConfigs
+      .map((item) => {
+        const itemProviderId = normalizeProviderId(String(item?.provider_id || item?.service_name || "custom"));
+        return {
+          id: String(item?.id || createConfigId()),
+          provider_id: itemProviderId,
+          service_name: String(item?.service_name || itemProviderId).trim(),
+          model: String(item?.model || "").trim(),
+          base_url: normalizeBaseUrl(String(item?.base_url || ""), itemProviderId),
+          api_key: String(item?.api_key || ""),
+          is_active: Boolean(item?.is_active),
+          extra_params: (item?.extra_params || {}) as Record<string, string>,
+        };
+      })
+      .filter((item) => item.service_name && item.model && item.base_url);
+
+    const previousActiveId = String((configData as any)?.active_llm_config_id || "");
+    const mergedConfigs = [
+      ...normalizedExisting.filter((item) => item.id !== previousActiveId),
+      nextConfig,
+    ];
+
+    const finalConfigs = mergedConfigs
+      .map((item) => {
+        const itemProviderId = normalizeProviderId(item.provider_id || item.service_name);
+        return {
+          ...item,
+          provider_id: itemProviderId,
+          service_name: item.service_name.trim(),
+          model: item.model.trim(),
+          base_url: normalizeBaseUrl(item.base_url, itemProviderId),
+          api_key: itemProviderId === "ollama" ? "" : item.api_key.trim(),
+          is_active: item.id === nextConfig.id,
+        };
+      })
+      .filter((item) => item.service_name && item.model && item.base_url);
+
+    const activeConfig = finalConfigs.find((item) => item.id === nextConfig.id) || null;
+
+    const getProviderConfig = (targetProviderId: string) =>
+      finalConfigs.find((item) => item.provider_id === targetProviderId) || null;
+
+    const deepseekConfig = getProviderConfig("deepseek");
+    const openaiConfig = getProviderConfig("openai");
+    const qwenConfig = getProviderConfig("qwen");
+    const siliconflowConfig = getProviderConfig("siliconflow");
+    const geminiConfig = getProviderConfig("gemini");
+    const zhipuConfig = getProviderConfig("zhipu");
+    const ollamaConfig = getProviderConfig("ollama");
+
     try {
-      await updateConfig({ deepseek_api_key: apiKey.trim() });
-      setKeySaved(true);
+      await updateConfig({
+        llm_api_configs: finalConfigs,
+        active_llm_config_id: activeConfig?.id || "",
+        llm_provider: activeConfig?.provider_id || "",
+        llm_model: activeConfig?.model || "",
+        active_llm_base_url: activeConfig?.base_url || "",
+        active_llm_api_key: activeConfig?.api_key || "",
+        deepseek_api_key: deepseekConfig?.api_key || "",
+        openai_api_key: openaiConfig?.api_key || "",
+        qwen_api_key: qwenConfig?.api_key || "",
+        siliconflow_api_key: siliconflowConfig?.api_key || "",
+        gemini_api_key: geminiConfig?.api_key || "",
+        zhipu_api_key: zhipuConfig?.api_key || "",
+        ollama_base_url: toLegacyOllamaBaseUrl(
+          ollamaConfig?.base_url || "http://localhost:11434/v1"
+        ),
+      });
+      setConfigSaved(true);
       setTimeout(goNext, 600);
-    } catch {
-      // 即使失败也继续
-      goNext();
+    } catch (error) {
+      setConfigSaveError(error instanceof Error ? error.message : "保存失败，请稍后重试");
     } finally {
-      setSavingKey(false);
+      setSavingConfig(false);
     }
   };
 
@@ -109,7 +506,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         business: "商科岗简历",
         general: "我的简历",
       };
-      const res = await createResume({
+      await createResume({
         user_name: userName.trim(),
         title: templateTitles[selectedTemplate] || "我的简历",
         school: school.trim() || undefined,
@@ -282,7 +679,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
               animate="center"
               exit="exit"
               transition={{ type: "spring", damping: 20 }}
-              className="space-y-6"
+              className="space-y-5"
             >
               <div className="text-center space-y-2">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 mx-auto mb-2">
@@ -290,52 +687,189 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 </div>
                 <h2 className="text-2xl font-bold">配置 AI 能力</h2>
                 <p className="text-sm text-white/40">
-                  输入 DeepSeek API Key，解锁简历优化、JD 智能分析等 AI 功能
+                  选择服务、模型与 API 地址，保存后将自动同步到设置页的 API 管理列表
                 </p>
               </div>
 
               <Card className="bg-white/5 border border-white/10">
-                <CardBody className="space-y-4 p-5">
-                  <Input
-                    label="DeepSeek API Key"
-                    placeholder="sk-..."
-                    variant="bordered"
-                    type={showKey ? "text" : "password"}
-                    value={apiKey}
-                    onValueChange={setApiKey}
-                    startContent={<Key size={16} className="text-white/30" />}
-                    endContent={
-                      <button
-                        onClick={() => setShowKey(!showKey)}
-                        className="text-white/30 hover:text-white/60"
-                      >
-                        {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    }
-                  />
-                  <p className="text-xs text-white/30">
-                    前往{" "}
-                    <a
-                      href="https://platform.deepseek.com/api_keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:underline"
+                <CardBody className="space-y-4 p-4 sm:p-5">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Autocomplete
+                      label="服务选择"
+                      variant="bordered"
+                      allowsCustomValue
+                      menuTrigger="manual"
+                      selectedKey={formProviderChoice === CUSTOM_OPTION ? null : formProviderChoice}
+                      value={formProviderChoice === CUSTOM_OPTION ? formCustomServiceName : resolvedFormServiceName}
+                      onInputChange={(value) => {
+                        if (providerSelectionRef.current) {
+                          providerSelectionRef.current = false;
+                          return;
+                        }
+                        handleServiceInputChange(value);
+                      }}
+                      onSelectionChange={(key) => {
+                        if (!key) return;
+                        providerSelectionRef.current = true;
+                        handleProviderChoiceChange(String(key));
+                      }}
+                      isInvalid={Boolean(formErrors.service_name)}
+                      errorMessage={formErrors.service_name}
+                      placeholder="例如：DeepSeek"
+                      inputProps={{
+                        classNames: {
+                          inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
+                        },
+                      }}
+                      classNames={{
+                        listboxWrapper: "max-h-56",
+                      }}
                     >
-                      DeepSeek 控制台
-                    </a>
-                    {" "}获取 API Key。也可在设置页随时修改。
+                      {providerOptions.map((item) => (
+                        <AutocompleteItem key={item.id} textValue={item.name}>
+                          <div className="flex flex-col">
+                            <span>{item.name}</span>
+                            {item.description && <span className="text-xs text-white/40">{item.description}</span>}
+                          </div>
+                        </AutocompleteItem>
+                      ))}
+                    </Autocomplete>
+
+                    <Autocomplete
+                      label="模型选择"
+                      variant="bordered"
+                      allowsCustomValue
+                      menuTrigger="manual"
+                      selectedKey={formModelChoice === CUSTOM_OPTION ? null : formModelChoice}
+                      value={formModelChoice === CUSTOM_OPTION ? formCustomModel : resolvedFormModel}
+                      onInputChange={(value) => {
+                        if (modelSelectionRef.current) {
+                          modelSelectionRef.current = false;
+                          return;
+                        }
+                        handleModelInputChange(value);
+                      }}
+                      onSelectionChange={(key) => {
+                        if (!key) return;
+                        modelSelectionRef.current = true;
+                        resetAiStepStatus();
+                        setFormModelChoice(String(key));
+                        setFormCustomModel("");
+                      }}
+                      isInvalid={Boolean(formErrors.model)}
+                      errorMessage={formErrors.model}
+                      placeholder="例如：deepseek-chat"
+                      inputProps={{
+                        classNames: {
+                          inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
+                        },
+                      }}
+                      classNames={{
+                        listboxWrapper: "max-h-56",
+                      }}
+                    >
+                      {modelOptions.map((item) => (
+                        <AutocompleteItem key={item.id} textValue={item.name}>
+                          <div className="flex flex-col">
+                            <span>{item.name}</span>
+                            {item.description && <span className="text-xs text-white/40">{item.description}</span>}
+                          </div>
+                        </AutocompleteItem>
+                      ))}
+                    </Autocomplete>
+
+                    <Autocomplete
+                      label="API URL"
+                      variant="bordered"
+                      allowsCustomValue
+                      menuTrigger="manual"
+                      selectedKey={formUrlChoice === CUSTOM_OPTION ? null : formUrlChoice}
+                      value={formUrlChoice === CUSTOM_OPTION ? formBaseUrl : resolvedFormBaseUrl}
+                      onInputChange={(value) => {
+                        if (urlSelectionRef.current) {
+                          urlSelectionRef.current = false;
+                          return;
+                        }
+                        handleUrlInputChange(value);
+                      }}
+                      onSelectionChange={(key) => {
+                        if (!key) return;
+                        urlSelectionRef.current = true;
+                        resetAiStepStatus();
+                        const value = String(key);
+                        setFormUrlChoice(value);
+                        setFormBaseUrl(value);
+                      }}
+                      isInvalid={Boolean(formErrors.base_url)}
+                      errorMessage={formErrors.base_url}
+                      placeholder="https://..."
+                      inputProps={{
+                        classNames: {
+                          inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
+                        },
+                      }}
+                      classNames={{
+                        listboxWrapper: "max-h-56",
+                        base: "sm:col-span-2",
+                      }}
+                    >
+                      {urlOptions.map((item) => (
+                        <AutocompleteItem key={item.id} textValue={item.name}>
+                          {item.name}
+                        </AutocompleteItem>
+                      ))}
+                    </Autocomplete>
+
+                    <Input
+                      label="API 密钥"
+                      placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "sk-..."}
+                      variant="bordered"
+                      type={showKey ? "text" : "password"}
+                      value={formApiKey}
+                      onValueChange={(value) => {
+                        resetAiStepStatus();
+                        setFormApiKey(value);
+                      }}
+                      isDisabled={resolvedFormProviderId === "ollama"}
+                      isInvalid={Boolean(formErrors.api_key)}
+                      errorMessage={formErrors.api_key}
+                      classNames={{
+                        base: "sm:col-span-2",
+                        inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
+                      }}
+                      startContent={<Key size={16} className="text-white/30" />}
+                      endContent={
+                        <button
+                          type="button"
+                          onClick={() => setShowKey(!showKey)}
+                          className="text-white/30 hover:text-white/60"
+                        >
+                          {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      }
+                    />
+                  </div>
+
+                  <p className="text-xs text-white/35">
+                    当前步骤支持跳过；你也可以稍后在设置页继续新增或调整多套 API 配置。
                   </p>
+
+                  {configSaveError && (
+                    <div className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
+                      {configSaveError}
+                    </div>
+                  )}
                 </CardBody>
               </Card>
 
-              {keySaved && (
+              {configSaved && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="flex items-center justify-center gap-2 text-green-400 text-sm"
                 >
                   <CheckCircle2 size={16} />
-                  <span>API Key 已保存！</span>
+                  <span>AI 配置已保存并同步！</span>
                 </motion.div>
               )}
 
@@ -356,12 +890,11 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                   </button>
                   <Button
                     color="primary"
-                    endContent={keySaved ? <CheckCircle2 size={16} /> : <ArrowRight size={16} />}
-                    isLoading={savingKey}
-                    isDisabled={!apiKey.trim()}
-                    onPress={handleSaveApiKey}
+                    endContent={configSaved ? <CheckCircle2 size={16} /> : <ArrowRight size={16} />}
+                    isLoading={savingConfig}
+                    onPress={handleSaveAiConfig}
                   >
-                    {keySaved ? "已保存" : "保存并继续"}
+                    {configSaved ? "已保存" : "保存并继续"}
                   </Button>
                 </div>
               </div>
