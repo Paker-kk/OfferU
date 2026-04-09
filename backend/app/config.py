@@ -18,13 +18,20 @@ class Settings(BaseSettings):
     # ---- API Keys（多 LLM 提供商） ----
     openai_api_key: str = ""
     deepseek_api_key: str = ""
+    qwen_api_key: str = ""
+    siliconflow_api_key: str = ""
+    gemini_api_key: str = ""
+    zhipu_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     apify_api_key: str = ""
 
     # ---- AI 模型配置 ----
-    # llm_provider: openai / deepseek / ollama
+    # llm_provider: openai / deepseek / qwen / siliconflow / gemini / zhipu / ollama / custom
     llm_provider: str = "deepseek"
     llm_model: str = "deepseek-chat"
+    active_llm_config_id: str = ""
+    active_llm_base_url: str = ""
+    active_llm_api_key: str = ""
 
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"
