@@ -28,9 +28,22 @@ _CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
 # 前端根据用户选择的 provider 渲染对应模型下拉
 AVAILABLE_PROVIDERS = [
     {
+        "id": "qwen",
+        "name": "阿里云百炼 Qwen",
+        "description": "默认首选，国内最便宜，OpenAI 兼容",
+        "models": [
+            {"id": "qwen-flash", "name": "Qwen-Flash (Qwen3.5)", "description": "极低成本 ¥0.15/M·默认推荐"},
+            {"id": "qwen-plus", "name": "Qwen-Plus (Qwen3.6)", "description": "均衡 ¥0.8/M·复杂任务"},
+            {"id": "qwen3-max", "name": "Qwen3-Max", "description": "最强 ¥2.5/M·推理"},
+            {"id": "qwen-turbo", "name": "Qwen-Turbo", "description": "¥0.3/M·已停更建议用Flash"},
+            {"id": "qwen-long", "name": "Qwen-Long", "description": "10M上下文 ¥0.5/M"},
+            {"id": "deepseek-r1", "name": "DeepSeek-R1 (百炼托管)", "description": "百炼第三方·同Key可用"},
+        ],
+    },
+    {
         "id": "deepseek",
-        "name": "DeepSeek",
-        "description": "国内首选，性价比极高",
+        "name": "DeepSeek (官方)",
+        "description": "DeepSeek 官方 API，需单独 Key",
         "models": [
             {"id": "deepseek-chat", "name": "DeepSeek-V3", "description": "通用对话，¥1/M tokens"},
             {"id": "deepseek-reasoner", "name": "DeepSeek-R1", "description": "深度推理，¥4/M tokens"},
@@ -67,9 +80,11 @@ class ConfigUpdate(BaseModel):
     email_to: str = ""
     sources_enabled: list[str] = ["linkedin"]
     # AI 模型选择（多 LLM Provider）
-    llm_provider: str = "deepseek"
-    llm_model: str = "deepseek-chat"
+    llm_provider: str = "qwen"
+    llm_model: str = "qwen-flash"
     # API Keys（前端输入，运行时生效）
+    qwen_api_key: str = ""
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     deepseek_api_key: str = ""
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
@@ -94,6 +109,8 @@ def _load_config() -> ConfigUpdate:
     # 首次启动：从 .env 加载
     s = get_settings()
     return ConfigUpdate(
+        qwen_api_key=s.qwen_api_key,
+        qwen_base_url=s.qwen_base_url,
         deepseek_api_key=s.deepseek_api_key,
         openai_api_key=s.openai_api_key,
         ollama_base_url=s.ollama_base_url,
@@ -114,12 +131,22 @@ def _save_config(cfg: ConfigUpdate) -> None:
 _current_config = _load_config()
 
 # 同步 config.json 的 LLM 配置到全局 Settings（确保启动后即可用）
+# 规则：config.json 的非空值覆盖 .env，空值保留 .env 中的值
 _startup_settings = get_settings()
-_startup_settings.llm_provider = _current_config.llm_provider
-_startup_settings.llm_model = _current_config.llm_model
-_startup_settings.deepseek_api_key = _current_config.deepseek_api_key
-_startup_settings.openai_api_key = _current_config.openai_api_key
-_startup_settings.ollama_base_url = _current_config.ollama_base_url
+if _current_config.llm_provider:
+    _startup_settings.llm_provider = _current_config.llm_provider
+if _current_config.llm_model:
+    _startup_settings.llm_model = _current_config.llm_model
+if _current_config.qwen_api_key:
+    _startup_settings.qwen_api_key = _current_config.qwen_api_key
+if _current_config.qwen_base_url:
+    _startup_settings.qwen_base_url = _current_config.qwen_base_url
+if _current_config.deepseek_api_key:
+    _startup_settings.deepseek_api_key = _current_config.deepseek_api_key
+if _current_config.openai_api_key:
+    _startup_settings.openai_api_key = _current_config.openai_api_key
+if _current_config.ollama_base_url:
+    _startup_settings.ollama_base_url = _current_config.ollama_base_url
 
 
 def _mask_key(key: str) -> str:
@@ -134,6 +161,7 @@ async def get_config():
     """获取当前系统配置 + 可用的 LLM Provider 列表"""
     data = _current_config.model_dump()
     # API Key 脱敏，不直接暴露完整 Key
+    data["qwen_api_key"] = _mask_key(data["qwen_api_key"])
     data["deepseek_api_key"] = _mask_key(data["deepseek_api_key"])
     data["openai_api_key"] = _mask_key(data["openai_api_key"])
     # BOSS Cookie 脱敏：只告知是否已配置，不暴露内容
@@ -151,6 +179,8 @@ async def update_config(data: ConfigUpdate):
     """更新系统配置"""
     global _current_config
     # 如果前端传来的 key 全是 * 或为空，说明用户没改，保留原值
+    if not data.qwen_api_key or "*" in data.qwen_api_key:
+        data.qwen_api_key = _current_config.qwen_api_key
     if not data.deepseek_api_key or "*" in data.deepseek_api_key:
         data.deepseek_api_key = _current_config.deepseek_api_key
     if not data.openai_api_key or "*" in data.openai_api_key:
@@ -168,6 +198,8 @@ async def update_config(data: ConfigUpdate):
     settings = get_settings()
     settings.llm_provider = data.llm_provider
     settings.llm_model = data.llm_model
+    settings.qwen_api_key = data.qwen_api_key
+    settings.qwen_base_url = data.qwen_base_url
     settings.deepseek_api_key = data.deepseek_api_key
     settings.openai_api_key = data.openai_api_key
     settings.ollama_base_url = data.ollama_base_url

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import Job
+from app.models.models import Job, Batch
 from app.services.scrapers.base import get_all_scrapers, get_scraper
 from app.services.campus_detector import detect_campus
 
@@ -72,7 +72,7 @@ async def list_sources():
 async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
     """
     手动触发爬取任务
-    返回任务 ID，任务异步执行
+    创建 Batch 记录追踪采集批次，返回 task_id + batch_id
     """
     scraper = get_scraper(req.source)
     if not scraper:
@@ -82,6 +82,19 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
         )
 
     task_id = hashlib.md5(f"{req.source}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:12]
+
+    # 创建 Batch 记录
+    batch = Batch(
+        source=req.source,
+        keywords=",".join(req.keywords),
+        location=req.location,
+        max_results=req.max_results,
+        status="running",
+    )
+    db.add(batch)
+    await db.commit()
+    await db.refresh(batch)
+
     task_info = {
         "id": task_id,
         "source": req.source,
@@ -90,17 +103,18 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
         "status": "running",
         "created_at": datetime.utcnow().isoformat(),
         "result": None,
+        "batch_id": batch.id,
     }
     _tasks.append(task_info)
 
     # 异步执行爬虫任务
-    asyncio.create_task(_execute_scraper(task_info, scraper, req, db))
+    asyncio.create_task(_execute_scraper(task_info, scraper, req, batch.id, db))
 
-    return {"task_id": task_id, "status": "running"}
+    return {"task_id": task_id, "status": "running", "batch_id": batch.id}
 
 
-async def _execute_scraper(task_info: dict, scraper, req: RunRequest, db: AsyncSession):
-    """异步执行爬取 + 数据入库"""
+async def _execute_scraper(task_info: dict, scraper, req: RunRequest, batch_id: int, db: AsyncSession):
+    """异步执行爬取 + 数据入库，新岗位关联 batch_id"""
     try:
         items = await scraper.search(
             keywords=req.keywords,
@@ -148,6 +162,8 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest, db: AsyncS
                 salary_text=item.salary,
                 job_type=item.employment_type,
                 company_industry=item.industries,
+                triage_status="unscreened",
+                batch_id=batch_id,
                 is_campus=detect_campus(
                     title=item.title,
                     source=item.source or scraper.source_name,
@@ -167,10 +183,29 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest, db: AsyncS
             "total": len(items),
             "warning": warning,
         }
+
+        # 更新 Batch 记录状态
+        batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
+        batch = batch_result.scalar_one_or_none()
+        if batch:
+            batch.job_count = created
+            batch.status = "completed"
+            await db.commit()
+
     except Exception as e:
         logger.error("[scraper] task failed: %s", e)
         task_info["status"] = "failed"
         task_info["result"] = {"error": str(e)}
+
+        # 更新 Batch 为失败
+        try:
+            batch_result = await db.execute(select(Batch).where(Batch.id == batch_id))
+            batch = batch_result.scalar_one_or_none()
+            if batch:
+                batch.status = "failed"
+                await db.commit()
+        except Exception:
+            pass
 
 
 @router.get("/tasks")

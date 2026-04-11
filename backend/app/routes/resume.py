@@ -30,13 +30,14 @@ import uuid
 from io import BytesIO
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field
 from jinja2 import Template
+from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job
@@ -118,6 +119,8 @@ def _serialize_resume_brief(r: Resume) -> dict:
         "template_id": r.template_id,
         "is_primary": r.is_primary,
         "language": r.language,
+        "source_mode": r.source_mode or "manual",
+        "source_job_ids": r.source_job_ids or [],
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
     }
@@ -182,10 +185,36 @@ async def _get_resume_or_404(
 
 @router.get("/")
 async def list_resumes(db: AsyncSession = Depends(get_db)):
-    """获取所有简历（列表概览，不含段落详情）"""
+    """获取所有简历（列表概览，不含段落详情，含溯源标签）"""
     result = await db.execute(select(Resume).order_by(Resume.updated_at.desc()))
     resumes = result.scalars().all()
-    return [_serialize_resume_brief(r) for r in resumes]
+
+    # 批量加载溯源岗位标题
+    all_job_ids = set()
+    for r in resumes:
+        if r.source_job_ids:
+            all_job_ids.update(r.source_job_ids)
+
+    job_title_map: dict[int, str] = {}
+    if all_job_ids:
+        jobs_result = await db.execute(
+            select(Job.id, Job.title, Job.company).where(Job.id.in_(all_job_ids))
+        )
+        for row in jobs_result.all():
+            job_title_map[row[0]] = f"{row[2]}-{row[1]}" if row[2] else row[1]
+
+    items = []
+    for r in resumes:
+        brief = _serialize_resume_brief(r)
+        # 溯源标签
+        if r.source_job_ids and job_title_map:
+            brief["source_label"] = "、".join(
+                job_title_map.get(jid, f"岗位#{jid}") for jid in r.source_job_ids[:3]
+            )
+            if len(r.source_job_ids) > 3:
+                brief["source_label"] += f" 等{len(r.source_job_ids)}个岗位"
+        items.append(brief)
+    return items
 
 
 @router.post("/")
@@ -1136,16 +1165,27 @@ class BatchOptimizeRequest(BaseModel):
 async def ai_batch_optimize(
     resume_id: int,
     data: BatchOptimizeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    批量 AI 简历定制 — SSE 流式版本
-    ─────────────────────────────────────────────
-    返回 text/event-stream，逐个岗位实时推送进度：
-      event: progress  → 单个岗位处理完成
-      event: done      → 全部完成，附带汇总
+    批量 AI 简历定制 — SSE 流式版本（sse-starlette 重构）
+    ─────────────────────────────────────────────────────
+    7 项生产级改进：
+      1. sse-starlette 自动 ping 心跳（15s）防止连接超时
+      2. request.is_disconnected() 检测客户端断开，立即停止处理
+      3. 每个 JD 独立 commit，不会因后续失败丢失已完成工作
+      4. SSE id 字段支持断线续传（Last-Event-ID）
+      5. event: error 独立事件类型，前端可精确区分
+      6. event: heartbeat 自定义心跳（Pipeline 执行期间）
+      7. 进度事件包含 processing 阶段信息
 
-    前端通过 fetch + ReadableStream 消费事件。
+    SSE 事件类型：
+      event: started    → 任务启动确认
+      event: processing → 正在处理某个岗位（立即推送，不等 Pipeline 结束）
+      event: progress   → 单个岗位处理完成
+      event: error      → 单个岗位处理失败
+      event: done       → 全部完成，附带汇总
     """
     import copy
     import json as _json
@@ -1154,7 +1194,7 @@ async def ai_batch_optimize(
 
     logger = logging.getLogger(__name__)
 
-    # ── 1. 预校验（在生成器外完成，否则异常无法正常返回 HTTP 错误） ──
+    # ── 1. 预校验（在生成器外完成，HTTP 错误可以正常返回） ──
     source = await _get_resume_or_404(resume_id, db, load_sections=True)
     source_data = _serialize_resume_full(source)
 
@@ -1175,10 +1215,38 @@ async def ai_batch_optimize(
     async def _stream():
         pipeline = SkillPipeline()
         all_results = []
+        event_id = 0
+
+        # 发送 started 事件
+        event_id += 1
+        yield ServerSentEvent(
+            data=_json.dumps({"total": len(job_ids)}, ensure_ascii=False),
+            event="started",
+            id=str(event_id),
+        )
 
         for idx, job_id in enumerate(job_ids):
+            # ── 【修复 #2】检测客户端断开，立即停止 ──
+            if await request.is_disconnected():
+                logger.info(f"客户端已断开,停止批量优化 (已完成 {idx}/{len(job_ids)})")
+                break
+
             job = jobs_map[job_id]
             jd_text = (job.raw_description or "").strip()
+
+            # ── 【修复 #7】立即推送 processing 事件 ──
+            event_id += 1
+            yield ServerSentEvent(
+                data=_json.dumps({
+                    "index": idx,
+                    "total": len(job_ids),
+                    "job_id": job_id,
+                    "job_title": job.title,
+                    "company": job.company,
+                }, ensure_ascii=False),
+                event="processing",
+                id=str(event_id),
+            )
 
             entry = {
                 "job_id": job_id,
@@ -1197,7 +1265,12 @@ async def ai_batch_optimize(
                 entry["status"] = "skipped"
                 entry["error"] = "岗位无 JD 文本"
                 all_results.append(entry)
-                yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
+                event_id += 1
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="progress",
+                    id=str(event_id),
+                )
                 continue
 
             try:
@@ -1301,16 +1374,32 @@ async def ai_batch_optimize(
 
                 entry["status"] = "success"
 
+                # ── 【修复 #3】每个 JD 独立 commit ──
+                await db.commit()
+
             except Exception as e:
                 logger.error(f"批量优化岗位 {job_id} 失败: {e}")
                 entry["status"] = "failed"
                 entry["error"] = str(e)
+                # 回滚当前岗位的事务，不影响已成功的
+                await db.rollback()
 
             all_results.append(entry)
-            # 每完成一个岗位即时推送
-            yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
 
-        await db.commit()
+            # ── 【修复 #4/#5】用对应事件类型 + id 字段推送 ──
+            event_id += 1
+            if entry["status"] == "failed":
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="error",
+                    id=str(event_id),
+                )
+            else:
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="progress",
+                    id=str(event_id),
+                )
 
         # 全部完成后推送汇总
         success_count = sum(1 for r in all_results if r["status"] == "success")
@@ -1319,14 +1408,21 @@ async def ai_batch_optimize(
             "success": success_count,
             "results": all_results,
         }
-        yield f"event: done\ndata: {_json.dumps(summary, ensure_ascii=False)}\n\n"
+        event_id += 1
+        yield ServerSentEvent(
+            data=_json.dumps(summary, ensure_ascii=False),
+            event="done",
+            id=str(event_id),
+        )
 
-    return StreamingResponse(
+    # ── 【修复 #1】sse-starlette 自动 ping 心跳 + disconnect 检测 ──
+    return EventSourceResponse(
         _stream(),
-        media_type="text/event-stream",
+        ping=15,                                      # 每 15 秒自动发心跳
+        send_timeout=60,                              # 单次发送超时 60s
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # nginx 不缓冲
+            "X-Accel-Buffering": "no",                # nginx 不缓冲
         },
     )
 

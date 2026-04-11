@@ -2,12 +2,13 @@
 # LLM 抽象层 — 多 Provider 统一接口
 # =============================================
 # 支持的提供商：
+#   - Qwen（阿里云百炼，OpenAI 兼容，默认首选）
 #   - DeepSeek（中国首选，便宜快速）
 #   - OpenAI（GPT-4o 系列）
 #   - Ollama（本地部署，完全免费）
 #
 # 所有提供商统一为 `chat_completion()` 接口，
-# 使用 OpenAI 兼容协议（DeepSeek / Ollama 均支持）。
+# 使用 OpenAI 兼容协议。
 # =============================================
 
 import json
@@ -18,13 +19,17 @@ from openai import AsyncOpenAI
 
 from app.config import get_settings
 
+# ---- Singleton 客户端缓存 ----
+# key = (provider, api_key, base_url)，配置变更自动重建
+_client_cache: dict[tuple, AsyncOpenAI] = {}
+
 
 def _get_client() -> tuple[AsyncOpenAI, str]:
     """
-    根据当前配置的 LLM Provider 创建对应客户端
+    根据当前配置的 LLM Provider 创建/复用对应客户端
     ─────────────────────────────────────────────
-    DeepSeek 和 Ollama 都兼容 OpenAI API 协议，
-    因此只需切换 base_url 和 api_key 即可复用同一个客户端。
+    使用 (provider, key, base_url) 三元组作为缓存 key，
+    配置通过前端 Settings 页更新后自动命中新实例。
 
     返回: (client, model_name)
     """
@@ -32,25 +37,44 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     provider = settings.llm_provider
     model = settings.llm_model
 
-    if provider == "deepseek":
+    if provider == "qwen":
+        if not settings.qwen_api_key:
+            raise ValueError("阿里云百炼 Qwen API Key 未配置，请在设置页面填写")
+        cache_key = (provider, settings.qwen_api_key, settings.qwen_base_url)
+        if cache_key not in _client_cache:
+            _client_cache[cache_key] = AsyncOpenAI(
+                api_key=settings.qwen_api_key,
+                base_url=settings.qwen_base_url,
+            )
+        client = _client_cache[cache_key]
+    elif provider == "deepseek":
         if not settings.deepseek_api_key:
             raise ValueError("DeepSeek API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=settings.deepseek_api_key,
-            base_url="https://api.deepseek.com",
-        )
+        cache_key = (provider, settings.deepseek_api_key, "https://api.deepseek.com")
+        if cache_key not in _client_cache:
+            _client_cache[cache_key] = AsyncOpenAI(
+                api_key=settings.deepseek_api_key,
+                base_url="https://api.deepseek.com",
+            )
+        client = _client_cache[cache_key]
     elif provider == "openai":
         if not settings.openai_api_key:
             raise ValueError("OpenAI API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=settings.openai_api_key,
-        )
+        cache_key = (provider, settings.openai_api_key, "default")
+        if cache_key not in _client_cache:
+            _client_cache[cache_key] = AsyncOpenAI(
+                api_key=settings.openai_api_key,
+            )
+        client = _client_cache[cache_key]
     elif provider == "ollama":
-        # Ollama 兼容 OpenAI API，base_url 指向本地
-        client = AsyncOpenAI(
-            api_key="ollama",  # Ollama 不需要真实 key
-            base_url=f"{settings.ollama_base_url}/v1",
-        )
+        base = f"{settings.ollama_base_url}/v1"
+        cache_key = (provider, "ollama", base)
+        if cache_key not in _client_cache:
+            _client_cache[cache_key] = AsyncOpenAI(
+                api_key="ollama",
+                base_url=base,
+            )
+        client = _client_cache[cache_key]
     else:
         raise ValueError(f"不支持的 LLM Provider: {provider}")
 
