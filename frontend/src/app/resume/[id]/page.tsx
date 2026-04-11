@@ -217,10 +217,25 @@ export default function ResumeEditorPage() {
   const { data: config } = useConfig();
   const isApiKeyConfigured = (() => {
     if (!config) return true;
+    const apiConfigs = Array.isArray((config as any).llm_api_configs)
+      ? ((config as any).llm_api_configs as any[])
+      : [];
+    const activeByList = apiConfigs.find((item) => item?.is_active)
+      || apiConfigs.find((item) => item?.id === (config as any).active_llm_config_id);
+    if (activeByList) {
+      const providerId = String(activeByList.provider_id || "").toLowerCase();
+      if (providerId === "ollama") return true;
+      return !!activeByList.api_key;
+    }
     const provider = config.llm_provider || "deepseek";
     if (provider === "deepseek") return !!config.deepseek_api_key;
     if (provider === "openai") return !!config.openai_api_key;
+    if (provider === "qwen") return !!(config as any).qwen_api_key;
+    if (provider === "siliconflow") return !!(config as any).siliconflow_api_key;
+    if (provider === "gemini") return !!(config as any).gemini_api_key;
+    if (provider === "zhipu") return !!(config as any).zhipu_api_key;
     if (provider === "ollama") return true;
+    if ((config as any).active_llm_api_key) return true;
     return true;
   })();
 

@@ -2,13 +2,13 @@
 # LLM 抽象层 — 多 Provider 统一接口
 # =============================================
 # 支持的提供商：
-#   - Qwen（阿里云百炼，OpenAI 兼容，默认首选）
 #   - DeepSeek（中国首选，便宜快速）
 #   - OpenAI（GPT-4o 系列）
+#   - Qwen（阿里云百炼）
 #   - Ollama（本地部署，完全免费）
 #
 # 所有提供商统一为 `chat_completion()` 接口，
-# 使用 OpenAI 兼容协议。
+# 使用 OpenAI 兼容协议（DeepSeek / Ollama 均支持）。
 # =============================================
 
 import json
@@ -19,64 +19,102 @@ from openai import AsyncOpenAI
 
 from app.config import get_settings
 
-# ---- Singleton 客户端缓存 ----
-# key = (provider, api_key, base_url)，配置变更自动重建
-_client_cache: dict[tuple, AsyncOpenAI] = {}
+
+DEFAULT_BASE_URLS = {
+    "deepseek": "https://api.deepseek.com",
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "siliconflow": "https://api.siliconflow.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+}
+
+
+def _ensure_ollama_v1(base_url: str) -> str:
+    base = base_url.rstrip("/")
+    if base.endswith("/v1"):
+        return base
+    return f"{base}/v1"
 
 
 def _get_client() -> tuple[AsyncOpenAI, str]:
     """
-    根据当前配置的 LLM Provider 创建/复用对应客户端
+    根据当前配置的 LLM Provider 创建对应客户端
     ─────────────────────────────────────────────
-    使用 (provider, key, base_url) 三元组作为缓存 key，
-    配置通过前端 Settings 页更新后自动命中新实例。
+    DeepSeek 和 Ollama 都兼容 OpenAI API 协议，
+    因此只需切换 base_url 和 api_key 即可复用同一个客户端。
 
     返回: (client, model_name)
     """
     settings = get_settings()
-    provider = settings.llm_provider
+    provider = (settings.llm_provider or "deepseek").strip().lower()
     model = settings.llm_model
+    active_base_url = (settings.active_llm_base_url or "").strip().rstrip("/")
+    active_api_key = (settings.active_llm_api_key or "").strip()
 
-    if provider == "qwen":
-        if not settings.qwen_api_key:
-            raise ValueError("阿里云百炼 Qwen API Key 未配置，请在设置页面填写")
-        cache_key = (provider, settings.qwen_api_key, settings.qwen_base_url)
-        if cache_key not in _client_cache:
-            _client_cache[cache_key] = AsyncOpenAI(
-                api_key=settings.qwen_api_key,
-                base_url=settings.qwen_base_url,
-            )
-        client = _client_cache[cache_key]
-    elif provider == "deepseek":
-        if not settings.deepseek_api_key:
+    if provider == "deepseek":
+        api_key = settings.deepseek_api_key or active_api_key
+        if not api_key:
             raise ValueError("DeepSeek API Key 未配置，请在设置页面填写")
-        cache_key = (provider, settings.deepseek_api_key, "https://api.deepseek.com")
-        if cache_key not in _client_cache:
-            _client_cache[cache_key] = AsyncOpenAI(
-                api_key=settings.deepseek_api_key,
-                base_url="https://api.deepseek.com",
-            )
-        client = _client_cache[cache_key]
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=active_base_url or DEFAULT_BASE_URLS["deepseek"],
+        )
     elif provider == "openai":
-        if not settings.openai_api_key:
+        api_key = settings.openai_api_key or active_api_key
+        if not api_key:
             raise ValueError("OpenAI API Key 未配置，请在设置页面填写")
-        cache_key = (provider, settings.openai_api_key, "default")
-        if cache_key not in _client_cache:
-            _client_cache[cache_key] = AsyncOpenAI(
-                api_key=settings.openai_api_key,
-            )
-        client = _client_cache[cache_key]
+        if active_base_url:
+            client = AsyncOpenAI(api_key=api_key, base_url=active_base_url)
+        else:
+            client = AsyncOpenAI(api_key=api_key)
+    elif provider == "qwen":
+        api_key = settings.qwen_api_key or active_api_key
+        if not api_key:
+            raise ValueError("Qwen API Key 未配置，请在设置页面填写")
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=active_base_url or DEFAULT_BASE_URLS["qwen"],
+        )
+    elif provider == "siliconflow":
+        api_key = settings.siliconflow_api_key or active_api_key
+        if not api_key:
+            raise ValueError("SiliconFlow API Key 未配置，请在设置页面填写")
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=active_base_url or DEFAULT_BASE_URLS["siliconflow"],
+        )
+    elif provider == "gemini":
+        api_key = settings.gemini_api_key or active_api_key
+        if not api_key:
+            raise ValueError("Gemini API Key 未配置，请在设置页面填写")
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=active_base_url or DEFAULT_BASE_URLS["gemini"],
+        )
+    elif provider == "zhipu":
+        api_key = settings.zhipu_api_key or active_api_key
+        if not api_key:
+            raise ValueError("智谱 API Key 未配置，请在设置页面填写")
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=active_base_url or DEFAULT_BASE_URLS["zhipu"],
+        )
     elif provider == "ollama":
-        base = f"{settings.ollama_base_url}/v1"
-        cache_key = (provider, "ollama", base)
-        if cache_key not in _client_cache:
-            _client_cache[cache_key] = AsyncOpenAI(
-                api_key="ollama",
-                base_url=base,
-            )
-        client = _client_cache[cache_key]
+        ollama_base_url = active_base_url or settings.ollama_base_url
+        client = AsyncOpenAI(
+            api_key="ollama",  # Ollama 不需要真实 key
+            base_url=_ensure_ollama_v1(ollama_base_url),
+        )
     else:
-        raise ValueError(f"不支持的 LLM Provider: {provider}")
+        # 自定义 OpenAI 兼容服务商
+        if not active_base_url:
+            raise ValueError(f"不支持的 LLM Provider: {provider}，且未配置 active_llm_base_url")
+        if not active_api_key:
+            raise ValueError(f"自定义 Provider {provider} 缺少 API Key")
+        client = AsyncOpenAI(
+            api_key=active_api_key,
+            base_url=active_base_url,
+        )
 
     return client, model
 
@@ -110,8 +148,8 @@ async def chat_completion(
         "max_tokens": max_tokens,
     }
 
-    # JSON mode — 仅 OpenAI 和 DeepSeek 支持 response_format
-    # Ollama + Qwen 也支持，但某些小模型可能不行
+    # JSON mode — OpenAI / DeepSeek / Qwen 默认支持 response_format
+    # Ollama 兼容实现不稳定，默认关闭
     settings = get_settings()
     if json_mode and settings.llm_provider != "ollama":
         kwargs["response_format"] = {"type": "json_object"}

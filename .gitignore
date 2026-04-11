@@ -43,3 +43,7 @@ npm-debug.log*
 # ---- 测试/临时 ----
 coverage/
 .pytest_cache/
+
+# ---- Trae 本地元数据 ----
+.trae/
+.Trae/
