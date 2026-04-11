@@ -7,7 +7,6 @@
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-import os
 
 
 class Settings(BaseSettings):
@@ -20,14 +19,19 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     deepseek_api_key: str = ""
     qwen_api_key: str = ""
-    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    siliconflow_api_key: str = ""
+    gemini_api_key: str = ""
+    zhipu_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     apify_api_key: str = ""
 
     # ---- AI 模型配置 ----
-    # llm_provider: qwen / deepseek / openai / ollama
-    llm_provider: str = "qwen"
-    llm_model: str = "qwen-flash"
+    # llm_provider: openai / deepseek / qwen / siliconflow / gemini / zhipu / ollama / custom
+    llm_provider: str = "deepseek"
+    llm_model: str = "deepseek-chat"
+    active_llm_config_id: str = ""
+    active_llm_base_url: str = ""
+    active_llm_api_key: str = ""
 
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"
@@ -38,18 +42,9 @@ class Settings(BaseSettings):
     gmail_client_secret: str = ""
     gmail_redirect_uri: str = ""  # 自定义回调地址，为空则自动从 cors_origins 推导
 
-    # ---- 网络 ----
-    # 绕过系统代理直连国内 API（Clash/V2Ray 用户需要）
-    no_proxy: str = ""
-
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 @lru_cache
 def get_settings() -> Settings:
-    s = Settings()
-    # 将 NO_PROXY 注入 os.environ，使 httpx/openai SDK 生效
-    if s.no_proxy and not os.environ.get("NO_PROXY"):
-        os.environ["NO_PROXY"] = s.no_proxy
-        os.environ["no_proxy"] = s.no_proxy
-    return s
+    return Settings()
