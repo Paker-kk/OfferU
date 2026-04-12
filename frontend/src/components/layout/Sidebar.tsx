@@ -24,18 +24,20 @@ import {
   Send,
   Sparkles,
   Bug,
+  UserRound,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/jobs", label: "岗位", icon: Briefcase },
-  { href: "/resume", label: "简历", icon: FileText },
-  { href: "/optimize", label: "AI 优化", icon: Sparkles },
-  { href: "/applications", label: "投递", icon: Send },
   { href: "/scraper", label: "爬虫", icon: Bug },
+  { href: "/jobs", label: "岗位", icon: Briefcase },
+  { href: "/optimize", label: "AI优化", icon: Sparkles },
+  { href: "/resume", label: "简历", icon: FileText },
+  { href: "/applications", label: "投递", icon: Send },
   { href: "/calendar", label: "日程", icon: Calendar },
   { href: "/email", label: "邮件通知", icon: Mail },
   { href: "/analytics", label: "周报分析", icon: BarChart3 },
+  { href: "/profile", label: "档案", icon: UserRound },
   { href: "/settings", label: "设置", icon: Settings },
 ];
 
@@ -111,7 +113,7 @@ export function Sidebar() {
       {/* 移动端底部导航 */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-t border-white/10">
         <div className="flex justify-around py-2">
-          {navItems.slice(0, 5).map((item) => {
+          {navItems.slice(0, 6).map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (

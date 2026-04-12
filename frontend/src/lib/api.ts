@@ -7,6 +7,17 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+function buildQuery(params?: Record<string, unknown>) {
+  const sp = new URLSearchParams();
+  if (!params) return sp.toString();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    sp.set(key, String(value));
+  }
+  return sp.toString();
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -18,12 +29,55 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ---- Jobs API ----
 export const jobsApi = {
-  list: (params?: { page?: number; period?: string; source?: string }) =>
-    request(`/api/jobs/?${new URLSearchParams(params as any)}`),
+  list: (params?: {
+    page?: number;
+    page_size?: number;
+    period?: string;
+    source?: string;
+    triage_status?: "inbox" | "picked" | "ignored";
+    pool_id?: number | "ungrouped";
+    batch_id?: string;
+    keyword?: string;
+    job_type?: string;
+    education?: string;
+    is_campus?: boolean;
+  }) =>
+    request(`/api/jobs/?${buildQuery(params as any)}`),
   
   get: (id: number) => request(`/api/jobs/${id}`),
+
+  batches: (limit = 30) => request(`/api/jobs/batches?limit=${limit}`),
+
+  patch: (
+    id: number,
+    data: { triage_status?: "inbox" | "picked" | "ignored"; pool_id?: number; clear_pool?: boolean }
+  ) =>
+    request(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+
+  patchBatch: (data: {
+    job_ids: number[];
+    triage_status?: "inbox" | "picked" | "ignored";
+    pool_id?: number;
+    clear_pool?: boolean;
+  }) =>
+    request("/api/jobs/batch-update", { method: "PATCH", body: JSON.stringify(data) }),
   
   stats: (period = "week") => request(`/api/jobs/stats?period=${period}`),
+};
+
+// ---- Pools API ----
+export const poolsApi = {
+  list: (scope?: "inbox" | "picked" | "ignored") =>
+    request(`/api/pools/?${buildQuery({ scope })}`),
+
+  create: (data: { name: string; scope?: "inbox" | "picked" | "ignored" }) =>
+    request("/api/pools/", { method: "POST", body: JSON.stringify(data) }),
+
+  update: (id: number, data: { name: string }, scope?: "inbox" | "picked" | "ignored") =>
+    request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  delete: (id: number, scope?: "inbox" | "picked" | "ignored") =>
+    request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "DELETE" }),
 };
 
 // ---- Resume API ----
@@ -105,4 +159,62 @@ export const configApi = {
   
   update: (data: any) =>
     request("/api/config/", { method: "PUT", body: JSON.stringify(data) }),
+};
+
+// ---- Profile API ----
+export const profileApi = {
+  get: () => request("/api/profile/"),
+
+  update: (data: any) =>
+    request("/api/profile/", { method: "PUT", body: JSON.stringify(data) }),
+
+  listTargetRoles: () => request("/api/profile/target-roles"),
+
+  createTargetRole: (data: { role_name: string; role_level?: string; fit?: string }) =>
+    request("/api/profile/target-roles", { method: "POST", body: JSON.stringify(data) }),
+
+  deleteTargetRole: (id: number) =>
+    request(`/api/profile/target-roles/${id}`, { method: "DELETE" }),
+
+  createSection: (data: any) =>
+    request("/api/profile/sections", { method: "POST", body: JSON.stringify(data) }),
+
+  updateSection: (id: number, data: any) =>
+    request(`/api/profile/sections/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteSection: (id: number) =>
+    request(`/api/profile/sections/${id}`, { method: "DELETE" }),
+
+  chat: async (data: { topic: string; message: string; session_id?: number }) => {
+    const res = await fetch(`${API_BASE}/api/profile/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res;
+  },
+
+  importResume: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/api/profile/import-resume`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  },
+
+  listChatSessions: (limit = 20) =>
+    request(`/api/profile/chat/sessions?limit=${limit}`),
+
+  getChatSession: (sessionId: number) =>
+    request(`/api/profile/chat/sessions/${sessionId}`),
+
+  confirmBullet: (data: { session_id: number; bullet_index: number; edits?: Record<string, any> }) =>
+    request("/api/profile/chat/confirm", { method: "POST", body: JSON.stringify(data) }),
+
+  generateNarrative: () =>
+    request("/api/profile/generate-narrative", { method: "POST" }),
 };

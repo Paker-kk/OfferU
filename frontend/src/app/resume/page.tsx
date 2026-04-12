@@ -11,31 +11,57 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardBody, Button, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@nextui-org/react";
+import { Card, CardBody, Button, Chip, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@nextui-org/react";
 import { Plus, FileText, Trash2, Edit3, Globe } from "lucide-react";
-import { useResumes, createResume, deleteResume } from "@/lib/hooks";
+import { ResumeBrief, useProfile, useResumes, createResume, deleteResume } from "@/lib/hooks";
+
+function getResumeSourceLabel(resume: ResumeBrief): { text: string; color: "default" | "secondary" | "success" } {
+  if (resume.source_mode === "per_job") {
+    const first = resume.source_jobs?.[0];
+    if (first) {
+      return { text: `基于 ${first.company}-${first.title} 生成`, color: "secondary" };
+    }
+    const count = resume.source_job_ids?.length || 0;
+    return { text: count > 0 ? `基于 ${count} 个岗位生成` : "AI 逐岗位生成", color: "secondary" };
+  }
+
+  if (resume.source_mode === "combined") {
+    const count = resume.source_job_ids?.length || 0;
+    return { text: count > 0 ? `综合 ${count} 个岗位生成` : "AI 综合生成", color: "success" };
+  }
+
+  return { text: "手动创建", color: "default" };
+}
 
 export default function ResumesListPage() {
   const router = useRouter();
   const { data: resumes, mutate } = useResumes();
+  const { data: profileData } = useProfile();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [newTitle, setNewTitle] = useState("未命名简历");
-  const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState("");
 
   /** 创建新简历并跳转到编辑器 */
   const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setCreating(true);
-    const res = await createResume({
-      user_name: newName,
-      title: newTitle,
-    });
-    setCreating(false);
-    onClose();
-    mutate(); // 刷新列表
-    if (res?.id) {
-      router.push(`/resume/${res.id}`);
+    try {
+      setActionError("");
+      setCreating(true);
+      const profileName = String(profileData?.base_info_json?.name || profileData?.name || "").trim();
+      const res = await createResume({
+        user_name: profileName,
+        title: newTitle.trim() || "未命名简历",
+      });
+      onClose();
+      mutate();
+      if (res?.id) {
+        router.push(`/resume/${res.id}`);
+      }
+    } catch (err: any) {
+      setActionError(err.message || "创建失败，请重试");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -43,8 +69,16 @@ export default function ResumesListPage() {
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("确定要删除这份简历吗？此操作不可撤销。")) return;
-    await deleteResume(id);
-    mutate();
+    try {
+      setActionError("");
+      setDeletingId(id);
+      await deleteResume(id);
+      mutate();
+    } catch (err: any) {
+      setActionError(err.message || "删除失败，请重试");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -69,33 +103,40 @@ export default function ResumesListPage() {
         </Button>
       </div>
 
+      {actionError && (
+        <div className="rounded-xl border border-danger-400/40 bg-danger-500/10 px-4 py-3 text-sm text-danger-200">
+          {actionError}
+        </div>
+      )}
+
       {/* 简历卡片网格 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid [grid-template-columns:repeat(1,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))] xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-5 items-stretch">
         <AnimatePresence>
-          {(resumes || []).map((resume: any, i: number) => (
+          {(resumes || []).map((resume: ResumeBrief, i: number) => (
             <motion.div
               key={resume.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ delay: i * 0.05 }}
+              className="min-w-0"
             >
               <Card
                 isPressable
-                className="bg-white/5 border border-white/10 hover:border-white/20 transition-all cursor-pointer group"
+                className="bg-white/5 border border-white/10 hover:border-white/20 transition-all cursor-pointer group w-full h-full aspect-[3/5] min-h-[380px]"
                 onPress={() => router.push(`/resume/${resume.id}`)}
               >
-                <CardBody className="p-5 space-y-3">
+                <CardBody className="p-4 h-full flex flex-col gap-3">
                   {/* 缩略图占位 */}
-                  <div className="aspect-[210/297] rounded-lg bg-gradient-to-br from-white/5 to-white/2 border border-white/8 flex items-center justify-center relative overflow-hidden">
+                  <div className="h-[58%] min-h-[180px] rounded-lg bg-gradient-to-br from-white/5 to-white/2 border border-white/8 flex items-center justify-center relative overflow-hidden">
                     <FileText size={40} className="text-white/15" />
                     {/* 装饰性顶部色条 */}
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500/40 to-purple-500/40" />
                   </div>
 
                   {/* 简历信息 */}
-                  <div className="space-y-1">
-                    <h3 className="font-semibold text-sm truncate">{resume.title || "未命名简历"}</h3>
+                  <div className="space-y-1.5 min-h-[96px]">
+                    <h3 className="font-semibold text-sm text-white/85 truncate">{resume.title || "未命名简历"}</h3>
                     <div className="flex items-center gap-2 text-xs text-white/40">
                       <span>{resume.user_name}</span>
                       {resume.language && (
@@ -105,13 +146,23 @@ export default function ResumesListPage() {
                         </span>
                       )}
                     </div>
+                    <div>
+                      <Chip
+                        size="sm"
+                        variant="flat"
+                        color={getResumeSourceLabel(resume).color}
+                        className="text-[10px]"
+                      >
+                        {getResumeSourceLabel(resume).text}
+                      </Chip>
+                    </div>
                     <p className="text-xs text-white/30">
                       更新于 {new Date(resume.updated_at).toLocaleDateString("zh-CN")}
                     </p>
                   </div>
 
                   {/* 操作按钮 */}
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity mt-auto">
                     <Button
                       size="sm"
                       variant="flat"
@@ -126,7 +177,8 @@ export default function ResumesListPage() {
                       variant="flat"
                       isIconOnly
                       className="text-red-400/70"
-                      onPress={(e: any) => handleDelete(resume.id, e)}
+                      isLoading={deletingId === resume.id}
+                      onClick={(e) => handleDelete(resume.id, e)}
                     >
                       <Trash2 size={14} />
                     </Button>
@@ -157,23 +209,17 @@ export default function ResumesListPage() {
           <ModalHeader>新建简历</ModalHeader>
           <ModalBody className="space-y-3">
             <Input
-              label="你的姓名"
-              variant="bordered"
-              value={newName}
-              onValueChange={setNewName}
-              autoFocus
-            />
-            <Input
-              label="简历标题"
+              label="简历命名"
               variant="bordered"
               value={newTitle}
               onValueChange={setNewTitle}
+              autoFocus
               placeholder="如：前端工程师-中文版"
             />
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={onClose}>取消</Button>
-            <Button color="primary" isLoading={creating} onPress={handleCreate} isDisabled={!newName.trim()}>
+            <Button color="primary" isLoading={creating} onPress={handleCreate}>
               创建并编辑
             </Button>
           </ModalFooter>

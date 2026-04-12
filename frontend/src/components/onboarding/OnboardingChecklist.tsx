@@ -28,13 +28,21 @@ import { useConfig, useResumes, useJobs } from "@/lib/hooks";
 export function OnboardingChecklist() {
   const router = useRouter();
   const onboarding = useOnboarding();
+  const {
+    hydrated,
+    allStepsCompleted,
+    apiKeyConfigured,
+    resumeCreated,
+    jobsScraped,
+    syncFromData,
+  } = onboarding;
   const { data: config } = useConfig();
   const { data: resumes } = useResumes();
   const { data: jobsData } = useJobs({ page: 1 });
 
   // 同步真实数据到 onboarding 状态
   useEffect(() => {
-    if (!onboarding.hydrated) return;
+    if (!hydrated) return;
     const list = Array.isArray((config as any)?.llm_api_configs)
       ? ((config as any).llm_api_configs as any[])
       : [];
@@ -51,11 +59,11 @@ export function OnboardingChecklist() {
     );
     const hasResume = Array.isArray(resumes) && resumes.length > 0;
     const hasJobs = !!(jobsData?.items && jobsData.items.length > 0);
-    onboarding.syncFromData({ hasApiKey, hasResume, hasJobs });
-  }, [config, resumes, jobsData, onboarding.hydrated]);
+    syncFromData({ hasApiKey, hasResume, hasJobs });
+  }, [config, resumes, jobsData, hydrated, syncFromData]);
 
   // 全部完成或未 hydrated 则不显示
-  if (!onboarding.hydrated || onboarding.allStepsCompleted) return null;
+  if (!hydrated || allStepsCompleted) return null;
 
   const steps = [
     {
@@ -63,7 +71,7 @@ export function OnboardingChecklist() {
       label: "配置 AI 能力",
       description: "设置 API Key 以启用 AI 简历优化与分析",
       icon: Key,
-      done: onboarding.apiKeyConfigured,
+      done: apiKeyConfigured,
       action: () => router.push("/settings"),
       actionLabel: "前往设置",
       color: "text-amber-400",
@@ -74,7 +82,7 @@ export function OnboardingChecklist() {
       label: "创建你的简历",
       description: "AI 优化的前提——先有一份简历",
       icon: FileText,
-      done: onboarding.resumeCreated,
+      done: resumeCreated,
       action: () => router.push("/resume"),
       actionLabel: "新建简历",
       color: "text-blue-400",
@@ -85,7 +93,7 @@ export function OnboardingChecklist() {
       label: "采集校招岗位",
       description: "从多平台自动采集最新岗位信息",
       icon: Briefcase,
-      done: onboarding.jobsScraped,
+      done: jobsScraped,
       action: () => router.push("/scraper"),
       actionLabel: "开始采集",
       color: "text-green-400",

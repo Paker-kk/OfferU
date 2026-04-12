@@ -7,6 +7,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -55,6 +56,7 @@ const statusConfig: Record<string, { color: "success" | "warning" | "default" | 
 };
 
 export default function ScraperPage() {
+  const router = useRouter();
   const { data: sources, isLoading: sourcesLoading } = useScraperSources();
   const { data: tasks, mutate: refreshTasks } = useScraperTasks();
   const { data: bossStatus, mutate: refreshBoss } = useBossStatus();
@@ -80,8 +82,21 @@ export default function ScraperPage() {
         .split(/[,，\s]+/)
         .map((s) => s.trim())
         .filter(Boolean);
-      await runScraper(sourceKey, kws, location);
+      const runResult = await runScraper(sourceKey, kws, location);
       refreshTasks();
+      if (runResult?.pool_id) {
+        const qs = new URLSearchParams({
+          tab: "inbox",
+          pool_id: String(runResult.pool_id),
+          from_scraper: "1",
+        });
+        if (runResult?.task_id) {
+          qs.set("task_id", String(runResult.task_id));
+        }
+        router.push(`/jobs?${qs.toString()}`);
+      } else {
+        router.push("/jobs?tab=inbox");
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {

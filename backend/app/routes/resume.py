@@ -28,7 +28,7 @@ import os
 import re
 import uuid
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -39,7 +39,7 @@ from pydantic import BaseModel, Field
 from jinja2 import Template
 
 from app.database import get_db
-from app.models.models import Resume, ResumeSection, ResumeTemplate, Job
+from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 
 router = APIRouter()
 
@@ -54,13 +54,16 @@ router = APIRouter()
 
 class ResumeCreate(BaseModel):
     """创建简历的请求体"""
-    user_name: str
+    user_name: str = ""
     title: str = "未命名简历"
     summary: str = ""
     contact_json: dict = Field(default_factory=dict)
     template_id: Optional[int] = None
     style_config: dict = Field(default_factory=dict)
     language: str = "zh"
+    source_mode: str = "manual"
+    source_job_ids: list[int] = Field(default_factory=list)
+    source_profile_snapshot: dict = Field(default_factory=dict)
 
 
 class ResumeUpdate(BaseModel):
@@ -73,6 +76,9 @@ class ResumeUpdate(BaseModel):
     style_config: Optional[dict] = None
     is_primary: Optional[bool] = None
     language: Optional[str] = None
+    source_mode: Optional[str] = None
+    source_job_ids: Optional[list[int]] = None
+    source_profile_snapshot: Optional[dict] = None
 
 
 class SectionCreate(BaseModel):
@@ -108,8 +114,10 @@ class SectionReorder(BaseModel):
 # =============================================
 
 
-def _serialize_resume_brief(r: Resume) -> dict:
+def _serialize_resume_brief(r: Resume, source_jobs_map: dict[int, dict] | None = None) -> dict:
     """序列化简历列表项（不含段落详情）"""
+    source_ids = _normalize_source_job_ids(r.source_job_ids)
+    source_jobs = _source_jobs_from_map(source_ids, source_jobs_map)
     return {
         "id": r.id,
         "user_name": r.user_name,
@@ -118,6 +126,10 @@ def _serialize_resume_brief(r: Resume) -> dict:
         "template_id": r.template_id,
         "is_primary": r.is_primary,
         "language": r.language,
+        "source_mode": r.source_mode,
+        "source_job_ids": source_ids,
+        "source_jobs": source_jobs,
+        "source_profile_snapshot": r.source_profile_snapshot or {},
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
     }
@@ -136,11 +148,47 @@ def _serialize_section(s: ResumeSection) -> dict:
     }
 
 
-def _serialize_resume_full(r: Resume) -> dict:
+def _normalize_source_job_ids(source_job_ids: Any) -> list[int]:
+    if not isinstance(source_job_ids, list):
+        return []
+    normalized: list[int] = []
+    for item in source_job_ids:
+        if isinstance(item, int) and item > 0:
+            normalized.append(item)
+            continue
+        if isinstance(item, str) and item.isdigit():
+            normalized.append(int(item))
+    return normalized
+
+
+def _source_jobs_from_map(source_ids: list[int], source_jobs_map: dict[int, dict] | None) -> list[dict]:
+    if not source_jobs_map:
+        return []
+    return [source_jobs_map[job_id] for job_id in source_ids if job_id in source_jobs_map]
+
+
+async def _load_source_jobs_map(db: AsyncSession, source_job_ids: list[int]) -> dict[int, dict]:
+    if not source_job_ids:
+        return {}
+    result = await db.execute(select(Job).where(Job.id.in_(source_job_ids)))
+    jobs = result.scalars().all()
+    return {
+        job.id: {
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+        }
+        for job in jobs
+    }
+
+
+def _serialize_resume_full(r: Resume, source_jobs_map: dict[int, dict] | None = None) -> dict:
     """
     序列化完整简历（含所有段落），用于编辑器页面。
     前端根据此结构渲染左侧编辑区和右侧 A4 预览。
     """
+    source_ids = _normalize_source_job_ids(r.source_job_ids)
+    source_jobs = _source_jobs_from_map(source_ids, source_jobs_map)
     return {
         "id": r.id,
         "user_name": r.user_name,
@@ -152,6 +200,10 @@ def _serialize_resume_full(r: Resume) -> dict:
         "style_config": r.style_config,
         "is_primary": r.is_primary,
         "language": r.language,
+        "source_mode": r.source_mode,
+        "source_job_ids": source_ids,
+        "source_jobs": source_jobs,
+        "source_profile_snapshot": r.source_profile_snapshot or {},
         "sections": [_serialize_section(s) for s in r.sections],
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
@@ -185,7 +237,13 @@ async def list_resumes(db: AsyncSession = Depends(get_db)):
     """获取所有简历（列表概览，不含段落详情）"""
     result = await db.execute(select(Resume).order_by(Resume.updated_at.desc()))
     resumes = result.scalars().all()
-    return [_serialize_resume_brief(r) for r in resumes]
+    source_job_ids = sorted({
+        job_id
+        for resume in resumes
+        for job_id in _normalize_source_job_ids(resume.source_job_ids)
+    })
+    source_jobs_map = await _load_source_jobs_map(db, source_job_ids)
+    return [_serialize_resume_brief(r, source_jobs_map) for r in resumes]
 
 
 @router.post("/")
@@ -198,14 +256,43 @@ async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
     2. 自动创建默认段落（教育、经历、技能），方便用户直接编辑
     3. 返回完整简历（含段落）
     """
+    requested_user_name = (data.user_name or "").strip()
+    contact_json = {
+        str(key): value
+        for key, value in dict(data.contact_json or {}).items()
+        if isinstance(value, str) and value.strip()
+    }
+
+    # 新建简历时优先从默认档案补齐基础信息，避免用户重复填写
+    if not requested_user_name or not contact_json:
+        profile_result = await db.execute(
+            select(Profile).order_by(Profile.is_default.desc(), Profile.updated_at.desc())
+        )
+        profile = profile_result.scalars().first()
+        if profile:
+            base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
+            if not requested_user_name:
+                requested_user_name = str(base_info.get("name") or profile.name or "").strip()
+
+            for field in ("phone", "email", "linkedin", "github", "website", "wechat"):
+                value = str(base_info.get(field, "")).strip()
+                if value and not str(contact_json.get(field, "")).strip():
+                    contact_json[field] = value
+
+    if not requested_user_name:
+        requested_user_name = "默认候选人"
+
     resume = Resume(
-        user_name=data.user_name,
+        user_name=requested_user_name,
         title=data.title,
         summary=data.summary,
-        contact_json=data.contact_json,
+        contact_json=contact_json,
         template_id=data.template_id,
         style_config=data.style_config,
         language=data.language,
+        source_mode=data.source_mode,
+        source_job_ids=data.source_job_ids,
+        source_profile_snapshot=data.source_profile_snapshot,
     )
     db.add(resume)
     await db.flush()  # 获取 resume.id，但不提交事务
@@ -230,9 +317,9 @@ async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(resume)
 
     # 重新加载含段落的完整数据
-    return _serialize_resume_full(
-        await _get_resume_or_404(resume.id, db, load_sections=True)
-    )
+    fresh_resume = await _get_resume_or_404(resume.id, db, load_sections=True)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(fresh_resume.source_job_ids))
+    return _serialize_resume_full(fresh_resume, source_jobs_map)
 
 
 @router.get("/templates")
@@ -277,7 +364,8 @@ async def apply_template(resume_id: int, template_id: int, db: AsyncSession = De
 async def get_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     """获取完整简历详情（含所有段落），用于编辑器页面"""
     resume = await _get_resume_or_404(resume_id, db, load_sections=True)
-    return _serialize_resume_full(resume)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(resume.source_job_ids))
+    return _serialize_resume_full(resume, source_jobs_map)
 
 
 @router.put("/{resume_id}")
@@ -296,9 +384,9 @@ async def update_resume(
         setattr(resume, key, value)
     await db.commit()
     await db.refresh(resume)
-    return _serialize_resume_full(
-        await _get_resume_or_404(resume.id, db, load_sections=True)
-    )
+    fresh_resume = await _get_resume_or_404(resume.id, db, load_sections=True)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(fresh_resume.source_job_ids))
+    return _serialize_resume_full(fresh_resume, source_jobs_map)
 
 
 @router.delete("/{resume_id}")

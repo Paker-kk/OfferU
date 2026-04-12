@@ -7,6 +7,7 @@
 
 "use client";
 
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -16,6 +17,13 @@ import {
   Button,
   Spinner,
   Link,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Select,
+  SelectItem,
 } from "@nextui-org/react";
 import {
   ArrowLeft,
@@ -25,14 +33,57 @@ import {
   Calendar,
   Send,
 } from "lucide-react";
-import { useJob } from "@/lib/hooks";
-import { createApplication } from "@/lib/hooks";
+import { createApplication, patchJob, useJob, usePools } from "@/lib/hooks";
 
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id ? Number(params.id) : null;
   const { data: job, isLoading, error } = useJob(jobId);
+  const { data: pickedPools } = usePools("picked");
+  const [joinModalOpen, setJoinModalOpen] = useState(false);
+  const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
+  const [targetPool, setTargetPool] = useState<string>("ungrouped");
+  const [actionLoading, setActionLoading] = useState<"join" | "trash" | null>(null);
+
+  const poolOptions = useMemo(() => {
+    return [
+      { key: "ungrouped", label: "未分组" },
+      ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name }))),
+    ];
+  }, [pickedPools]);
+
+  const handleJoinPicked = async () => {
+    if (!job) return;
+    try {
+      setActionLoading("join");
+      if (targetPool === "ungrouped") {
+        await patchJob(job.id, { triage_status: "picked", clear_pool: true });
+      } else {
+        await patchJob(job.id, { triage_status: "picked", pool_id: Number(targetPool) });
+      }
+      setJoinModalOpen(false);
+      router.push("/jobs?tab=picked");
+    } catch (err: any) {
+      alert(err?.message || "加入已筛选失败");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleMoveToTrash = async () => {
+    if (!job) return;
+    try {
+      setActionLoading("trash");
+      await patchJob(job.id, { triage_status: "ignored" });
+      setTrashConfirmOpen(false);
+      router.push("/jobs?tab=ignored");
+    } catch (err: any) {
+      alert(err?.message || "移入回收站失败");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -100,6 +151,22 @@ export default function JobDetailPage() {
         </Card>
       )}
 
+      {/* 完整 JD（仅在二级详情页展示） */}
+      <Card className="bg-white/5 border border-white/10">
+        <CardBody>
+          <h3 className="text-lg font-semibold mb-2">职位描述（完整 JD）</h3>
+          {job.raw_description ? (
+            <div className="max-h-[420px] overflow-auto rounded-lg border border-white/10 bg-black/20 p-4">
+              <pre className="whitespace-pre-wrap text-sm text-white/75 leading-relaxed font-sans">
+                {job.raw_description}
+              </pre>
+            </div>
+          ) : (
+            <p className="text-sm text-white/45">暂无 JD 原文内容</p>
+          )}
+        </CardBody>
+      </Card>
+
       {/* 关键词 */}
       {job.keywords?.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -111,26 +178,50 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {/* 操作按钮 */}
-      <div className="flex gap-3">
-        {job.url && (
+      {/* 操作按钮（两行两列） */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          className="h-11 w-full bg-blue-600 text-white hover:bg-blue-500"
+          onPress={() => setJoinModalOpen(true)}
+          isLoading={actionLoading === "join"}
+        >
+          加入已筛选
+        </Button>
+        <Button
+          className="h-11 w-full bg-amber-500 text-white hover:bg-amber-400"
+          onPress={() => setTrashConfirmOpen(true)}
+          isLoading={actionLoading === "trash"}
+          isDisabled={actionLoading === "join"}
+        >
+          移入回收站
+        </Button>
+
+        {job.url ? (
           <Button
             as={Link}
             href={job.url}
             target="_blank"
             rel="noopener noreferrer"
-            color="primary"
-            variant="ghost"
+            variant="bordered"
+            className="h-11 w-full border-white/25 text-white/70 hover:bg-white/5"
             endContent={<ExternalLink size={16} />}
-            className="flex-1"
+          >
+            查看原文
+          </Button>
+        ) : (
+          <Button
+            variant="bordered"
+            isDisabled
+            className="h-11 w-full border-white/15 text-white/35"
           >
             查看原文
           </Button>
         )}
+
         <Button
           color="success"
           endContent={<Send size={16} />}
-          className="flex-1"
+          className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-500"
           onPress={async () => {
             await createApplication(job.id);
             router.push("/applications");
@@ -139,6 +230,48 @@ export default function JobDetailPage() {
           一键投递
         </Button>
       </div>
+
+      <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} size="md">
+        <ModalContent>
+          <ModalHeader>加入已筛选</ModalHeader>
+          <ModalBody className="space-y-3">
+            <p className="text-sm text-white/60">选择目标池，确认后将该岗位流转到已筛选。</p>
+            <Select
+              aria-label="目标已筛选池"
+              selectedKeys={[targetPool]}
+              onSelectionChange={(keys) => setTargetPool(Array.from(keys)[0] as string)}
+              items={poolOptions}
+            >
+              {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+            </Select>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={() => setJoinModalOpen(false)}>取消</Button>
+            <Button color="primary" onPress={handleJoinPicked} isLoading={actionLoading === "join"}>
+              确认加入
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={trashConfirmOpen} onClose={() => setTrashConfirmOpen(false)} size="md">
+        <ModalContent>
+          <ModalHeader>移入回收站</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-white/70">
+              确认将该岗位移入回收站吗？移入后可在回收站页面恢复或永久删除。
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={() => setTrashConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button color="danger" isLoading={actionLoading === "trash"} onPress={handleMoveToTrash}>
+              确认移入
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </motion.div>
   );
 }
