@@ -25,6 +25,7 @@ import {
   Sparkles,
   Bug,
   UserRound,
+  Bot,
 } from "lucide-react";
 
 const navItems = [
@@ -37,6 +38,7 @@ const navItems = [
   { href: "/calendar", label: "日程", icon: Calendar },
   { href: "/email", label: "邮件通知", icon: Mail },
   { href: "/analytics", label: "周报分析", icon: BarChart3 },
+  { href: "/agent", label: "AI 助手", icon: Bot },
   { href: "/profile", label: "档案", icon: UserRound },
   { href: "/settings", label: "设置", icon: Settings },
 ];
