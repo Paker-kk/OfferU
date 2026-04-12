@@ -1,13 +1,14 @@
 ﻿<h1 align="center">OfferU</h1>
 
 <p align="center">
-  <em>Offer \+ U = OfferU — 做你校招路上的英雄搭档</em>
+  <em>Offer + U = OfferU — 面向文科生小白的 AI 校招简历定制系统</em>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat&logo=fastapi" />
   <img src="https://img.shields.io/badge/Frontend-Next.js%2014-000000?style=flat&logo=nextdotjs" />
-  <img src="https://img.shields.io/badge/AI-OpenAI%20%7C%20DeepSeek%20%7C%20Ollama-412991?style=flat&logo=openai" />
+  <img src="https://img.shields.io/badge/AI-Qwen%20%7C%20DeepSeek%20%7C%20OpenAI-412991?style=flat&logo=openai" />
+  <img src="https://img.shields.io/badge/MCP-FastMCP%201.27-6366F1?style=flat" />
   <img src="https://img.shields.io/badge/Deploy-Docker-2496ED?style=flat&logo=docker" />
   <img src="https://img.shields.io/badge/License-MIT-brightgreen?style=flat" />
 </p>
@@ -15,21 +16,19 @@
 <p align="center">
   <a href="./README_EN.md">English</a> ·
   <a href="#-快速开始">快速开始</a> ·
-  <a href="#-功能特色">功能特色</a> ·
+  <a href="#-核心能力">核心能力</a> ·
   <a href="#-免责声明">免责声明</a>
 </p>
 
 ---
 
-## 致谢
-
-本项目 fork 自 [chunxubioinfor/DailyJobMatch](https://github.com/chunxubioinfor/DailyJobMatch)，感谢原作者 Chunxu Han 的杰出贡献。OfferU 在原项目基础上进行了架构重构，移除了 n8n 依赖和评分系统，聚焦于**智能简历编辑 + 多平台岗位采集 + AI 简历优化**三大核心能力。
+> 💡 灵感来源于 [santifer/career-ops](https://github.com/santifer/career-ops)（31k⭐，CLI-first AI 求职系统）。Career-Ops 面向有技术能力的资深职场人（Claude Code CLI + $20/月），OfferU 将同样的 AI 求职理念带给**中国校招文科生**——零门槛 Web UI、¥0.15/百万 token 的 Qwen 模型、中文全链路。
 
 ---
 
 ## 📋 目录
 
-1. [功能特色](#-功能特色)
+1. [核心能力](#-核心能力)
 2. [系统架构](#-系统架构)
 3. [快速开始](#-快速开始)
 4. [开发模式](#-开发模式)
@@ -42,65 +41,118 @@
 
 ---
 
-## ✨ 功能特色
+## 🎯 OfferU 解决什么问题？
 
-### 🎨 智能简历编辑器
-- Tiptap 富文本编辑器，黑底白字简洁设计
-- 实时预览 + PDF 一键导出（WeasyPrint）
-- 拖拽排序、多模板切换、撤销/重做
+**你是文科生，校招季来了，但你：**
+- ❌ 不知道简历该写什么，经历写不出"成就感"
+- ❌ 海投时每个岗位都手动改简历，效率极低
+- ❌ 不懂 ATS 关键词匹配，简历被机器筛掉自己都不知道
+- ❌ 不会用 CLI 工具，看到命令行就头疼
+
+**OfferU 的方案：**
+1. **AI 对话引导** → 从零帮你挖掘经历，生成 Bullet Points（STAR 法则）
+2. **一键批量定制** → 选中 N 个岗位，AI 自动从你的档案中召回最相关经历，逐岗位生成定制简历
+3. **全程 Web UI** → 打开浏览器就能用，不需要任何技术背景
+
+---
+
+## ✨ 核心能力
+
+### 🧠 Profile 对话引导（Career-Ops 式 Onboarding）
+- 5 大主题渐进式引导：教育 → 实习 → 项目 → 社团 → 技能
+- AI 多轮对话从零挖掘经历，每轮提取 Bullet Point 候选
+- 用户逐条确认/编辑 → 实时写入个人档案
+- 置信度标记（高/中/低），低置信度条目标橙色提醒核实
+- **防虚构规则**：AI 只能从用户原话中提取改写，严禁凭空生成事实
+
+### 📥 三 Tab 岗位分拣（智能收件箱）
+- **未筛选** → **已筛选** → **已忽略** 三级分拣流程
+- 批次折叠：按采集批次分组，一键整批筛入/忽略
+- 岗位池管理：创建自定义池（如"互联网运营"、"银行管培"），拖拽分配
+- Hover 快捷操作：鼠标悬停即可分拣，无需打开详情
+
+### ⚡ 三段式 AI 简历定制工作区（核心）
+```
+┌──────────────────────────────────────────────────────┐
+│  ① 池/范围选择    ② 本轮岗位勾选     ③ 输出简历区    │
+│                                                       │
+│  [互联网运营]     ☑ 腾讯-内容运营     ┌───────────┐  │
+│  [银行管培]       ☑ 阿里-市场专员     │ SSE 进度   │  │
+│  [未分组]         □ 字节-品牌策划     │ ████░░ 2/3 │  │
+│                                       │            │  │
+│                   [逐岗位] [综合]     │ 预览+保存  │  │
+│                   [开始生成]          └───────────┘  │
+└──────────────────────────────────────────────────────┘
+```
+- **逐岗位模式**：N 个岗位 → N 份定制简历（SSE 流式进度）
+- **综合模式**：N 个岗位 → 1 份通用简历
+- **生成逻辑**：Profile Bullet 召回 → JD 关键词匹配 → STAR 改写 → 保存为 Resume
+- **溯源标记**：每份简历标注"基于 腾讯-内容运营 生成"，可追溯来源
+
+### 🤖 MCP Server + AI Agent（13 个工具）
+- 内置 MCP Server（FastMCP Streamable HTTP），支持外部 AI Agent 调用
+- Web Agent Console：对话式操作全系统（"帮我看看哪些岗位适合我"）
+- 13 个 MCP Tools：档案查看/岗位统计/分拣操作/简历生成/池管理等
+- LLM 自主决策调用工具链，多轮推理 + Tool Use
 
 ### 🔍 多平台岗位采集
 - 可插拔爬虫适配器架构
 - 支持：LinkedIn / BOSS直聘 / 智联招聘 / 实习僧 / 大厂官网（字节/阿里/腾讯）
 - 关键词 + 地区 + 过滤词灵活配置
+- 自动创建采集批次，批次内岗位自动标记为"未筛选"
 
-### 🤖 AI 简历优化（核心亮点）
-- 选择目标岗位 JD → AI 分析简历与 JD 的差距 → 生成优化建议 → 一键修改
-- 支持多 LLM：OpenAI / DeepSeek / 本地 Ollama
-- AI 生成 Cover Letter
+### 📊 多 LLM 支持
+- **默认**：阿里云百炼 Qwen（qwen-flash ¥0.15/百万 token，最低成本）
+- 可选：DeepSeek / OpenAI / SiliconFlow / Gemini / 智谱 / 本地 Ollama
+- 前端 Settings 页一键切换 Provider + Model
+- 所有 LLM 调用走 OpenAI 兼容接口，统一抽象
 
-### 📊 数据可视化
-- Dashboard 岗位采集趋势图
-- 周报分析：来源分布饼图、热门关键词、环比对比
-- 响应式暗色主题 + Framer Motion 流畅动画
-
-### 📬 面试管理
-- Gmail OAuth 自动同步面试邮件
-- AI 解析面试时间/地点/公司
+### 📬 面试管理 & 数据看板
+- Gmail OAuth 自动同步面试邮件，AI 解析时间/地点
 - FullCalendar 日程管理（月/周/日视图）
-- 投递追踪（待投 → 面试 → offer）
+- Dashboard 采集趋势、来源分布、投递追踪
+- 响应式暗色主题 + Framer Motion 动画
 
 ---
 
 ## 🏗️ 系统架构
 
 ```
-┌─────────────────────────────────────────────┐
-│              OfferU 系统架构                   │
-├─────────────────────────────────────────────┤
-│                                             │
-│  ┌──────────┐   REST API   ┌────────────┐  │
-│  │ Frontend │◄────────────►│  Backend   │  │
-│  │ Next.js  │              │  FastAPI   │  │
-│  │ NextUI   │              │            │  │
-│  └──────────┘              └─────┬──────┘  │
-│                                  │         │
-│                    ┌─────────────┤         │
-│                    │             │         │
-│              ┌─────▼─────┐ ┌────▼────┐    │
-│              │ 爬虫适配器 │ │ AI Agent│    │
-│              │ LinkedIn  │ │ 简历优化 │    │
-│              │ BOSS      │ │ 求职信   │    │
-│              │ 智联      │ │ 邮件解析 │    │
-│              │ 实习僧    │ └─────────┘    │
-│              │ 大厂官网  │                 │
-│              └───────────┘                 │
-│                    │                       │
-│              ┌─────▼─────┐                 │
-│              │ PostgreSQL │                 │
-│              │  / SQLite  │                 │
-│              └───────────┘                 │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       OfferU 系统架构                          │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────┐   REST + SSE    ┌──────────────────────┐   │
+│  │  Frontend   │◄───────────────►│     Backend          │   │
+│  │  Next.js 14 │                 │     FastAPI          │   │
+│  │  NextUI 2.4 │                 │                      │   │
+│  │  SWR + SSE  │                 │  ┌────────────────┐  │   │
+│  └─────────────┘                 │  │  MCP Server    │  │   │
+│        │                         │  │  13 Tools      │  │   │
+│        │  Agent Console          │  │  Streamable    │  │   │
+│        │  (Chat UI)              │  │  HTTP          │  │   │
+│        └─────────────────────────┤  └────────┬───────┘  │   │
+│                                  │           │          │   │
+│                    ┌─────────────┤     ┌─────▼──────┐   │   │
+│                    │             │     │ AI Agent   │   │   │
+│              ┌─────▼──────┐     │     │ 编排层     │   │   │
+│              │  爬虫适配器 │     │     │ LLM + Tool │   │   │
+│              │  LinkedIn  │     │     │  Use       │   │   │
+│              │  BOSS直聘  │     │     └─────┬──────┘   │   │
+│              │  智联招聘  │     │           │          │   │
+│              │  实习僧    │     │     ┌─────▼──────┐   │   │
+│              │  大厂官网  │     │     │ LLM 抽象层 │   │   │
+│              └────────────┘     │     │ Qwen/DS/OA │   │   │
+│                    │            │     └────────────┘   │   │
+│              ┌─────▼──────┐     │                      │   │
+│              │  SQLite    │◄────┤                      │   │
+│              │  (async)   │     │  Skills:             │   │
+│              └────────────┘     │  · 对话引导提取       │   │
+│                                 │  · Bullet 召回       │   │
+│                                 │  · STAR 改写         │   │
+│                                 │  · 叙事生成          │   │
+│                                 └──────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -109,65 +161,73 @@
 
 ### 前置要求
 
-- [Docker](https://www.docker.com/products/docker-desktop/) & Docker Compose
-- OpenAI API Key（或其他兼容 LLM 的 Key）
+- Python 3.12+
+- Node.js 18+
+- [Docker](https://www.docker.com/products/docker-desktop/)（可选，用于一键部署）
+- 阿里云百炼 API Key（[免费领取](https://bailian.console.aliyun.com/)）或其他 LLM Key
 
-> **国内用户提示**：如果拉取镜像慢，可在 Docker 配置中添加镜像源 `https://m.daocloud.io`
-
-### 1. 克隆 & 配置
+### 方式一：Docker 一键启动
 
 ```bash
 git clone https://github.com/Paker-kk/OfferU.git
 cd OfferU
 cp .env.example .env
+# 编辑 .env 填入 QWEN_API_KEY
+docker compose up -d
 ```
 
-编辑 `.env` 填入你的配置：
+### 方式二：本地开发
+
+```bash
+git clone https://github.com/Paker-kk/OfferU.git
+cd OfferU
+
+# 后端
+cd backend
+python -m venv .venv312
+.venv312\Scripts\activate    # Linux/Mac: source .venv312/bin/activate
+pip install -r requirements.txt
+cp .env.example .env         # 编辑填入 QWEN_API_KEY
+python run_server.py
+
+# 前端（另开终端）
+cd frontend
+npm install
+npm run dev
+```
+
+### 环境变量
 
 | 变量 | 说明 | 必填 |
 |---|---|---|
-| `OPENAI_API_KEY` | OpenAI API Key | ✅ |
+| `QWEN_API_KEY` | 阿里云百炼 API Key | ✅（默认 Provider） |
+| `LLM_PROVIDER` | LLM 提供商（qwen/deepseek/openai/ollama...） | 默认 qwen |
+| `LLM_MODEL` | 模型名称 | 默认 qwen-flash |
 | `DATABASE_URL` | 数据库连接串 | 默认 SQLite |
-| `SECRET_KEY` | 安全密钥（生产环境务必修改） | ✅ |
-| `APIFY_API_KEY` | Apify Token（LinkedIn 爬取） | 可选 |
-| `GMAIL_CLIENT_ID` | Gmail OAuth（邮件同步） | 可选 |
-| `CORS_ORIGINS` | 前端跨域地址 | 默认 localhost:3000 |
-
-### 2. 启动
-
-```bash
-docker compose up -d
-```
+| `NO_PROXY` | 代理绕过（国内用户如用 Clash 需配置） | 可选 |
 
 | 服务 | 地址 | 说明 |
 |---|---|---|
 | 前端界面 | http://localhost:3000 | Web 应用主界面 |
 | 后端 API | http://localhost:8000 | FastAPI + 自动文档 |
 | API 文档 | http://localhost:8000/docs | Swagger 交互文档 |
-
-### 3. 验证
-
-```bash
-docker compose ps
-curl http://localhost:8000/api/health
-# 返回 {"status": "healthy", "service": "OfferU"}
-```
+| MCP 端点 | http://localhost:8000/mcp | MCP Streamable HTTP |
 
 ---
 
 ## 🛠️ 开发模式
 
-### 后端（FastAPI）
+### 后端（FastAPI + Python 3.12）
 
 ```bash
 cd backend
-python -m venv venv
-venv\Scripts\activate        # Linux/Mac: source venv/bin/activate
+python -m venv .venv312
+.venv312\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+python run_server.py         # 启动 uvicorn --reload
 ```
 
-### 前端（Next.js）
+### 前端（Next.js 14）
 
 ```bash
 cd frontend
@@ -176,6 +236,15 @@ npm run dev
 ```
 
 打开 http://localhost:3000
+
+### MCP 测试
+
+```bash
+# 列出所有 MCP 工具
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
 ---
 
@@ -187,21 +256,31 @@ npm run dev
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/jobs/` | 岗位列表（分页/筛选） |
-| GET | `/api/jobs/stats` | 统计汇总 |
-| GET | `/api/jobs/{id}` | 岗位详情 |
-| GET | `/api/jobs/trend` | 采集趋势数据 |
-| GET | `/api/jobs/weekly-report` | 周报分析 |
-| POST | `/api/jobs/ingest` | 批量写入岗位数据 |
+| **Profile** | | |
+| GET | `/api/profile/` | 获取个人档案（含 Sections + TargetRoles） |
+| PUT | `/api/profile/` | 更新基础信息 |
+| POST | `/api/profile/chat` | AI 对话引导（SSE 流式） |
+| POST | `/api/profile/chat/confirm` | 确认 Bullet Point 入库 |
+| POST | `/api/profile/generate-narrative` | 生成职业叙事 |
+| **Jobs** | | |
+| GET | `/api/jobs/` | 岗位列表（分页/筛选/分拣状态） |
+| PATCH | `/api/jobs/{id}/triage` | 单个岗位分拣 |
+| PATCH | `/api/jobs/batch-triage` | 批量分拣 |
+| GET | `/api/jobs/batches` | 采集批次列表 |
+| **Pools** | | |
+| GET/POST/PUT/DELETE | `/api/pools/` | 岗位池 CRUD |
+| **Optimize** | | |
+| POST | `/api/optimize/generate` | AI 简历定制生成（SSE 流式） |
+| **Agent** | | |
+| POST | `/api/agent/chat` | AI Agent 对话（SSE 流式） |
+| **MCP** | | |
+| POST | `/mcp` | MCP Streamable HTTP 端点 |
+| **Resume** | | |
 | GET/POST | `/api/resume/` | 简历 CRUD |
-| POST | `/api/resume/export` | 导出 PDF |
-| POST | `/api/resume/optimize` | AI 优化简历 |
-| GET | `/api/calendar/events` | 日程事件 |
-| POST | `/api/email/sync` | 同步邮件 |
-| GET | `/api/email/notifications` | 面试通知 |
+| **其他** | | |
 | GET/PUT | `/api/config/` | 系统配置 |
-| GET/POST | `/api/applications/` | 投递管理 |
-| POST | `/api/applications/generate` | AI 生成求职信 |
+| POST | `/api/scraper/search` | 触发岗位采集 |
+| GET | `/api/calendar/events` | 日程事件 |
 
 ---
 
@@ -210,14 +289,17 @@ npm run dev
 | 页面 | 路径 | 功能 |
 |---|---|---|
 | **Dashboard** | `/` | 统计卡片、采集趋势图、最新岗位 |
-| **岗位列表** | `/jobs` | 全部岗位、按时间筛选 |
-| **岗位详情** | `/jobs/[id]` | AI 摘要、关键词、一键投递 |
-| **简历编辑器** | `/resume` | 富文本编辑、实时预览、PDF 导出 |
-| **投递管理** | `/applications` | 投递记录、AI 求职信、状态追踪 |
-| **日程表** | `/calendar` | 月/周/日视图、AI 自动填充 |
-| **邮件通知** | `/email` | Gmail 授权、面试通知 |
-| **周报分析** | `/analytics` | 环比对比、来源分布、热门关键词 |
-| **设置** | `/settings` | API Key、搜索词、数据源开关 |
+| **个人档案** | `/profile` | AI 对话引导构建 Profile + Bullet 预览 |
+| **岗位分拣** | `/jobs` | 三 Tab 分拣（未筛选/已筛选/已忽略）+ 池管理 |
+| **岗位详情** | `/jobs/[id]` | AI 摘要、关键词、分拣操作 |
+| **AI 定制** | `/optimize` | 三段式工作区（池→岗位→SSE 生成） |
+| **AI Agent** | `/agent` | 对话式 Agent Console |
+| **简历管理** | `/resume` | 简历列表 + 来源溯源标签 |
+| **岗位采集** | `/scraper` | 多平台采集配置 + 触发 |
+| **投递管理** | `/applications` | 投递记录、状态追踪 |
+| **日程表** | `/calendar` | 月/周/日视图 |
+| **周报分析** | `/analytics` | 来源分布、热门关键词 |
+| **设置** | `/settings` | LLM Provider 切换、API Key 配置 |
 
 ---
 
@@ -225,45 +307,58 @@ npm run dev
 
 ```
 OfferU/
-├── .env.example                   # 环境变量模板
-├── docker-compose.yml             # Docker 服务编排
+├── .env.example                    # 环境变量模板
+├── docker-compose.yml              # Docker 服务编排
 │
-├── backend/                       # FastAPI 后端
-│   ├── Dockerfile
+├── backend/                        # FastAPI 后端（Python 3.12）
 │   ├── requirements.txt
+│   ├── run_server.py               # 启动脚本
 │   └── app/
-│       ├── main.py                # 应用入口
-│       ├── config.py              # 配置管理
-│       ├── database.py            # 异步数据库引擎
-│       ├── models/models.py       # ORM 模型
-│       ├── routes/                # API 路由
-│       │   ├── jobs.py            # 岗位 CRUD + 统计 + 周报
-│       │   ├── resume.py          # 简历管理 + PDF 导出
-│       │   ├── applications.py    # 投递管理 + AI 求职信
-│       │   ├── calendar.py        # 日程管理
-│       │   ├── email.py           # Gmail OAuth + 邮件同步
-│       │   └── config.py          # 系统配置
-│       ├── services/scrapers/     # 多平台爬虫适配器
-│       │   ├── base.py            # 适配器基类 + 注册表
-│       │   ├── linkedin.py        # LinkedIn (Apify)
-│       │   ├── boss.py            # BOSS直聘
-│       │   ├── zhilian.py         # 智联招聘
-│       │   ├── shixiseng.py       # 实习僧
-│       │   └── corporate.py       # 大厂官网
-│       └── agents/                # LLM Agent
-│           ├── resume_optimizer.py# 简历优化
-│           ├── cover_letter.py    # 求职信生成
-│           └── email_parser.py    # 邮件解析
+│       ├── main.py                 # 应用入口 + MCP 挂载
+│       ├── config.py               # 多 Provider 配置管理
+│       ├── database.py             # SQLAlchemy 2.0 async
+│       ├── mcp_server.py           # MCP Server（13 Tools + 1 Resource）
+│       ├── models/models.py        # ORM（Profile/Job/Pool/Batch/Resume...）
+│       ├── routes/
+│       │   ├── profile.py          # Profile 16 端点 + AI 对话引导 SSE
+│       │   ├── jobs.py             # 岗位 CRUD + 分拣 + 批量操作
+│       │   ├── pools.py            # 岗位池 CRUD
+│       │   ├── optimize.py         # AI 简历定制 SSE（Bullet 召回 + STAR 改写）
+│       │   ├── agent.py            # AI Agent Chat SSE 编排
+│       │   ├── resume.py           # 简历管理 + 溯源标签
+│       │   ├── scraper.py          # 采集触发 + 批次管理
+│       │   ├── config.py           # 系统配置（多 LLM Provider）
+│       │   └── ...                 # calendar / email / applications
+│       ├── agents/
+│       │   ├── llm.py              # LLM 抽象层（Qwen/DeepSeek/OpenAI/Ollama/...）
+│       │   └── skills/             # AI Skills
+│       │       ├── conversational_extractor.py  # 对话引导提取
+│       │       ├── narrative_generator.py       # 职业叙事生成
+│       │       ├── jd_analyzer.py               # JD 深度分析
+│       │       └── resume_matcher.py            # 简历匹配评分
+│       └── services/scrapers/      # 多平台爬虫适配器
+│           ├── boss.py / zhilian.py / shixiseng.py / linkedin.py / corporate.py
+│           └── base.py             # 适配器基类
 │
-├── frontend/                      # Next.js 14 前端
-│   ├── Dockerfile
-│   ├── package.json
+├── frontend/                       # Next.js 14 前端
 │   └── src/
-│       ├── app/                   # 页面
-│       ├── components/            # UI 组件
-│       └── lib/                   # API 客户端 + Hooks
+│       ├── app/
+│       │   ├── profile/            # AI 对话引导 + Profile 预览
+│       │   ├── jobs/               # 三 Tab 岗位分拣
+│       │   ├── optimize/           # 三段式 AI 定制工作区
+│       │   ├── agent/              # AI Agent Console
+│       │   ├── resume/             # 简历管理 + 溯源
+│       │   └── ...                 # scraper / calendar / analytics / settings
+│       ├── components/
+│       │   ├── jobs/               # BatchGroup / PoolManager / JobCard
+│       │   ├── onboarding/         # ProfileOnboarding 冷启动向导
+│       │   └── layout/             # Sidebar / TopBar
+│       └── lib/
+│           ├── api.ts              # REST + SSE 客户端
+│           └── hooks.ts            # SWR Hooks（Profile/Jobs/Pools/Batches...）
 │
-└── Archive/                       # 历史版本归档
+└── docs/
+    └── PRD_v2_FINAL.md             # 产品需求文档 v2.1
 ```
 
 ---
@@ -271,14 +366,12 @@ OfferU/
 ## ⚠️ 免责声明
 
 ### API Key 安全
-- 你的 API Key（OpenAI / DeepSeek 等）由你自行管理，本项目**不会**将 Key 上传到任何第三方服务器
+- 你的 API Key（Qwen / DeepSeek / OpenAI 等）由你自行管理，本项目**不会**将 Key 上传到任何第三方服务器
 - `.env` 文件已被 `.gitignore` 忽略，请**绝对不要**将包含真实 Key 的文件提交到 Git
-- 建议定期轮换 Key，并在 OpenAI 后台设置 Usage Limit
 
 ### 数据与隐私
-- 所有数据（简历、岗位信息、面试记录）存储在你自己的本地数据库中
-- Gmail OAuth 授权仅用于读取面试相关邮件，不会访问其他邮件内容
-- 调用 AI API 时，简历/JD 内容会发送至对应 AI 服务商进行处理，请注意其隐私政策
+- 所有数据（个人档案、简历、岗位信息）存储在你自己的本地数据库中
+- 调用 AI API 时，简历/JD 内容会发送至对应 AI 服务商处理，请注意其隐私政策
 
 ### 爬虫风险
 - 本项目提供的爬虫适配器仅供学习研究使用
@@ -287,38 +380,46 @@ OfferU/
 - **严禁**将爬取的数据用于商业用途或侵犯他人权益
 
 ### AI 生成内容
-- AI 优化后的简历和 Cover Letter 仅供参考，请仔细核实后再使用
-- AI 生成内容可能存在事实性错误，使用者应自行判断
-- 最终投递的简历内容由使用者本人负责
+- AI 生成的简历仅供参考，**严禁虚构事实**
+- OfferU 的 Profile 引导带有防虚构规则和置信度标记，但最终内容由使用者本人负责
+- AI 生成内容可能存在表述偏差，请仔细核实后再投递
 
 ### 费用说明
-- 调用 OpenAI / DeepSeek 等商业 API 会产生费用，请关注各平台的计费标准
-- 推荐先使用小模型（如 GPT-4o-mini）测试，确认需求后再切换更强模型
-- 可使用本地 Ollama 运行开源模型，完全免费但需要足够的硬件资源
+- 默认 Qwen qwen-flash 模型仅 ¥0.15/百万 token，生成 100 份简历成本约 ¥1-2
+- 切换 DeepSeek / OpenAI 等模型费用不同，请关注各平台计费标准
+- 可使用本地 Ollama 运行开源模型，完全免费但需要足够硬件资源
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] FastAPI 后端 API
-- [x] Next.js 前端 Dashboard
-- [x] 多平台爬虫适配器架构
-- [x] 简历编辑器 + PDF 导出
-- [x] Gmail OAuth 邮件同步
-- [x] FullCalendar 日程管理
-- [x] 投递管理 + AI 求职信
-- [x] 周报分析
-- [ ] AI 简历优化（选 JD → 分析差距 → 一键修改）
-- [ ] 多 LLM 支持（DeepSeek / Ollama）
-- [ ] Tauri 桌面版（双击安装，零 Docker 依赖）
-- [ ] 微信小程序版
+### 已完成 ✅
+- [x] FastAPI 后端 + SQLAlchemy 2.0 async（Python 3.12）
+- [x] Next.js 14 前端（NextUI 2.4 暗色主题）
+- [x] 多平台爬虫适配器（LinkedIn / BOSS / 智联 / 实习僧 / 大厂官网）
+- [x] Profile AI 对话引导（5 主题 Stepper + SSE 多轮 + Bullet 确认）
+- [x] 三 Tab 岗位分拣（未筛选 / 已筛选 / 已忽略 + 批次折叠 + 岗位池）
+- [x] 三段式 AI 简历定制工作区（池→岗位→SSE 生成）
+- [x] MCP Server（13 Tools + 1 Resource，FastMCP Streamable HTTP）
+- [x] AI Agent Chat（Web 对话式 Agent Console + Tool Use）
+- [x] 简历溯源标记（"基于 XX 岗位生成"）
+- [x] 多 LLM 支持（Qwen / DeepSeek / OpenAI / SiliconFlow / Gemini / 智谱 / Ollama）
+- [x] Dashboard + 周报分析 + 日程管理
+
+### 进行中 🔄
+- [ ] PDF/Word 简历解析导入（pdfplumber + Qwen 结构化）
+- [ ] 一键应用 AI 优化建议（HITL 采纳/拒绝）
+
+### 未来计划 📋
 - [ ] 投递自动化（自动填表提交）
+- [ ] 简历 PDF 导出美化（ATS 优化模板）
+- [ ] 面试准备模块（STAR 故事库 + 模拟面试）
 
 ---
 
 ## 📬 联系方式
 
 - **GitHub**: [Paker-kk/OfferU](https://github.com/Paker-kk/OfferU)
-- **原项目**: [chunxubioinfor/DailyJobMatch](https://github.com/chunxubioinfor/DailyJobMatch)
+- **灵感来源**: [santifer/career-ops](https://github.com/santifer/career-ops)
 
 欢迎提 Issue 或 PR！
