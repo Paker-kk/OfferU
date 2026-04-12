@@ -46,20 +46,160 @@ class Job(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     keywords: Mapped[Optional[list]] = mapped_column(JSON, default=list)
 
-    # ---- 池/批次/分拣 ----
-    triage_status: Mapped[str] = mapped_column(
-        String(20), default="unscreened", index=True
-    )  # unscreened / screened / ignored
+    # ---- Inbox 分拣与池分组 ----
+    triage_status: Mapped[str] = mapped_column(String(20), default="inbox", index=True)
     pool_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("pools.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("pools.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
-    batch_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("batches.id", ondelete="SET NULL"), nullable=True
-    )
+    # 采集批次 ID；历史数据统一回填为 legacy-import
+    batch_id: Mapped[str] = mapped_column(String(64), default="legacy-import", index=True)
 
     # ---- 元数据 ----
     hash_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    pool: Mapped[Optional["Pool"]] = relationship(back_populates="jobs")
+
+
+class Pool(Base):
+    """岗位池：用于在已筛选岗位中按主题做分组（前端语义为文件夹）"""
+
+    __tablename__ = "pools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    color: Mapped[str] = mapped_column(String(20), default="#3B82F6")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    scope: Mapped[str] = mapped_column(String(20), default="picked", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    jobs: Mapped[list["Job"]] = relationship(back_populates="pool")
+
+
+class Batch(Base):
+    """采集批次：记录一次采集任务的上下文，用于 Inbox 分区"""
+
+    __tablename__ = "batches"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(50), default="")
+    keywords: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    location: Mapped[str] = mapped_column(String(100), default="")
+    max_results: Mapped[int] = mapped_column(Integer, default=0)
+    job_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="completed")
+    total_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Profile(Base):
+    """个人档案主表：承载基础信息与叙事字段"""
+
+    __tablename__ = "profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), default="默认档案")
+    school: Mapped[str] = mapped_column(String(200), default="")
+    major: Mapped[str] = mapped_column(String(200), default="")
+    degree: Mapped[str] = mapped_column(String(50), default="")
+    gpa: Mapped[str] = mapped_column(String(20), default="")
+    email: Mapped[str] = mapped_column(String(200), default="")
+    phone: Mapped[str] = mapped_column(String(50), default="")
+    wechat: Mapped[str] = mapped_column(String(100), default="")
+    headline: Mapped[str] = mapped_column(String(300), default="")
+    exit_story: Mapped[str] = mapped_column(Text, default="")
+    cross_cutting_advantage: Mapped[str] = mapped_column(Text, default="")
+    base_info_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    onboarding_step: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    target_roles: Mapped[list["ProfileTargetRole"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+    sections: Mapped[list["ProfileSection"]] = relationship(
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="ProfileSection.sort_order",
+    )
+    chat_sessions: Mapped[list["ProfileChatSession"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+
+
+class ProfileTargetRole(Base):
+    """目标岗位条目：支持 fit 分级"""
+
+    __tablename__ = "profile_target_roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    role_name: Mapped[str] = mapped_column(String(120), index=True)
+    role_level: Mapped[str] = mapped_column(String(60), default="")
+    fit: Mapped[str] = mapped_column(String(30), default="primary")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    profile: Mapped["Profile"] = relationship(back_populates="target_roles")
+
+
+class ProfileSection(Base):
+    """档案条目：Bullet 级事实条目，支持来源与置信度"""
+
+    __tablename__ = "profile_sections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    section_type: Mapped[str] = mapped_column(String(60), index=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("profile_sections.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(220), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(30), default="manual")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="sections")
+
+
+class ProfileChatSession(Base):
+    """档案对话会话：记录多轮消息与候选条目提取结果"""
+
+    __tablename__ = "profile_chat_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    topic: Mapped[str] = mapped_column(String(60), default="general")
+    messages_json: Mapped[list] = mapped_column(JSON, default=list)
+    extracted_bullets: Mapped[list] = mapped_column(JSON, default=list)
+    extracted_bullets_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="chat_sessions")
 
 
 class ResumeTemplate(Base):
@@ -112,9 +252,9 @@ class Resume(Base):
     style_config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_primary: Mapped[bool] = mapped_column(default=True)
     language: Mapped[str] = mapped_column(String(10), default="zh")
-    # ---- AI 生成溯源 ----
-    source_job_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # [job_id, ...]
-    source_mode: Mapped[str] = mapped_column(String(20), default="manual")  # manual / per_job / combined
+    source_mode: Mapped[str] = mapped_column(String(30), default="manual")
+    source_job_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    source_profile_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -224,160 +364,3 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
-
-
-# =============================================
-# 岗位分组池 — 用户自定义分组
-# =============================================
-
-class Pool(Base):
-    """岗位池：用户自定义分组（如"产品方向""运营方向"）"""
-    __tablename__ = "pools"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100))
-    description: Mapped[str] = mapped_column(Text, default="")
-    color: Mapped[str] = mapped_column(String(20), default="#3B82F6")  # Tailwind blue-500
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-# =============================================
-# 采集批次 — 爬虫任务记录
-# =============================================
-
-class Batch(Base):
-    """采集批次：每次爬虫运行产生一个批次"""
-    __tablename__ = "batches"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    source: Mapped[str] = mapped_column(String(50), default="")  # boss / linkedin / zhilian ...
-    keywords: Mapped[str] = mapped_column(String(500), default="")
-    location: Mapped[str] = mapped_column(String(200), default="")
-    max_results: Mapped[int] = mapped_column(Integer, default=0)
-    job_count: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running / completed / failed
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
-# =============================================
-# 个人档案 — Career-Ops Profile 五大块
-# =============================================
-
-class Profile(Base):
-    """
-    个人档案主表 — 用户事实库的顶层容器
-    ─────────────────────────────────────────────
-    MVP 阶段单用户只有一个 Profile (is_default=True)。
-    narrative 层字段 (headline/exit_story/cross_cutting_advantage)
-    由 AI 根据已有 bullets 自动生成，用户可编辑。
-    """
-    __tablename__ = "profiles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    # ---- 基础信息（Step 1 表单填写） ----
-    name: Mapped[str] = mapped_column(String(100), default="")
-    school: Mapped[str] = mapped_column(String(200), default="")
-    major: Mapped[str] = mapped_column(String(200), default="")
-    degree: Mapped[str] = mapped_column(String(50), default="")  # 本科/硕士/博士/大专
-    gpa: Mapped[str] = mapped_column(String(20), default="")
-    email: Mapped[str] = mapped_column(String(200), default="")
-    phone: Mapped[str] = mapped_column(String(50), default="")
-    wechat: Mapped[str] = mapped_column(String(100), default="")
-
-    # ---- 职业叙事（Step 5 AI 生成 + 用户编辑） ----
-    headline: Mapped[str] = mapped_column(Text, default="")  # 一句话定位
-    exit_story: Mapped[str] = mapped_column(Text, default="")  # 为什么选这个方向
-    cross_cutting_advantage: Mapped[str] = mapped_column(Text, default="")  # 超能力/核心优势
-
-    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
-    onboarding_step: Mapped[int] = mapped_column(Integer, default=0)  # 当前引导进度 0-5
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    # ORM 关系
-    sections: Mapped[list["ProfileSection"]] = relationship(
-        back_populates="profile", cascade="all, delete-orphan",
-        order_by="ProfileSection.sort_order"
-    )
-    target_roles: Mapped[list["ProfileTargetRole"]] = relationship(
-        back_populates="profile", cascade="all, delete-orphan"
-    )
-    chat_sessions: Mapped[list["ProfileChatSession"]] = relationship(
-        back_populates="profile", cascade="all, delete-orphan"
-    )
-
-
-class ProfileSection(Base):
-    """
-    档案条目表 — Bullet 级事实存储
-    ─────────────────────────────────────────────
-    每条记录是一个独立的事实条目（如"在xx公司实习3个月"）。
-    section_type 对应 Profile 五大块的经历/技能子类型。
-    parent_id 支持树形结构（段→多个 bullet）。
-    source 记录条目来源：手动填写 / AI对话提取 / 简历导入。
-    """
-    __tablename__ = "profile_sections"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    profile_id: Mapped[int] = mapped_column(Integer, ForeignKey("profiles.id", ondelete="CASCADE"))
-    # education / internship / project / activity / competition / skill / certificate / honor / language / custom
-    section_type: Mapped[str] = mapped_column(String(50), index=True)
-    parent_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("profile_sections.id", ondelete="CASCADE"), nullable=True
-    )
-    title: Mapped[str] = mapped_column(String(300), default="")
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    # 结构化内容（格式因 section_type 而异）
-    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    source: Mapped[str] = mapped_column(String(20), default="manual")  # manual / ai_chat / ai_import
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)  # 0.0-1.0, AI 生成的置信度
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    profile: Mapped["Profile"] = relationship(back_populates="sections")
-
-
-class ProfileTargetRole(Base):
-    """目标岗位 — 用户想应聘的方向（Step 2 填写）"""
-    __tablename__ = "profile_target_roles"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    profile_id: Mapped[int] = mapped_column(Integer, ForeignKey("profiles.id", ondelete="CASCADE"))
-    role_name: Mapped[str] = mapped_column(String(100))  # 如 "产品经理""内容运营"
-    role_level: Mapped[str] = mapped_column(String(50), default="")  # 实习/初级/中级
-    fit: Mapped[str] = mapped_column(String(20), default="primary")  # primary / secondary / adjacent
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    profile: Mapped["Profile"] = relationship(back_populates="target_roles")
-
-
-class ProfileChatSession(Base):
-    """
-    AI 对话引导会话 — 多轮对话状态持久化
-    ─────────────────────────────────────────────
-    每个 topic 可以有一个活跃会话。
-    messages_json 存储完整的消息历史 [{role, content}, ...]。
-    extracted_bullets 存储本次对话提取的 bullet candidates，
-    用户 confirm 后写入 profile_sections。
-    """
-    __tablename__ = "profile_chat_sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    profile_id: Mapped[int] = mapped_column(Integer, ForeignKey("profiles.id", ondelete="CASCADE"))
-    # education / internship / project / activity / skill / general
-    topic: Mapped[str] = mapped_column(String(50))
-    messages_json: Mapped[list] = mapped_column(JSON, default=list)  # [{role, content}, ...]
-    extracted_bullets: Mapped[list] = mapped_column(JSON, default=list)  # bullet candidates
-    extracted_bullets_count: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active / completed
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    profile: Mapped["Profile"] = relationship(back_populates="chat_sessions")

@@ -1,42 +1,13 @@
-// =============================================
-// ChatPanel — 右侧 AI 对话引导面板
-// =============================================
-// 使用 @chatscope/chat-ui-kit-react 构建聊天 UI
-// SSE 流式渲染 AI 回复
-// Bullet 候选卡片嵌入消息流
-// 底部操作栏: 上一步 / 跳过主题 / 下一主题
-// =============================================
-
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Button, Card } from "@nextui-org/react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  SkipForward,
-  Send,
-  Bot,
-  User,
-} from "lucide-react";
-import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
-import {
-  MainContainer,
-  ChatContainer,
-  MessageList,
-  Message,
-  MessageInput,
-  TypingIndicator,
-} from "@chatscope/chat-ui-kit-react";
-import {
-  BulletConfirmCard,
-  type BulletCandidate,
-} from "./BulletConfirmCard";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Card, CardBody, Textarea } from "@nextui-org/react";
+import { ArrowLeft, ArrowRight, Bot, SkipForward } from "lucide-react";
+import { BulletConfirmCard, type BulletCandidate } from "./BulletConfirmCard";
 import { profileApi } from "@/lib/api";
-import type { Topic } from "../page";
 
-// 消息类型
+export type ChatTopic = "education" | "internship" | "project" | "activity" | "skill";
+
 interface ChatMessage {
   id: string;
   role: "ai" | "user";
@@ -45,7 +16,7 @@ interface ChatMessage {
 }
 
 interface ChatPanelProps {
-  topic: Topic;
+  topic: ChatTopic;
   topicLabel: string;
   onNextTopic: () => void;
   onPrevTopic: () => void;
@@ -54,19 +25,33 @@ interface ChatPanelProps {
   isFirstTopic: boolean;
 }
 
-// 主题初始引导语
-const TOPIC_GREETINGS: Record<Topic, string> = {
-  education:
-    "你好！让我们先从教育经历开始。你的学校、专业、学位是什么？有什么特别的课程或成绩吗？",
-  internship:
-    "接下来聊聊实习经历。你做过哪些实习？在哪家公司？主要负责什么？",
-  project:
-    "现在说说你的项目经历吧。做过什么项目？你在其中承担什么角色？取得了什么成果？",
-  activity:
-    "有参加过什么社团活动、志愿者或课外活动吗？你在其中发挥了什么作用？",
-  skill:
-    "最后跟我聊聊你的技能和证书吧。会使用哪些工具或软件？有什么认证或奖项？",
+const TOPIC_GREETINGS: Record<ChatTopic, string> = {
+  education: "我们先从教育经历开始，你可以先说学校、专业和亮点。",
+  internship: "接下来聊实习经历：公司、岗位、你做了什么、结果如何。",
+  project: "现在说项目经历：背景、角色、动作、结果。",
+  activity: "再聊活动经历：社团/志愿者/比赛，重点是你的贡献。",
+  skill: "最后补充技能与证书：工具、语言能力、证书和熟练度。",
 };
+
+function toBulletCandidate(payload: any): BulletCandidate | null {
+  if (!payload || typeof payload !== "object") return null;
+  const content = payload.content_json && typeof payload.content_json === "object" ? payload.content_json : {};
+  const text =
+    String(content.bullet || payload.description || payload.content || "").trim() ||
+    String(payload.title || "待确认条目").trim();
+
+  if (typeof payload.session_id !== "number" || typeof payload.index !== "number") {
+    return null;
+  }
+
+  return {
+    session_id: payload.session_id,
+    bullet_index: payload.index,
+    title: String(payload.title || "待确认条目"),
+    description: text,
+    confidence: Number(payload.confidence ?? 0.7),
+  };
+}
 
 export function ChatPanel({
   topic,
@@ -78,279 +63,206 @@ export function ChatPanel({
   isFirstTopic,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [text, setText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionId, setSessionId] = useState<string | undefined>();
-  const msgIdRef = useRef(0);
+  const [sessionId, setSessionId] = useState<number | undefined>(undefined);
+  const idRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  // 主题切换时，重置对话并发送引导语
   useEffect(() => {
-    const greeting: ChatMessage = {
-      id: `msg-${++msgIdRef.current}`,
-      role: "ai",
-      content: TOPIC_GREETINGS[topic],
-    };
-    setMessages([greeting]);
+    setMessages([
+      {
+        id: `msg-${++idRef.current}`,
+        role: "ai",
+        content: TOPIC_GREETINGS[topic],
+      },
+    ]);
     setSessionId(undefined);
-    // 取消进行中的请求
+    setText("");
     abortRef.current?.abort();
   }, [topic]);
 
-  // SSE 发送消息
-  const handleSend = useCallback(
-    async (text: string) => {
-      if (!text.trim() || isTyping) return;
+  const pushMessage = useCallback((role: "ai" | "user", content: string) => {
+    setMessages((prev) => [...prev, { id: `msg-${++idRef.current}`, role, content }]);
+  }, []);
 
-      // 用户消息
-      const userMsg: ChatMessage = {
-        id: `msg-${++msgIdRef.current}`,
-        role: "user",
-        content: text.trim(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setIsTyping(true);
+  const handleSend = useCallback(async () => {
+    const content = text.trim();
+    if (!content || isTyping) return;
 
-      // 取消旧请求
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+    setText("");
+    pushMessage("user", content);
+    setIsTyping(true);
 
-      try {
-        const res = await profileApi.chat({
-          topic,
-          message: text.trim(),
-          session_id: sessionId,
-        });
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-        if (!res.ok) {
-          throw new Error(`API ${res.status}`);
-        }
+    try {
+      const res = await profileApi.chat({
+        topic,
+        message: content,
+        session_id: sessionId,
+      });
 
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("无法读取流");
+      if (!res.ok) {
+        throw new Error(`API ${res.status}`);
+      }
 
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let aiContent = "";
-        const aiMsgId = `msg-${++msgIdRef.current}`;
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("无法读取响应流");
 
-        // 添加空的 AI 回复占位
-        setMessages((prev) => [
-          ...prev,
-          { id: aiMsgId, role: "ai", content: "" },
-        ]);
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-        while (true) {
-          if (controller.signal.aborted) break;
-          const { done, value } = await reader.read();
-          if (done) break;
+      while (true) {
+        if (controller.signal.aborted) break;
+        const { done, value } = await reader.read();
+        if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split(/\r?\n\r?\n/);
-          buffer = parts.pop() || "";
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split(/\r?\n\r?\n/);
+        buffer = chunks.pop() || "";
 
-          for (const part of parts) {
-            const lines = part.trim().split(/\r?\n/);
-            let eventType = "";
-            let data = "";
+        for (const chunk of chunks) {
+          const lines = chunk.trim().split(/\r?\n/);
+          let eventType = "";
+          let dataLine = "";
 
-            for (const line of lines) {
-              if (line.startsWith("event:")) eventType = line.slice(6).trim();
-              else if (line.startsWith("data:")) data = line.slice(5).trim();
+          for (const line of lines) {
+            if (line.startsWith("event:")) eventType = line.slice(6).trim();
+            if (line.startsWith("data:")) dataLine = line.slice(5).trim();
+          }
+
+          if (!dataLine) continue;
+
+          try {
+            const parsed = JSON.parse(dataLine);
+
+            if (eventType === "ai_message") {
+              const aiText = String(parsed.content || "").trim();
+              if (aiText) pushMessage("ai", aiText);
             }
 
-            if (!data) continue;
-
-            try {
-              const parsed = JSON.parse(data);
-
-              switch (eventType) {
-                case "ai_message":
-                  // 流式追加 AI 文本
-                  aiContent += parsed.content || "";
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === aiMsgId
-                        ? { ...m, content: aiContent }
-                        : m
-                    )
-                  );
-                  break;
-
-                case "bullet_candidate": {
-                  // 生成 Bullet 确认卡片
-                  const bulletMsg: ChatMessage = {
-                    id: `msg-${++msgIdRef.current}`,
+            if (eventType === "bullet_candidate") {
+              const bullet = toBulletCandidate(parsed);
+              if (bullet) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `msg-${++idRef.current}`,
                     role: "ai",
                     content: "",
-                    bullet: {
-                      section_id: parsed.section_id,
-                      title: parsed.title || "",
-                      organization: parsed.organization,
-                      date_range: parsed.date_range,
-                      description: parsed.description || "",
-                      confidence: parsed.confidence ?? 0.8,
-                    },
-                  };
-                  setMessages((prev) => [...prev, bulletMsg]);
-                  break;
-                }
-
-                case "session_id":
-                  setSessionId(parsed.session_id);
-                  break;
-
-                case "topic_complete":
-                  // 主题完成提示
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: `msg-${++msgIdRef.current}`,
-                      role: "ai",
-                      content:
-                        parsed.message ||
-                        `${topicLabel}主题已完成！可以继续下一个主题。`,
-                    },
-                  ]);
-                  break;
-
-                case "error":
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: `msg-${++msgIdRef.current}`,
-                      role: "ai",
-                      content: `⚠️ ${parsed.detail || "出现了错误，请重试"}`,
-                    },
-                  ]);
-                  break;
+                    bullet,
+                  },
+                ]);
               }
-            } catch {
-              // 跳过无法解析的事件
             }
+
+            if (typeof parsed.session_id === "number") {
+              setSessionId(parsed.session_id);
+            }
+
+            if (eventType === "error") {
+              pushMessage("ai", `⚠️ ${String(parsed.message || parsed.detail || "请求失败")}`);
+            }
+          } catch {
+            // 忽略单个坏事件
           }
         }
-
-        reader.releaseLock();
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg-${++msgIdRef.current}`,
-              role: "ai",
-              content: "⚠️ 网络错误，请检查后端服务后重试",
-            },
-          ]);
-        }
-      } finally {
-        setIsTyping(false);
       }
-    },
-    [topic, topicLabel, sessionId, isTyping]
-  );
+
+      reader.releaseLock();
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        pushMessage("ai", "⚠️ 网络错误，请稍后重试");
+      }
+    } finally {
+      setIsTyping(false);
+    }
+  }, [isTyping, pushMessage, sessionId, text, topic]);
 
   return (
     <Card className="h-full bg-white/5 border border-white/10 flex flex-col overflow-hidden">
-      {/* 头部 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
         <Bot size={18} className="text-blue-400" />
-        <span className="text-sm font-medium text-white">
-          AI 对话引导 · {topicLabel}
-        </span>
+        <span className="text-sm font-medium text-white">AI 对话引导 · {topicLabel}</span>
       </div>
 
-      {/* 聊天区域 */}
-      <div className="flex-1 min-h-0 chat-panel-wrapper">
-        <MainContainer>
-          <ChatContainer>
-            <MessageList
-              typingIndicator={
-                isTyping ? (
-                  <TypingIndicator content="AI 正在思考..." />
-                ) : null
-              }
-            >
-              {messages.map((msg) => {
-                // Bullet 确认卡片
-                if (msg.bullet) {
-                  return (
-                    <Message
-                      key={msg.id}
-                      model={{
-                        message: "",
-                        sender: "AI",
-                        direction: "incoming",
-                        position: "single",
-                      }}
-                    >
-                      <Message.CustomContent>
-                        <BulletConfirmCard
-                          bullet={msg.bullet}
-                          onConfirmed={onBulletConfirmed}
-                          onSkipped={() => {}}
-                        />
-                      </Message.CustomContent>
-                    </Message>
-                  );
-                }
+      <CardBody className="flex-1 min-h-0 overflow-y-auto gap-3">
+        {messages.map((msg) => {
+          if (msg.bullet) {
+            return (
+              <BulletConfirmCard
+                key={msg.id}
+                bullet={msg.bullet}
+                onConfirmed={onBulletConfirmed}
+                onSkipped={() => {}}
+              />
+            );
+          }
 
-                return (
-                  <Message
-                    key={msg.id}
-                    model={{
-                      message: msg.content,
-                      sender: msg.role === "ai" ? "AI" : "用户",
-                      direction:
-                        msg.role === "ai" ? "incoming" : "outgoing",
-                      position: "single",
-                    }}
-                  />
-                );
-              })}
-            </MessageList>
+          const mine = msg.role === "user";
+          return (
+            <div key={msg.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[88%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${mine ? "bg-blue-500 text-white" : "bg-white/10 text-white/85"}`}>
+                {msg.content}
+              </div>
+            </div>
+          );
+        })}
+      </CardBody>
 
-            <MessageInput
-              placeholder="输入你的经历..."
-              attachButton={false}
-              onSend={(_, text) => handleSend(text)}
-              disabled={isTyping}
-            />
-          </ChatContainer>
-        </MainContainer>
-      </div>
+      <div className="px-4 pb-3 pt-2 border-t border-white/10 space-y-2">
+        <div className="flex items-end gap-2">
+          <Textarea
+            value={text}
+            onValueChange={setText}
+            minRows={1}
+            maxRows={4}
+            placeholder="输入你的经历..."
+            variant="bordered"
+            classNames={{
+              input: "text-sm text-white/90",
+              inputWrapper: "bg-white/5 border-white/15",
+            }}
+          />
+          <Button color="primary" isLoading={isTyping} onPress={handleSend}>
+            发送
+          </Button>
+        </div>
 
-      {/* 底部操作栏 */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-white/10">
-        <Button
-          size="sm"
-          variant="light"
-          startContent={<ArrowLeft size={14} />}
-          isDisabled={isFirstTopic}
-          onPress={onPrevTopic}
-        >
-          上一步
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button
+            size="sm"
+            variant="light"
+            startContent={<ArrowLeft size={14} />}
+            isDisabled={isFirstTopic}
+            onPress={onPrevTopic}
+          >
+            上一步
+          </Button>
 
-        <Button
-          size="sm"
-          variant="flat"
-          startContent={<SkipForward size={14} />}
-          className="text-white/50"
-          onPress={onNextTopic}
-        >
-          跳过主题
-        </Button>
+          <Button
+            size="sm"
+            variant="flat"
+            startContent={<SkipForward size={14} />}
+            className="text-white/50"
+            onPress={onNextTopic}
+          >
+            跳过主题
+          </Button>
 
-        <Button
-          size="sm"
-          color="primary"
-          endContent={<ArrowRight size={14} />}
-          isDisabled={isLastTopic}
-          onPress={onNextTopic}
-        >
-          {isLastTopic ? "完成" : "下一主题"}
-        </Button>
+          <Button
+            size="sm"
+            color="primary"
+            endContent={<ArrowRight size={14} />}
+            isDisabled={isLastTopic}
+            onPress={onNextTopic}
+          >
+            {isLastTopic ? "完成" : "下一主题"}
+          </Button>
+        </div>
       </div>
     </Card>
   );

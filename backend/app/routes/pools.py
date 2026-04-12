@@ -1,126 +1,220 @@
 # =============================================
-# Pool 路由 — 岗位分组池 CRUD
+# Pools 路由 — 岗位池（文件夹）管理 API
+# =============================================
+# GET    /api/pools/         获取池列表
+# POST   /api/pools/         创建池
+# PUT    /api/pools/{id}     重命名池
+# DELETE /api/pools/{id}     删除池（岗位转为未分组）
 # =============================================
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import get_db
-from app.models.models import Pool, Job
-from sqlalchemy import func as sa_func
+from app.models.models import Job, Pool
 
 router = APIRouter()
+POOL_SCOPES = {"inbox", "picked", "ignored"}
 
 
-# ---- Request / Response 模型 ----
+class PoolCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    scope: str = Field(default="picked", max_length=20)
+    description: str = Field(default="", max_length=500)
+    color: str = Field(default="#3B82F6", max_length=20)
+    sort_order: int = 0
 
-class PoolCreate(BaseModel):
-    name: str
-    description: str = ""
-    color: str = "#3B82F6"
 
-class PoolUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    color: Optional[str] = None
+class PoolUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+    color: Optional[str] = Field(default=None, max_length=20)
     sort_order: Optional[int] = None
 
-class PoolOut(BaseModel):
-    id: int
-    name: str
-    description: str
-    color: str
-    sort_order: int
-    job_count: int = 0
 
-    model_config = {"from_attributes": True}
+def _serialize_pool(pool: Pool, job_count: int = 0) -> dict:
+    return {
+        "id": pool.id,
+        "name": pool.name,
+        "scope": pool.scope,
+        "description": pool.description or "",
+        "color": pool.color or "#3B82F6",
+        "sort_order": pool.sort_order or 0,
+        "job_count": job_count,
+        "created_at": str(pool.created_at),
+        "updated_at": str(pool.updated_at),
+    }
 
 
-# ---- CRUD ----
+@router.get("/")
+async def list_pools(
+    scope: Optional[str] = Query(default=None, description="inbox / picked / ignored"),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取岗位池列表及每个池的岗位数量"""
+    if scope and scope not in POOL_SCOPES:
+        raise HTTPException(status_code=400, detail="invalid pool scope")
 
-@router.get("/", response_model=list[PoolOut])
-async def list_pools(db: AsyncSession = Depends(get_db)):
-    """获取所有池（含各池已筛选岗位计数 — 只统计 triage_status=screened）"""
-    result = await db.execute(select(Pool).order_by(Pool.sort_order, Pool.id))
-    pools = result.scalars().all()
-
-    # 批量查询所有池的计数，避免 N+1
-    count_q = (
-        select(Job.pool_id, sa_func.count(Job.id).label("cnt"))
-        .where(Job.pool_id.isnot(None), Job.triage_status == "screened")
+    counts_subquery = (
+        select(
+            Job.pool_id.label("pool_id"),
+            func.count(Job.id).label("job_count"),
+        )
+        .where(Job.pool_id.is_not(None))
         .group_by(Job.pool_id)
+        .subquery()
     )
-    count_result = await db.execute(count_q)
-    count_map = {row.pool_id: row.cnt for row in count_result}
 
-    out = []
-    for p in pools:
-        out.append(PoolOut(
-            id=p.id, name=p.name, description=p.description,
-            color=p.color, sort_order=p.sort_order,
-            job_count=count_map.get(p.id, 0)
-        ))
-    return out
+    if scope:
+        counts_subquery = (
+            select(
+                Job.pool_id.label("pool_id"),
+                func.count(Job.id).label("job_count"),
+            )
+            .where(Job.pool_id.is_not(None), Job.triage_status == scope)
+            .group_by(Job.pool_id)
+            .subquery()
+        )
+
+    query = (
+        select(Pool, func.coalesce(counts_subquery.c.job_count, 0).label("job_count"))
+        .outerjoin(counts_subquery, counts_subquery.c.pool_id == Pool.id)
+        .order_by(Pool.sort_order.asc(), Pool.created_at.desc())
+    )
+    if scope:
+        query = query.where(Pool.scope == scope)
+
+    result = await db.execute(query)
+    rows = result.all()
+    return [_serialize_pool(pool, job_count or 0) for pool, job_count in rows]
 
 
-@router.post("/", response_model=PoolOut, status_code=201)
-async def create_pool(body: PoolCreate, db: AsyncSession = Depends(get_db)):
-    """创建新池"""
-    pool = Pool(name=body.name, description=body.description, color=body.color)
+@router.post("/")
+async def create_pool(data: PoolCreateRequest, db: AsyncSession = Depends(get_db)):
+    """创建岗位池（名称大小写不敏感）"""
+    name = data.name.strip()
+    scope = (data.scope or "picked").strip().lower()
+    if not name:
+        raise HTTPException(status_code=400, detail="Pool name is required")
+    if scope not in POOL_SCOPES:
+        raise HTTPException(status_code=400, detail="invalid pool scope")
+
+    existing = (
+        await db.execute(
+            select(Pool).where(
+                func.lower(Pool.name) == name.lower(),
+                Pool.scope == scope,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Pool name already exists")
+
+    pool = Pool(
+        name=name,
+        scope=scope,
+        description=(data.description or "").strip(),
+        color=(data.color or "#3B82F6").strip(),
+        sort_order=data.sort_order,
+    )
     db.add(pool)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Pool name already exists") from exc
     await db.refresh(pool)
-    return PoolOut(
-        id=pool.id, name=pool.name, description=pool.description,
-        color=pool.color, sort_order=pool.sort_order, job_count=0
-    )
+    return _serialize_pool(pool, 0)
 
 
-@router.put("/{pool_id}", response_model=PoolOut)
-async def update_pool(pool_id: int, body: PoolUpdate, db: AsyncSession = Depends(get_db)):
-    """更新池属性"""
-    result = await db.execute(select(Pool).where(Pool.id == pool_id))
-    pool = result.scalar_one_or_none()
+@router.put("/{pool_id}")
+async def update_pool(
+    pool_id: int,
+    data: PoolUpdateRequest,
+    scope: Optional[str] = Query(default=None, description="inbox / picked / ignored"),
+    db: AsyncSession = Depends(get_db),
+):
+    """重命名岗位池"""
+    if scope and scope not in POOL_SCOPES:
+        raise HTTPException(status_code=400, detail="invalid pool scope")
+
+    name = data.name.strip() if isinstance(data.name, str) else None
+    if name is not None and not name:
+        raise HTTPException(status_code=400, detail="Pool name is required")
+
+    query = select(Pool).where(Pool.id == pool_id)
+    if scope:
+        query = query.where(Pool.scope == scope)
+    pool = (await db.execute(query)).scalar_one_or_none()
     if not pool:
-        raise HTTPException(404, "池不存在")
+        raise HTTPException(status_code=404, detail="Pool not found")
 
-    if body.name is not None:
-        pool.name = body.name
-    if body.description is not None:
-        pool.description = body.description
-    if body.color is not None:
-        pool.color = body.color
-    if body.sort_order is not None:
-        pool.sort_order = body.sort_order
+    if name is not None:
+        conflict = (
+            await db.execute(
+                select(Pool).where(
+                    func.lower(Pool.name) == name.lower(),
+                    Pool.id != pool_id,
+                    Pool.scope == pool.scope,
+                )
+            )
+        ).scalar_one_or_none()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Pool name already exists")
+        pool.name = name
 
-    await db.commit()
+    if data.description is not None:
+        pool.description = data.description.strip()
+    if data.color is not None:
+        pool.color = data.color.strip()
+    if data.sort_order is not None:
+        pool.sort_order = int(data.sort_order)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Pool name already exists") from exc
     await db.refresh(pool)
 
-    count_result = await db.execute(
-        select(sa_func.count(Job.id)).where(Job.pool_id == pool.id, Job.triage_status == "screened")
-    )
-    job_count = count_result.scalar() or 0
+    job_count = (
+        await db.execute(
+            select(func.count(Job.id)).where(
+                Job.pool_id == pool_id,
+                Job.triage_status == pool.scope,
+            )
+        )
+    ).scalar() or 0
+    return _serialize_pool(pool, job_count)
 
-    return PoolOut(
-        id=pool.id, name=pool.name, description=pool.description,
-        color=pool.color, sort_order=pool.sort_order, job_count=job_count
-    )
 
+@router.delete("/{pool_id}")
+async def delete_pool(
+    pool_id: int,
+    scope: Optional[str] = Query(default=None, description="inbox / picked / ignored"),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除岗位池，池内岗位转为未分组（pool_id=null）"""
+    if scope and scope not in POOL_SCOPES:
+        raise HTTPException(status_code=400, detail="invalid pool scope")
 
-@router.delete("/{pool_id}", status_code=204)
-async def delete_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
-    """删除池，池内岗位归为未分组 (pool_id=null)"""
-    result = await db.execute(select(Pool).where(Pool.id == pool_id))
-    pool = result.scalar_one_or_none()
+    query = select(Pool).where(Pool.id == pool_id)
+    if scope:
+        query = query.where(Pool.scope == scope)
+
+    pool = (await db.execute(query)).scalar_one_or_none()
     if not pool:
-        raise HTTPException(404, "池不存在")
+        raise HTTPException(status_code=404, detail="Pool not found")
 
-    # 归零关联岗位的 pool_id
-    await db.execute(
-        update(Job).where(Job.pool_id == pool_id).values(pool_id=None)
-    )
+    jobs = (await db.execute(select(Job).where(Job.pool_id == pool_id))).scalars().all()
+    for job in jobs:
+        job.pool_id = None
+
     await db.delete(pool)
     await db.commit()
+
+    return {"deleted": True, "moved_to_ungrouped": len(jobs)}

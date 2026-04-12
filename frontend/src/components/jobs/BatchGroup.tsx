@@ -20,7 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import { JobCard } from "@/components/jobs/JobCard";
-import type { Job, Batch, Pool } from "@/lib/hooks";
+import type { Job, BatchSummary, Pool } from "@/lib/hooks";
 
 const cardContainer = {
   hidden: { opacity: 0 },
@@ -33,7 +33,7 @@ const cardItem = {
 };
 
 interface BatchGroupProps {
-  batch: Batch | null;
+  batch: BatchSummary | null;
   jobs: Job[];
   batchMode: boolean;
   selectedIds: Set<number>;
@@ -60,8 +60,8 @@ export function BatchGroup({
   if (jobs.length === 0) return null;
 
   const batchJobIds = jobs.map((j) => j.id);
-  const dateStr = batch?.created_at
-    ? new Date(batch.created_at).toLocaleDateString("zh-CN", {
+  const dateStr = batch?.latest_created_at
+    ? new Date(batch.latest_created_at).toLocaleDateString("zh-CN", {
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -87,9 +87,9 @@ export function BatchGroup({
             <Chip size="sm" variant="flat" color="primary">
               {batch.source}
             </Chip>
-            {batch.keywords && (
+            {batch.keywords?.length > 0 && (
               <span className="text-sm text-white/70 truncate">
-                {batch.keywords}
+                {batch.keywords.join("、")}
               </span>
             )}
             {batch.location && (
@@ -187,12 +187,9 @@ export function BatchGroup({
                 >
                   <JobCard
                     job={job}
-                    selectable={batchMode}
+                    showCheckbox={batchMode}
                     selected={selectedIds.has(job.id)}
-                    onToggle={onToggleJob}
-                    triageStatus={triageStatus}
-                    onTriage={onTriage}
-                    pools={pools}
+                    onToggle={(id) => onToggleJob(id)}
                   />
                 </motion.div>
               ))}

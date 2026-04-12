@@ -28,7 +28,7 @@ import os
 import re
 import uuid
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
@@ -40,7 +40,7 @@ from jinja2 import Template
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
-from app.models.models import Resume, ResumeSection, ResumeTemplate, Job
+from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 
 router = APIRouter()
 
@@ -55,13 +55,16 @@ router = APIRouter()
 
 class ResumeCreate(BaseModel):
     """创建简历的请求体"""
-    user_name: str
+    user_name: str = ""
     title: str = "未命名简历"
     summary: str = ""
     contact_json: dict = Field(default_factory=dict)
     template_id: Optional[int] = None
     style_config: dict = Field(default_factory=dict)
     language: str = "zh"
+    source_mode: str = "manual"
+    source_job_ids: list[int] = Field(default_factory=list)
+    source_profile_snapshot: dict = Field(default_factory=dict)
 
 
 class ResumeUpdate(BaseModel):
@@ -74,6 +77,9 @@ class ResumeUpdate(BaseModel):
     style_config: Optional[dict] = None
     is_primary: Optional[bool] = None
     language: Optional[str] = None
+    source_mode: Optional[str] = None
+    source_job_ids: Optional[list[int]] = None
+    source_profile_snapshot: Optional[dict] = None
 
 
 class SectionCreate(BaseModel):
@@ -109,8 +115,10 @@ class SectionReorder(BaseModel):
 # =============================================
 
 
-def _serialize_resume_brief(r: Resume) -> dict:
+def _serialize_resume_brief(r: Resume, source_jobs_map: dict[int, dict] | None = None) -> dict:
     """序列化简历列表项（不含段落详情）"""
+    source_ids = _normalize_source_job_ids(r.source_job_ids)
+    source_jobs = _source_jobs_from_map(source_ids, source_jobs_map)
     return {
         "id": r.id,
         "user_name": r.user_name,
@@ -119,8 +127,10 @@ def _serialize_resume_brief(r: Resume) -> dict:
         "template_id": r.template_id,
         "is_primary": r.is_primary,
         "language": r.language,
-        "source_mode": r.source_mode or "manual",
-        "source_job_ids": r.source_job_ids or [],
+        "source_mode": r.source_mode,
+        "source_job_ids": source_ids,
+        "source_jobs": source_jobs,
+        "source_profile_snapshot": r.source_profile_snapshot or {},
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
     }
@@ -139,11 +149,47 @@ def _serialize_section(s: ResumeSection) -> dict:
     }
 
 
-def _serialize_resume_full(r: Resume) -> dict:
+def _normalize_source_job_ids(source_job_ids: Any) -> list[int]:
+    if not isinstance(source_job_ids, list):
+        return []
+    normalized: list[int] = []
+    for item in source_job_ids:
+        if isinstance(item, int) and item > 0:
+            normalized.append(item)
+            continue
+        if isinstance(item, str) and item.isdigit():
+            normalized.append(int(item))
+    return normalized
+
+
+def _source_jobs_from_map(source_ids: list[int], source_jobs_map: dict[int, dict] | None) -> list[dict]:
+    if not source_jobs_map:
+        return []
+    return [source_jobs_map[job_id] for job_id in source_ids if job_id in source_jobs_map]
+
+
+async def _load_source_jobs_map(db: AsyncSession, source_job_ids: list[int]) -> dict[int, dict]:
+    if not source_job_ids:
+        return {}
+    result = await db.execute(select(Job).where(Job.id.in_(source_job_ids)))
+    jobs = result.scalars().all()
+    return {
+        job.id: {
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+        }
+        for job in jobs
+    }
+
+
+def _serialize_resume_full(r: Resume, source_jobs_map: dict[int, dict] | None = None) -> dict:
     """
     序列化完整简历（含所有段落），用于编辑器页面。
     前端根据此结构渲染左侧编辑区和右侧 A4 预览。
     """
+    source_ids = _normalize_source_job_ids(r.source_job_ids)
+    source_jobs = _source_jobs_from_map(source_ids, source_jobs_map)
     return {
         "id": r.id,
         "user_name": r.user_name,
@@ -155,6 +201,10 @@ def _serialize_resume_full(r: Resume) -> dict:
         "style_config": r.style_config,
         "is_primary": r.is_primary,
         "language": r.language,
+        "source_mode": r.source_mode,
+        "source_job_ids": source_ids,
+        "source_jobs": source_jobs,
+        "source_profile_snapshot": r.source_profile_snapshot or {},
         "sections": [_serialize_section(s) for s in r.sections],
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
@@ -185,36 +235,16 @@ async def _get_resume_or_404(
 
 @router.get("/")
 async def list_resumes(db: AsyncSession = Depends(get_db)):
-    """获取所有简历（列表概览，不含段落详情，含溯源标签）"""
+    """获取所有简历（列表概览，不含段落详情）"""
     result = await db.execute(select(Resume).order_by(Resume.updated_at.desc()))
     resumes = result.scalars().all()
-
-    # 批量加载溯源岗位标题
-    all_job_ids = set()
-    for r in resumes:
-        if r.source_job_ids:
-            all_job_ids.update(r.source_job_ids)
-
-    job_title_map: dict[int, str] = {}
-    if all_job_ids:
-        jobs_result = await db.execute(
-            select(Job.id, Job.title, Job.company).where(Job.id.in_(all_job_ids))
-        )
-        for row in jobs_result.all():
-            job_title_map[row[0]] = f"{row[2]}-{row[1]}" if row[2] else row[1]
-
-    items = []
-    for r in resumes:
-        brief = _serialize_resume_brief(r)
-        # 溯源标签
-        if r.source_job_ids and job_title_map:
-            brief["source_label"] = "、".join(
-                job_title_map.get(jid, f"岗位#{jid}") for jid in r.source_job_ids[:3]
-            )
-            if len(r.source_job_ids) > 3:
-                brief["source_label"] += f" 等{len(r.source_job_ids)}个岗位"
-        items.append(brief)
-    return items
+    source_job_ids = sorted({
+        job_id
+        for resume in resumes
+        for job_id in _normalize_source_job_ids(resume.source_job_ids)
+    })
+    source_jobs_map = await _load_source_jobs_map(db, source_job_ids)
+    return [_serialize_resume_brief(r, source_jobs_map) for r in resumes]
 
 
 @router.post("/")
@@ -227,14 +257,43 @@ async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
     2. 自动创建默认段落（教育、经历、技能），方便用户直接编辑
     3. 返回完整简历（含段落）
     """
+    requested_user_name = (data.user_name or "").strip()
+    contact_json = {
+        str(key): value
+        for key, value in dict(data.contact_json or {}).items()
+        if isinstance(value, str) and value.strip()
+    }
+
+    # 新建简历时优先从默认档案补齐基础信息，避免用户重复填写
+    if not requested_user_name or not contact_json:
+        profile_result = await db.execute(
+            select(Profile).order_by(Profile.is_default.desc(), Profile.updated_at.desc())
+        )
+        profile = profile_result.scalars().first()
+        if profile:
+            base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
+            if not requested_user_name:
+                requested_user_name = str(base_info.get("name") or profile.name or "").strip()
+
+            for field in ("phone", "email", "linkedin", "github", "website", "wechat"):
+                value = str(base_info.get(field, "")).strip()
+                if value and not str(contact_json.get(field, "")).strip():
+                    contact_json[field] = value
+
+    if not requested_user_name:
+        requested_user_name = "默认候选人"
+
     resume = Resume(
-        user_name=data.user_name,
+        user_name=requested_user_name,
         title=data.title,
         summary=data.summary,
-        contact_json=data.contact_json,
+        contact_json=contact_json,
         template_id=data.template_id,
         style_config=data.style_config,
         language=data.language,
+        source_mode=data.source_mode,
+        source_job_ids=data.source_job_ids,
+        source_profile_snapshot=data.source_profile_snapshot,
     )
     db.add(resume)
     await db.flush()  # 获取 resume.id，但不提交事务
@@ -259,9 +318,9 @@ async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(resume)
 
     # 重新加载含段落的完整数据
-    return _serialize_resume_full(
-        await _get_resume_or_404(resume.id, db, load_sections=True)
-    )
+    fresh_resume = await _get_resume_or_404(resume.id, db, load_sections=True)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(fresh_resume.source_job_ids))
+    return _serialize_resume_full(fresh_resume, source_jobs_map)
 
 
 @router.get("/templates")
@@ -306,7 +365,8 @@ async def apply_template(resume_id: int, template_id: int, db: AsyncSession = De
 async def get_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     """获取完整简历详情（含所有段落），用于编辑器页面"""
     resume = await _get_resume_or_404(resume_id, db, load_sections=True)
-    return _serialize_resume_full(resume)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(resume.source_job_ids))
+    return _serialize_resume_full(resume, source_jobs_map)
 
 
 @router.put("/{resume_id}")
@@ -325,9 +385,9 @@ async def update_resume(
         setattr(resume, key, value)
     await db.commit()
     await db.refresh(resume)
-    return _serialize_resume_full(
-        await _get_resume_or_404(resume.id, db, load_sections=True)
-    )
+    fresh_resume = await _get_resume_or_404(resume.id, db, load_sections=True)
+    source_jobs_map = await _load_source_jobs_map(db, _normalize_source_job_ids(fresh_resume.source_job_ids))
+    return _serialize_resume_full(fresh_resume, source_jobs_map)
 
 
 @router.delete("/{resume_id}")
@@ -1169,23 +1229,10 @@ async def ai_batch_optimize(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    批量 AI 简历定制 — SSE 流式版本（sse-starlette 重构）
-    ─────────────────────────────────────────────────────
-    7 项生产级改进：
-      1. sse-starlette 自动 ping 心跳（15s）防止连接超时
-      2. request.is_disconnected() 检测客户端断开，立即停止处理
-      3. 每个 JD 独立 commit，不会因后续失败丢失已完成工作
-      4. SSE id 字段支持断线续传（Last-Event-ID）
-      5. event: error 独立事件类型，前端可精确区分
-      6. event: heartbeat 自定义心跳（Pipeline 执行期间）
-      7. 进度事件包含 processing 阶段信息
-
-    SSE 事件类型：
-      event: started    → 任务启动确认
-      event: processing → 正在处理某个岗位（立即推送，不等 Pipeline 结束）
-      event: progress   → 单个岗位处理完成
-      event: error      → 单个岗位处理失败
-      event: done       → 全部完成，附带汇总
+    批量 AI 简历定制 — SSE 流式版本
+    ─────────────────────────────────────────────
+        返回 text/event-stream，逐个岗位实时推送进度。
+        兼容断连检测和心跳，提升长连接稳定性。
     """
     import copy
     import json as _json
@@ -1194,7 +1241,7 @@ async def ai_batch_optimize(
 
     logger = logging.getLogger(__name__)
 
-    # ── 1. 预校验（在生成器外完成，HTTP 错误可以正常返回） ──
+    # ── 1. 预校验（在生成器外完成，否则异常无法正常返回 HTTP 错误） ──
     source = await _get_resume_or_404(resume_id, db, load_sections=True)
     source_data = _serialize_resume_full(source)
 
@@ -1217,7 +1264,6 @@ async def ai_batch_optimize(
         all_results = []
         event_id = 0
 
-        # 发送 started 事件
         event_id += 1
         yield ServerSentEvent(
             data=_json.dumps({"total": len(job_ids)}, ensure_ascii=False),
@@ -1226,27 +1272,12 @@ async def ai_batch_optimize(
         )
 
         for idx, job_id in enumerate(job_ids):
-            # ── 【修复 #2】检测客户端断开，立即停止 ──
             if await request.is_disconnected():
-                logger.info(f"客户端已断开,停止批量优化 (已完成 {idx}/{len(job_ids)})")
+                logger.info("客户端已断开，停止批量优化，已处理 %s/%s", idx, len(job_ids))
                 break
 
             job = jobs_map[job_id]
             jd_text = (job.raw_description or "").strip()
-
-            # ── 【修复 #7】立即推送 processing 事件 ──
-            event_id += 1
-            yield ServerSentEvent(
-                data=_json.dumps({
-                    "index": idx,
-                    "total": len(job_ids),
-                    "job_id": job_id,
-                    "job_title": job.title,
-                    "company": job.company,
-                }, ensure_ascii=False),
-                event="processing",
-                id=str(event_id),
-            )
 
             entry = {
                 "job_id": job_id,
@@ -1260,6 +1291,22 @@ async def ai_batch_optimize(
                 "index": idx,
                 "total": len(job_ids),
             }
+
+            event_id += 1
+            yield ServerSentEvent(
+                data=_json.dumps(
+                    {
+                        "index": idx,
+                        "total": len(job_ids),
+                        "job_id": job_id,
+                        "job_title": job.title,
+                        "company": job.company,
+                    },
+                    ensure_ascii=False,
+                ),
+                event="processing",
+                id=str(event_id),
+            )
 
             if not jd_text:
                 entry["status"] = "skipped"
@@ -1373,20 +1420,15 @@ async def ai_batch_optimize(
                     entry["suggestions_applied"] = applied_count
 
                 entry["status"] = "success"
-
-                # ── 【修复 #3】每个 JD 独立 commit ──
                 await db.commit()
 
             except Exception as e:
                 logger.error(f"批量优化岗位 {job_id} 失败: {e}")
                 entry["status"] = "failed"
                 entry["error"] = str(e)
-                # 回滚当前岗位的事务，不影响已成功的
                 await db.rollback()
 
             all_results.append(entry)
-
-            # ── 【修复 #4/#5】用对应事件类型 + id 字段推送 ──
             event_id += 1
             if entry["status"] == "failed":
                 yield ServerSentEvent(
@@ -1415,14 +1457,13 @@ async def ai_batch_optimize(
             id=str(event_id),
         )
 
-    # ── 【修复 #1】sse-starlette 自动 ping 心跳 + disconnect 检测 ──
     return EventSourceResponse(
         _stream(),
-        ping=15,                                      # 每 15 秒自动发心跳
-        send_timeout=60,                              # 单次发送超时 60s
+        ping=15,
+        send_timeout=60,
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",                # nginx 不缓冲
+            "X-Accel-Buffering": "no",  # nginx 不缓冲
         },
     )
 
