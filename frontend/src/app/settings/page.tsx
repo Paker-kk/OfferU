@@ -74,6 +74,7 @@ interface SettingsConfigPayload {
   top_n?: number;
   email_to?: string;
   sources_enabled?: string[];
+  profile_source_sync_enabled?: boolean;
 
   llm_provider?: string;
   llm_model?: string;
@@ -273,6 +274,7 @@ export default function SettingsPage() {
   const [topN, setTopN] = useState("15");
   const [emailTo, setEmailTo] = useState("");
   const [sourcesEnabled, setSourcesEnabled] = useState<string[]>(["linkedin"]);
+  const [profileSourceSyncEnabled, setProfileSourceSyncEnabled] = useState(false);
 
   const [bossCookie, setBossCookie] = useState("");
   const [zhilianCookie, setZhilianCookie] = useState("");
@@ -441,6 +443,7 @@ export default function SettingsPage() {
     setTopN(String(config.top_n || 15));
     setEmailTo(config.email_to || "");
     setSourcesEnabled(config.sources_enabled || ["linkedin"]);
+    setProfileSourceSyncEnabled(Boolean(config.profile_source_sync_enabled));
     setBossCookie(config.boss_cookie || "");
     setZhilianCookie(config.zhilian_cookie || "");
 
@@ -529,6 +532,11 @@ export default function SettingsPage() {
       const next = prev.includes(name) ? prev.filter((item) => item !== name) : [...prev, name];
       return next;
     });
+    markSettingsDirty();
+  };
+
+  const handleProfileSourceSyncChange = (enabled: boolean) => {
+    setProfileSourceSyncEnabled(enabled);
     markSettingsDirty();
   };
 
@@ -795,6 +803,7 @@ export default function SettingsPage() {
         top_n: parseInt(topN, 10) || 15,
         email_to: emailTo.trim(),
         sources_enabled: sourcesEnabled,
+        profile_source_sync_enabled: profileSourceSyncEnabled,
         boss_cookie: bossCookie.trim(),
         zhilian_cookie: zhilianCookie.trim(),
       });
@@ -1010,6 +1019,25 @@ export default function SettingsPage() {
               />
             </div>
           ))}
+        </CardBody>
+      </Card>
+
+      <Card className="bg-white/5 border border-white/10">
+        <CardBody className="space-y-4">
+          <h3 className="text-lg font-semibold">档案同步</h3>
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-3">
+            <div className="space-y-1">
+              <p className="text-sm text-white/85">档案源数据更新时，同步更新简历中已导入的对应条目</p>
+              <p className="text-xs text-white/45">
+                默认关闭。开启后当档案条目被编辑时，简历编辑页会提示你手动确认是否同步；档案删除永不删除简历内容。
+              </p>
+            </div>
+            <Switch
+              size="sm"
+              isSelected={profileSourceSyncEnabled}
+              onValueChange={handleProfileSourceSyncChange}
+            />
+          </div>
         </CardBody>
       </Card>
 

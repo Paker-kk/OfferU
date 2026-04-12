@@ -44,7 +44,31 @@ export interface Job {
   company_industry: string;
   company_logo: string;
   is_campus: boolean;
+  triage_status: "inbox" | "picked" | "ignored";
+  pool_id: number | null;
+  batch_id: string;
   created_at: string;
+}
+
+export interface Pool {
+  id: number;
+  name: string;
+  scope: "inbox" | "picked" | "ignored";
+  job_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BatchSummary {
+  batch_id: string;
+  source: string;
+  keywords: string[];
+  location: string;
+  total: number;
+  inbox_count: number;
+  picked_count: number;
+  ignored_count: number;
+  latest_created_at: string | null;
 }
 
 export interface JobsListResponse {
@@ -93,27 +117,46 @@ export interface Notification {
  */
 export interface JobFilters {
   page?: number;
+  page_size?: number;
   period?: string;
   source?: string;
   keyword?: string;
   job_type?: string;
   education?: string;
   is_campus?: boolean;
+  triage_status?: "inbox" | "picked" | "ignored";
+  pool_id?: number | "ungrouped";
+  batch_id?: string;
 }
 
 export function useJobs(filters: JobFilters = {}) {
   const params = new URLSearchParams();
   params.set("page", String(filters.page ?? 1));
+  if (filters.page_size) params.set("page_size", String(filters.page_size));
   if (filters.period) params.set("period", filters.period);
   if (filters.source) params.set("source", filters.source);
   if (filters.keyword) params.set("keyword", filters.keyword);
   if (filters.job_type) params.set("job_type", filters.job_type);
   if (filters.education) params.set("education", filters.education);
   if (filters.is_campus !== undefined) params.set("is_campus", String(filters.is_campus));
+  if (filters.triage_status) params.set("triage_status", filters.triage_status);
+  if (filters.pool_id !== undefined) params.set("pool_id", String(filters.pool_id));
+  if (filters.batch_id) params.set("batch_id", filters.batch_id);
   return useSWR<JobsListResponse>(
     `${API_BASE}/api/jobs/?${params}`,
     fetcher
   );
+}
+
+/** 获取批次汇总（Inbox 分区） */
+export function useJobBatches(limit = 30) {
+  return useSWR<BatchSummary[]>(`${API_BASE}/api/jobs/batches?limit=${limit}`, fetcher);
+}
+
+/** 获取岗位池列表 */
+export function usePools(scope?: "inbox" | "picked" | "ignored") {
+  const query = scope ? `?scope=${scope}` : "";
+  return useSWR<Pool[]>(`${API_BASE}/api/pools/${query}`, fetcher);
 }
 
 /** 获取单个岗位详情 */
@@ -179,6 +222,102 @@ export function useConfig() {
   );
 }
 
+/** 更新单个岗位分拣状态/池归属 */
+export async function patchJob(
+  id: number,
+  data: {
+    triage_status?: "inbox" | "picked" | "ignored";
+    pool_id?: number;
+    clear_pool?: boolean;
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/jobs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新岗位失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/** 批量更新岗位分拣状态/池归属 */
+export async function patchJobsBatch(data: {
+  job_ids: number[];
+  triage_status?: "inbox" | "picked" | "ignored";
+  pool_id?: number;
+  clear_pool?: boolean;
+}) {
+  const res = await fetch(`${API_BASE}/api/jobs/batch-update`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `批量更新失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/** 批量彻底删除岗位（仅回收站内） */
+export async function deleteJobsBatch(data: { job_ids: number[] }) {
+  const res = await fetch(`${API_BASE}/api/jobs/batch-delete`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `批量删除失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/** 创建岗位池 */
+export async function createPool(name: string, scope: "inbox" | "picked" | "ignored" = "picked") {
+  const res = await fetch(`${API_BASE}/api/pools/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, scope }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建池失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/** 重命名岗位池 */
+export async function updatePoolName(poolId: number, name: string, scope?: "inbox" | "picked" | "ignored") {
+  const query = scope ? `?scope=${scope}` : "";
+  const res = await fetch(`${API_BASE}/api/pools/${poolId}${query}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `重命名池失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/** 删除岗位池（池内岗位转为未分组） */
+export async function deletePoolById(poolId: number, scope?: "inbox" | "picked" | "ignored") {
+  const query = scope ? `?scope=${scope}` : "";
+  const res = await fetch(`${API_BASE}/api/pools/${poolId}${query}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除池失败 (${res.status})`);
+  }
+  return res.json();
+}
+
 // ---- 写操作（非 SWR，直接 fetch） ----
 
 /** 更新系统配置 */
@@ -226,7 +365,50 @@ export async function createResume(data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建简历失败 (${res.status})`);
+  }
   return res.json();
+}
+
+export interface ResumeSourceJob {
+  id: number;
+  title: string;
+  company: string;
+}
+
+export interface ResumeBrief {
+  id: number;
+  user_name: string;
+  title: string;
+  photo_url: string;
+  template_id: number | null;
+  is_primary: boolean;
+  language: string;
+  source_mode: string;
+  source_job_ids: number[];
+  source_jobs: ResumeSourceJob[];
+  source_profile_snapshot: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeSectionBlock {
+  id: number;
+  resume_id: number;
+  section_type: string;
+  sort_order: number;
+  title: string;
+  visible: boolean;
+  content_json: any[];
+}
+
+export interface ResumeDetail extends ResumeBrief {
+  summary: string;
+  contact_json: Record<string, any>;
+  style_config: Record<string, any>;
+  sections: ResumeSectionBlock[];
 }
 
 /** 更新简历主信息 */
@@ -236,23 +418,31 @@ export async function updateResume(id: number, data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新简历失败 (${res.status})`);
+  }
   return res.json();
 }
 
 /** 删除简历 */
 export async function deleteResume(id: number) {
   const res = await fetch(`${API_BASE}/api/resume/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除简历失败 (${res.status})`);
+  }
   return res.json();
 }
 
 /** 获取简历列表 */
 export function useResumes() {
-  return useSWR(`${API_BASE}/api/resume/`, fetcher);
+  return useSWR<ResumeBrief[]>(`${API_BASE}/api/resume/`, fetcher);
 }
 
 /** 获取完整简历详情（含段落） */
 export function useResume(id: number | null) {
-  return useSWR(id ? `${API_BASE}/api/resume/${id}` : null, fetcher);
+  return useSWR<ResumeDetail>(id ? `${API_BASE}/api/resume/${id}` : null, fetcher);
 }
 
 /** 更新段落 */
@@ -262,6 +452,10 @@ export async function updateSection(resumeId: number, sectionId: number, data: a
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新段落失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -272,6 +466,10 @@ export async function createSection(resumeId: number, data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建段落失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -280,7 +478,364 @@ export async function deleteSection(resumeId: number, sectionId: number) {
   const res = await fetch(`${API_BASE}/api/resume/${resumeId}/sections/${sectionId}`, {
     method: "DELETE",
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除段落失败 (${res.status})`);
+  }
   return res.json();
+}
+
+// ---- Profile 档案引导 ----
+
+export type ProfileTopic =
+  | "education"
+  | "experience"
+  | "project"
+  | "activity"
+  | "skill"
+  | "general";
+
+export interface ProfileTargetRole {
+  id: number;
+  profile_id: number;
+  role_name: string;
+  role_level: string;
+  fit: "primary" | "secondary" | "adjacent";
+  created_at: string;
+}
+
+export interface ProfileSection {
+  id: number;
+  profile_id: number;
+  section_type: string;
+  raw_section_type?: string;
+  category_key?: string;
+  category_label?: string;
+  is_custom_category?: boolean;
+  parent_id: number | null;
+  title: string;
+  sort_order: number;
+  content_json: Record<string, any>;
+  field_values?: Record<string, any>;
+  normalized?: Record<string, any>;
+  source: string;
+  confidence: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileCategoryOption {
+  key: string;
+  label: string;
+  is_custom: boolean;
+}
+
+export interface ProfileCategoryList {
+  builtin: ProfileCategoryOption[];
+  custom: ProfileCategoryOption[];
+  all: ProfileCategoryOption[];
+}
+
+export interface ProfileData {
+  id: number;
+  name: string;
+  headline: string;
+  exit_story: string;
+  cross_cutting_advantage: string;
+  base_info_json: Record<string, any>;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  target_roles: ProfileTargetRole[];
+  sections: ProfileSection[];
+}
+
+export interface ProfileBulletCandidate {
+  index: number;
+  session_id: number;
+  section_type: string;
+  title: string;
+  content_json: Record<string, any>;
+  confidence: number;
+}
+
+export interface ProfileStreamEvent {
+  event: string;
+  data: any;
+}
+
+export interface ProfileChatSessionSummary {
+  id: number;
+  profile_id: number;
+  topic: string;
+  status: string;
+  extracted_bullets_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileSessionCandidate {
+  section_type: string;
+  title: string;
+  content_json: Record<string, any>;
+  confidence: number;
+}
+
+export interface ProfileChatSessionDetail extends ProfileChatSessionSummary {
+  messages_json: any[];
+  latest_candidates: ProfileSessionCandidate[];
+}
+
+export interface ProfileImportResult {
+  session_id: number;
+  filename: string;
+  text_length: number;
+  bullets: ProfileBulletCandidate[];
+}
+
+export function useProfile() {
+  return useSWR<ProfileData>(`${API_BASE}/api/profile/`, fetcher);
+}
+
+export function useProfileCategories() {
+  return useSWR<ProfileCategoryList>(`${API_BASE}/api/profile/categories`, fetcher);
+}
+
+export function useProfileChatSessions(limit = 20) {
+  return useSWR<ProfileChatSessionSummary[]>(
+    `${API_BASE}/api/profile/chat/sessions?limit=${limit}`,
+    fetcher
+  );
+}
+
+export function useProfileChatSessionDetail(sessionId: number | null) {
+  return useSWR<ProfileChatSessionDetail>(
+    sessionId ? `${API_BASE}/api/profile/chat/sessions/${sessionId}` : null,
+    fetcher
+  );
+}
+
+export async function updateProfileData(data: {
+  name?: string;
+  headline?: string;
+  exit_story?: string;
+  cross_cutting_advantage?: string;
+  base_info_json?: Record<string, any>;
+}) {
+  const res = await fetch(`${API_BASE}/api/profile/`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新档案失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileData>;
+}
+
+export async function createProfileTargetRole(data: {
+  role_name: string;
+  role_level?: string;
+  fit?: "primary" | "secondary" | "adjacent";
+}) {
+  const res = await fetch(`${API_BASE}/api/profile/target-roles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `新增目标岗位失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileTargetRole>;
+}
+
+export async function deleteProfileTargetRole(roleId: number) {
+  const res = await fetch(`${API_BASE}/api/profile/target-roles/${roleId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除目标岗位失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function createProfileSection(data: {
+  section_type: string;
+  category_label?: string;
+  title?: string;
+  sort_order?: number;
+  content_json?: Record<string, any>;
+  source?: string;
+  confidence?: number;
+}) {
+  const res = await fetch(`${API_BASE}/api/profile/sections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建档案条目失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileSection>;
+}
+
+export async function updateProfileSectionData(
+  sectionId: number,
+  data: {
+    section_type?: string;
+    category_label?: string;
+    title?: string;
+    sort_order?: number;
+    content_json?: Record<string, any>;
+    source?: string;
+    confidence?: number;
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/profile/sections/${sectionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新档案条目失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileSection>;
+}
+
+export async function deleteProfileSectionData(sectionId: number) {
+  const res = await fetch(`${API_BASE}/api/profile/sections/${sectionId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除档案条目失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function streamProfileChat(
+  payload: { topic: ProfileTopic; message: string; session_id?: number | null },
+  options?: {
+    signal?: AbortSignal;
+    onEvent?: (event: ProfileStreamEvent) => void;
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/profile/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `档案对话失败 (${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const findBoundary = (text: string) => {
+    const unix = text.indexOf("\n\n");
+    const windows = text.indexOf("\r\n\r\n");
+    if (unix === -1) return windows;
+    if (windows === -1) return unix;
+    return Math.min(unix, windows);
+  };
+
+  const emit = (chunk: string) => {
+    let eventName = "message";
+    const dataLines: string[] = [];
+
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim() || "message";
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) return;
+    const dataText = dataLines.join("\n");
+    let data: any = dataText;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      // keep raw text when server payload is non-json
+    }
+    options?.onEvent?.({ event: eventName, data });
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = findBoundary(buffer);
+    while (boundary >= 0) {
+      const separatorLength = buffer.slice(boundary, boundary + 4) === "\r\n\r\n" ? 4 : 2;
+      const block = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + separatorLength);
+      if (block) emit(block);
+      boundary = findBoundary(buffer);
+    }
+  }
+
+  const tail = buffer.trim();
+  if (tail) emit(tail);
+}
+
+export async function importProfileResume(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/profile/import-resume`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `导入简历失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileImportResult>;
+}
+
+export async function confirmProfileCandidate(data: {
+  session_id: number;
+  bullet_index: number;
+  edits?: Record<string, any>;
+}) {
+  const res = await fetch(`${API_BASE}/api/profile/chat/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `确认条目失败 (${res.status})`);
+  }
+  return res.json() as Promise<ProfileSection>;
+}
+
+export async function generateProfileNarrative() {
+  const res = await fetch(`${API_BASE}/api/profile/generate-narrative`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `生成叙事失败 (${res.status})`);
+  }
+  return res.json() as Promise<{
+    headline: string;
+    exit_story: string;
+    cross_cutting_advantage: string;
+  }>;
 }
 
 // ---- AI 简历优化 ----
@@ -764,4 +1319,128 @@ export async function batchOptimizeResume(
   }
 
   return finalResult || { total: jobIds.length, success: 0, results: [] };
+}
+
+// ---- Optimize 工作区（Profile -> JD 生成）----
+
+export interface OptimizeGenerateRequest {
+  job_ids: number[];
+  mode: "per_job" | "combined";
+  reference_resume_id?: number;
+}
+
+export interface OptimizeUsedBullet {
+  id: number;
+  section_type: string;
+  title: string;
+}
+
+export interface OptimizeGenerateResult {
+  mode: "per_job" | "combined";
+  resume_id: number;
+  resume_title: string;
+  reference_resume_id?: number | null;
+  job_id?: number;
+  job_title?: string;
+  job_ids?: number[];
+  used_bullets: OptimizeUsedBullet[];
+  missing_keywords: string[];
+  profile_hit_ratio: string;
+  index?: number;
+  total?: number;
+}
+
+export interface OptimizeProgressEvent {
+  index: number;
+  total: number;
+  status: "success" | "failed";
+  job_id?: number;
+  job_title?: string;
+  mode?: "per_job" | "combined";
+}
+
+export interface OptimizeDoneEvent {
+  mode: "per_job" | "combined";
+  total: number;
+  created: number;
+  failed: number;
+  resume_ids: number[];
+}
+
+export interface OptimizeStreamEvent {
+  event: string;
+  data: any;
+}
+
+export async function streamOptimizeGenerate(
+  payload: OptimizeGenerateRequest,
+  options?: {
+    signal?: AbortSignal;
+    onEvent?: (event: OptimizeStreamEvent) => void;
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/optimize/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `定制生成失败 (${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const findBoundary = (text: string) => {
+    const unix = text.indexOf("\n\n");
+    const windows = text.indexOf("\r\n\r\n");
+    if (unix === -1) return windows;
+    if (windows === -1) return unix;
+    return Math.min(unix, windows);
+  };
+
+  const emit = (chunk: string) => {
+    let eventName = "message";
+    const dataLines: string[] = [];
+
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim() || "message";
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) return;
+    const dataText = dataLines.join("\n");
+    let data: any = dataText;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      // server may send raw text payload in exceptional cases
+    }
+    options?.onEvent?.({ event: eventName, data });
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = findBoundary(buffer);
+    while (boundary >= 0) {
+      const separatorLength = buffer.slice(boundary, boundary + 4) === "\r\n\r\n" ? 4 : 2;
+      const block = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + separatorLength);
+      if (block) emit(block);
+      boundary = findBoundary(buffer);
+    }
+  }
+
+  const tail = buffer.trim();
+  if (tail) emit(tail);
 }

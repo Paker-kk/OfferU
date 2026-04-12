@@ -40,6 +40,7 @@ async def init_db():
         # 轻量级迁移：检查已有表并补全缺失列（仅 SQLite）
         await conn.run_sync(_auto_migrate)
     await seed_templates()
+    await seed_system_batches()
 
 
 def _auto_migrate(connection):
@@ -157,3 +158,25 @@ async def seed_templates():
                 session.add(ResumeTemplate(**tpl))
 
         await session.commit()
+
+
+async def seed_system_batches():
+    """确保历史数据的默认批次存在，便于 Inbox 按批次分区展示"""
+    from app.models.models import Batch
+    from sqlalchemy import select
+
+    async with async_session() as session:
+        existing = (
+            await session.execute(select(Batch).where(Batch.id == "legacy-import"))
+        ).scalar_one_or_none()
+        if not existing:
+            session.add(
+                Batch(
+                    id="legacy-import",
+                    source="legacy",
+                    keywords=["historical"],
+                    location="",
+                    total_fetched=0,
+                )
+            )
+            await session.commit()

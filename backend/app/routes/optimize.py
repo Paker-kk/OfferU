@@ -1,418 +1,628 @@
 # =============================================
-# Optimize 路由 — AI 简历定制生成工作区
+# Optimize 路由 — Profile 驱动的简历生成工作区
 # =============================================
-# POST /api/optimize/generate  → SSE 流式生成简历
-#   body: {job_ids, mode, reference_resume_id?}
-#   events: progress / result / error / done / heartbeat
-#
-# 核心逻辑：
-#   1. 加载 Profile bullets + 目标 JD
-#   2. 按 JD 关键词召回最相关的 bullets
-#   3. 组装成简历骨架 → 改写润色
-#   4. 保存为新 Resume 记录
+# POST /api/optimize/generate
+# 输入：job_ids + mode
+# 输出：SSE progress/result/error/done
 # =============================================
+
+from __future__ import annotations
 
 import json
-import asyncio
-import logging
-from typing import Optional
+import re
+from collections import Counter, defaultdict
+from typing import Iterable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from sse_starlette import EventSourceResponse
 
 from app.database import get_db
-from app.models.models import (
-    Job, Profile, ProfileSection, ProfileTargetRole,
-    Resume, ResumeSection,
-)
-from app.agents.llm import chat_completion, extract_json
+from app.models.models import Job, Profile, ProfileSection, Resume, ResumeSection
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+
+STOPWORDS = {
+    "and",
+    "the",
+    "for",
+    "with",
+    "you",
+    "your",
+    "that",
+    "this",
+    "have",
+    "from",
+    "will",
+    "are",
+    "was",
+    "our",
+    "职位",
+    "岗位",
+    "负责",
+    "要求",
+    "能力",
+    "熟悉",
+    "相关",
+    "以上",
+    "优先",
+    "具备",
+}
+
+SECTION_TYPE_MAP = {
+    "education": "education",
+    "experience": "experience",
+    "internship": "experience",
+    "project": "project",
+    "activity": "custom",
+    "competition": "custom",
+    "skill": "skill",
+    "certificate": "skill",
+    "language": "skill",
+    "honor": "custom",
+    "general": "custom",
+    "custom": "custom",
+}
+
+SECTION_TITLE_MAP = {
+    "education": "教育经历",
+    "experience": "实践经历",
+    "project": "项目经历",
+    "skill": "技能清单",
+    "custom": "补充亮点",
+}
+
+MAX_OPTIMIZE_JOB_COUNT = 20
 
 
-# =============================================
-# 请求/响应模型
-# =============================================
-
-class GenerateRequest(BaseModel):
-    job_ids: list[int]
-    mode: str = "per_job"  # per_job / combined
-    reference_resume_id: Optional[int] = None
+class OptimizeGenerateRequest(BaseModel):
+    job_ids: list[int] = Field(..., min_length=1, max_length=200)
+    mode: Literal["per_job", "combined"] = "per_job"
+    reference_resume_id: int | None = None
 
 
-# =============================================
-# Prompt 模板
-# =============================================
-
-BULLET_RECALL_PROMPT = """你是简历定制专家。根据目标岗位 JD，从候选人的 Profile Bullet 池中选出最相关的条目，并按相关性排序。
-
-## 目标岗位 JD
-{jd_text}
-
-## 候选人 Profile Bullets
-{bullets_text}
-
-## 输出 JSON
-{{
-  "selected_bullets": [
-    {{
-      "id": <bullet的原始序号>,
-      "section_type": "education|internship|project|activity|skill|...",
-      "title": "条目标题",
-      "relevance": "high|medium|low",
-      "reason": "为什么这条和JD相关（一句话）"
-    }}
-  ],
-  "missing_capabilities": ["JD要求但Profile中没有的能力"],
-  "match_rate": "N/M"
-}}
-
-只选相关性 medium 以上的条目。最多选 15 条。"""
-
-ASSEMBLE_PROMPT = """你是校招简历写作专家。根据以下信息生成一份完整的简历内容。
-
-## 候选人基础信息
-{basic_info}
-
-## 目标岗位
-{job_info}
-
-## 选中的 Profile Bullets（按相关性排序）
-{selected_bullets}
-
-## 核心规则
-1. **零虚构**：只能使用上面提供的 Bullet 内容，绝不凭空添加事实
-2. **STAR 改写**：优化每条 Bullet 的表达，突出成果和数据
-3. **关键词嵌入**：将 JD 中的关键词自然融入描述
-4. **校招适配**：把实习/项目/社团当正式经历对待
-5. **结构清晰**：按 教育背景 → 实习经历 → 项目经历 → 校园活动 → 技能证书 排序
-
-## 输出 JSON
-{{
-  "title": "简历标题（如：张三-产品运营-XX大学）",
-  "summary": "3句话的个人简介/求职意向",
-  "sections": [
-    {{
-      "section_type": "education|experience|project|skill|activity",
-      "title": "段落标题（如：教育背景）",
-      "content_json": [
-        {{
-          "subtitle": "子标题（如：公司名+职位 / 学校名+专业）",
-          "date_range": "时间范围",
-          "description": "STAR法改写后的描述（HTML格式，用<ul><li>）"
-        }}
-      ]
-    }}
-  ],
-  "used_bullet_ids": [1, 3, 5],
-  "missing_capabilities": ["JD要求但简历中缺失的能力"]
-}}"""
+def _ordered_unique_ids(ids: list[int]) -> list[int]:
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for item in ids:
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
 
 
-# =============================================
-# 辅助函数
-# =============================================
+def _to_tokens(text: str) -> list[str]:
+    words = re.findall(r"[a-zA-Z0-9\u4e00-\u9fff]+", (text or "").lower())
+    return [w for w in words if len(w) >= 2 and w not in STOPWORDS]
 
-def _format_bullets(sections: list[ProfileSection]) -> str:
-    """将 Profile sections 格式化为带序号的文本"""
-    lines = []
-    for i, s in enumerate(sections):
-        content = s.content_json or {}
-        org = content.get("organization", "")
-        role = content.get("role", "")
-        desc = content.get("description", "")
-        lines.append(
-            f"[{i}] [{s.section_type}] {s.title}"
-            f" | 组织: {org} | 角色: {role}"
-            f" | 描述: {desc}"
+
+def _bullet_text(section: ProfileSection) -> str:
+    payload = section.content_json or {}
+    if isinstance(payload, dict):
+        bullet = payload.get("bullet")
+        if isinstance(bullet, str) and bullet.strip():
+            return bullet.strip()
+    return section.title or ""
+
+
+def _rank_profile_sections(sections: list[ProfileSection], jd_text: str, limit: int = 12) -> list[tuple[ProfileSection, int]]:
+    jd_tokens = set(_to_tokens(jd_text))
+    scored: list[tuple[ProfileSection, int, float]] = []
+
+    for section in sections:
+        text = f"{section.title} {_bullet_text(section)}"
+        overlap = len(jd_tokens.intersection(set(_to_tokens(text))))
+        scored.append((section, overlap, float(section.confidence or 0.0)))
+
+    scored.sort(key=lambda item: (item[1], item[2]), reverse=True)
+    picked = scored[:limit] if scored else []
+
+    if picked and picked[0][1] <= 0:
+        # JD 与档案几乎无词面重叠时，退化为按置信度挑选
+        scored.sort(key=lambda item: item[2], reverse=True)
+        picked = scored[:limit]
+
+    return [(section, overlap) for section, overlap, _ in picked]
+
+
+def _keywords_from_bullets(texts: Iterable[str], limit: int = 10) -> list[str]:
+    words: list[str] = []
+    for text in texts:
+        words.extend(_to_tokens(text))
+    if not words:
+        return []
+    counter = Counter(words)
+    return [token for token, _ in counter.most_common(limit)]
+
+
+def _missing_keywords(job_text: str, used_texts: Iterable[str], limit: int = 8) -> list[str]:
+    job_counter = Counter(_to_tokens(job_text))
+    used = set(_to_tokens(" ".join(used_texts)))
+    missing = [token for token, _ in job_counter.most_common() if token not in used]
+    return missing[:limit]
+
+
+def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+
+    for section in selected:
+        mapped = SECTION_TYPE_MAP.get((section.section_type or "general").lower(), "custom")
+        bullet = _bullet_text(section)
+
+        if mapped == "education":
+            grouped[mapped].append(
+                {
+                    "school": section.title or "教育经历",
+                    "degree": "",
+                    "major": "",
+                    "description": bullet,
+                }
+            )
+            continue
+
+        if mapped == "experience":
+            grouped[mapped].append(
+                {
+                    "company": section.title or "实践经历",
+                    "position": "",
+                    "description": bullet,
+                }
+            )
+            continue
+
+        if mapped == "project":
+            grouped[mapped].append(
+                {
+                    "name": section.title or "项目经历",
+                    "role": "",
+                    "description": bullet,
+                }
+            )
+            continue
+
+        if mapped == "skill":
+            keywords = _keywords_from_bullets([bullet], limit=8)
+            grouped[mapped].append(
+                {
+                    "category": section.title or "核心技能",
+                    "items": keywords or [bullet],
+                }
+            )
+            continue
+
+        grouped[mapped].append(
+            {
+                "subtitle": section.title or "补充亮点",
+                "description": bullet,
+            }
         )
-    return "\n".join(lines)
+
+    ordered_types = ["education", "experience", "project", "skill", "custom"]
+    rows: list[dict] = []
+    for index, section_type in enumerate(ordered_types):
+        content = grouped.get(section_type)
+        if not content:
+            continue
+        rows.append(
+            {
+                "section_type": section_type,
+                "title": SECTION_TITLE_MAP[section_type],
+                "sort_order": index,
+                "visible": True,
+                "content_json": content,
+            }
+        )
+    return rows
 
 
-def _format_job(job: Job) -> str:
-    """格式化 JD 为文本"""
-    parts = [f"岗位: {job.title}", f"公司: {job.company}"]
-    if job.location:
-        parts.append(f"地点: {job.location}")
-    if job.raw_description:
-        # 截取前 2000 字避免 token 过长
-        desc = job.raw_description[:2000]
-        parts.append(f"JD原文:\n{desc}")
-    return "\n".join(parts)
+def _profile_to_contact_json(profile: Profile) -> dict:
+    info = profile.base_info_json or {}
+    if not isinstance(info, dict):
+        info = {}
+    contact = {
+        "email": info.get("email") or getattr(profile, "email", "") or "",
+        "phone": info.get("phone") or getattr(profile, "phone", "") or "",
+        "wechat": info.get("wechat") or getattr(profile, "wechat", "") or "",
+    }
+    return {key: value for key, value in contact.items() if isinstance(value, str) and value.strip()}
 
 
-# =============================================
-# 核心生成逻辑
-# =============================================
+def _build_source_profile_snapshot(profile: Profile, selected: list[ProfileSection]) -> dict:
+    return {
+        "profile_id": profile.id,
+        "profile_updated_at": str(profile.updated_at),
+        "selected_section_ids": [item.id for item in selected],
+        "selected_count": len(selected),
+    }
+
+
+def _sse(event: str, payload: dict) -> str:
+    body = json.dumps(payload, ensure_ascii=False)
+    return f"event: {event}\ndata: {body}\n\n"
+
+
+async def _get_default_profile(db: AsyncSession) -> Profile:
+    result = await db.execute(
+        select(Profile).order_by(Profile.is_default.desc(), Profile.updated_at.desc())
+    )
+    profile = result.scalars().first()
+    if not profile:
+        raise HTTPException(status_code=400, detail="请先在 Profile 页面建立个人档案")
+    return profile
+
+
+async def _get_profile_sections(profile_id: int, db: AsyncSession) -> list[ProfileSection]:
+    result = await db.execute(
+        select(ProfileSection)
+        .where(ProfileSection.profile_id == profile_id)
+        .order_by(ProfileSection.sort_order.asc(), ProfileSection.updated_at.desc())
+    )
+    sections = list(result.scalars().all())
+    if not sections:
+        raise HTTPException(status_code=400, detail="档案条目为空，请先在 Profile 页面确认至少 1 条事实")
+    return sections
+
+
+async def _create_generated_resume(
+    *,
+    db: AsyncSession,
+    profile: Profile,
+    title: str,
+    summary: str,
+    source_mode: str,
+    source_job_ids: list[int],
+    contact_json: dict,
+    style_config: dict,
+    template_id: int | None,
+    source_profile_snapshot: dict,
+    rows: list[dict],
+) -> Resume:
+    resume = Resume(
+        user_name=profile.name or "默认候选人",
+        title=title,
+        summary=summary,
+        contact_json=contact_json,
+        style_config=style_config,
+        template_id=template_id,
+        is_primary=False,
+        language="zh",
+        source_mode=source_mode,
+        source_job_ids=source_job_ids,
+        source_profile_snapshot=source_profile_snapshot,
+    )
+    db.add(resume)
+    await db.flush()
+
+    for row in rows:
+        db.add(
+            ResumeSection(
+                resume_id=resume.id,
+                section_type=row["section_type"],
+                sort_order=row["sort_order"],
+                title=row["title"],
+                visible=True,
+                content_json=row["content_json"],
+            )
+        )
+
+    await db.commit()
+    await db.refresh(resume)
+    return resume
+
 
 async def _generate_for_job(
     profile: Profile,
     job: Job,
     sections: list[ProfileSection],
     db: AsyncSession,
+    reference_resume: Resume | None = None,
 ) -> dict:
-    """为单个岗位生成定制简历"""
+    """供 MCP/Agent 复用的单岗位生成入口。"""
+    jd_text = (job.raw_description or "").strip()
+    if not jd_text:
+        raise HTTPException(status_code=400, detail=f"岗位 {job.id} 缺少 JD 文本")
 
-    # Step 1: Bullet 召回 — 从 Profile 池中选出与 JD 最相关的条目
-    bullets_text = _format_bullets(sections)
-    jd_text = _format_job(job)
+    ranked = _rank_profile_sections(sections, jd_text, limit=12)
+    selected = [item[0] for item in ranked]
+    rows = _build_resume_sections(selected)
 
-    recall_prompt = BULLET_RECALL_PROMPT.format(
-        jd_text=jd_text,
-        bullets_text=bullets_text,
+    base_contact_json = (
+        (reference_resume.contact_json or {})
+        if reference_resume and isinstance(reference_resume.contact_json, dict)
+        else _profile_to_contact_json(profile)
     )
-
-    recall_result = await chat_completion(
-        messages=[
-            {"role": "system", "content": "你是简历定制专家，请严格按 JSON 格式输出。"},
-            {"role": "user", "content": recall_prompt},
-        ],
-        json_mode=True,
+    base_style_config = (
+        (reference_resume.style_config or {})
+        if reference_resume and isinstance(reference_resume.style_config, dict)
+        else {}
     )
-    recall_data = extract_json(recall_result)
-    if not recall_data or "selected_bullets" not in recall_data:
-        recall_data = {"selected_bullets": [], "missing_capabilities": [], "match_rate": "0/0"}
+    base_template_id = reference_resume.template_id if reference_resume else None
+    base_summary = profile.headline or profile.exit_story or ""
+    if not base_summary and reference_resume and isinstance(reference_resume.summary, str):
+        base_summary = reference_resume.summary
 
-    # Step 2: 组装 + 改写 — 用选中的 bullets 生成完整简历
-    selected = recall_data.get("selected_bullets", [])
-    if not selected:
-        return {
-            "job_id": job.id,
-            "job_title": job.title,
-            "company": job.company,
-            "error": "未找到与该JD相关的档案条目，请先完善个人档案",
-            "match_rate": recall_data.get("match_rate", "0/0"),
-        }
-
-    # 构造选中 bullets 的详细文本
-    selected_text_lines = []
-    for sb in selected:
-        idx = sb.get("id", 0)
-        if 0 <= idx < len(sections):
-            s = sections[idx]
-            content = s.content_json or {}
-            selected_text_lines.append(
-                f"- [{sb.get('relevance', 'medium')}] {s.title}: "
-                f"{content.get('description', '')} "
-                f"(组织: {content.get('organization', '')})"
-            )
-        else:
-            selected_text_lines.append(f"- {sb.get('title', '')}: {sb.get('reason', '')}")
-
-    basic_info = f"{profile.name} | {profile.school} {profile.major} {profile.degree}"
-    if profile.email:
-        basic_info += f" | {profile.email}"
-    if profile.phone:
-        basic_info += f" | {profile.phone}"
-    if profile.headline:
-        basic_info += f"\n一句话定位: {profile.headline}"
-
-    job_info = f"{job.title} @ {job.company}"
-    if job.location:
-        job_info += f" ({job.location})"
-
-    assemble_prompt = ASSEMBLE_PROMPT.format(
-        basic_info=basic_info,
-        job_info=job_info,
-        selected_bullets="\n".join(selected_text_lines),
-    )
-
-    assemble_result = await chat_completion(
-        messages=[
-            {"role": "system", "content": "你是校招简历写作专家，请严格按 JSON 格式输出。"},
-            {"role": "user", "content": assemble_prompt},
-        ],
-        json_mode=True,
-    )
-    resume_data = extract_json(assemble_result)
-    if not resume_data:
-        return {
-            "job_id": job.id,
-            "job_title": job.title,
-            "company": job.company,
-            "error": "AI 生成简历失败，请重试",
-        }
-
-    # Step 3: 保存为新 Resume 记录
-    resume = Resume(
-        user_name=profile.name or "未命名",
-        title=resume_data.get("title", f"{profile.name}-{job.title}"),
-        summary=resume_data.get("summary", ""),
-        source_job_ids=[job.id],
+    resume = await _create_generated_resume(
+        db=db,
+        profile=profile,
+        title=f"{job.company} - {job.title} 定制简历",
+        summary=base_summary,
         source_mode="per_job",
+        source_job_ids=[job.id],
+        contact_json=base_contact_json,
+        style_config=base_style_config,
+        template_id=base_template_id,
+        source_profile_snapshot=_build_source_profile_snapshot(profile, selected),
+        rows=rows,
     )
-    db.add(resume)
-    await db.flush()  # 获取 resume.id
 
-    # 保存段落
-    for idx, sec_data in enumerate(resume_data.get("sections", [])):
-        section = ResumeSection(
-            resume_id=resume.id,
-            section_type=sec_data.get("section_type", "custom"),
-            sort_order=idx,
-            title=sec_data.get("title", ""),
-            content_json=sec_data.get("content_json", []),
-        )
-        db.add(section)
-
-    await db.commit()
-    await db.refresh(resume)
+    used_bullets = [
+        {
+            "id": section.id,
+            "section_type": section.section_type,
+            "title": section.title,
+        }
+        for section in selected
+    ]
+    used_texts = [_bullet_text(section) for section in selected]
+    missing_keywords = _missing_keywords(jd_text, used_texts)
 
     return {
         "job_id": job.id,
         "job_title": job.title,
-        "company": job.company,
         "resume_id": resume.id,
         "resume_title": resume.title,
-        "summary": resume.summary,
-        "sections_count": len(resume_data.get("sections", [])),
-        "match_rate": recall_data.get("match_rate", ""),
-        "missing_capabilities": recall_data.get("missing_capabilities", []),
-        "used_bullets": len(selected),
+        "used_bullets": used_bullets,
+        "used_bullets_count": len(used_bullets),
+        "missing_keywords": missing_keywords,
+        "missing_capabilities": missing_keywords,
+        "profile_hit_ratio": f"{len(selected)}/{len(sections)}",
+        "match_rate": f"{len(selected)}/{len(sections)}",
     }
 
 
-# =============================================
-# SSE 流式端点
-# =============================================
-
 @router.post("/generate")
-async def generate_resumes(body: GenerateRequest, db: AsyncSession = Depends(get_db)):
-    """
-    AI 简历定制生成 — SSE 流式
-    events: progress / result / error / done / heartbeat
-    """
-    if not body.job_ids:
-        raise HTTPException(400, "请选择至少一个岗位")
+async def optimize_generate(
+    data: OptimizeGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await _get_default_profile(db)
+    profile_sections = await _get_profile_sections(profile.id, db)
 
-    # 加载 Profile
-    profile_result = await db.execute(
-        select(Profile)
-        .where(Profile.is_default == True)
-        .options(
-            selectinload(Profile.sections),
-            selectinload(Profile.target_roles),
+    reference_resume: Resume | None = None
+    if data.reference_resume_id is not None:
+        ref_result = await db.execute(select(Resume).where(Resume.id == data.reference_resume_id))
+        reference_resume = ref_result.scalar_one_or_none()
+        if not reference_resume:
+            raise HTTPException(status_code=404, detail="reference_resume_id 对应简历不存在")
+
+    effective_job_ids = _ordered_unique_ids(data.job_ids)
+    if len(effective_job_ids) > MAX_OPTIMIZE_JOB_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"单次最多生成 {MAX_OPTIMIZE_JOB_COUNT} 个岗位，请分批操作",
         )
+
+    jobs_result = await db.execute(select(Job).where(Job.id.in_(effective_job_ids)))
+    job_map = {job.id: job for job in jobs_result.scalars().all()}
+    missing = [job_id for job_id in effective_job_ids if job_id not in job_map]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"以下岗位不存在: {missing}")
+
+    ordered_jobs = [job_map[job_id] for job_id in effective_job_ids]
+
+    base_contact_json = (
+        (reference_resume.contact_json or {})
+        if reference_resume and isinstance(reference_resume.contact_json, dict)
+        else _profile_to_contact_json(profile)
     )
-    profile = profile_result.scalar_one_or_none()
-    if not profile:
-        raise HTTPException(400, "请先创建个人档案")
-    if not profile.sections:
-        raise HTTPException(400, "个人档案条目为空，请先填写经历")
-
-    # 加载岗位
-    jobs_result = await db.execute(
-        select(Job).where(Job.id.in_(body.job_ids))
+    base_style_config = (
+        (reference_resume.style_config or {})
+        if reference_resume and isinstance(reference_resume.style_config, dict)
+        else {}
     )
-    jobs = list(jobs_result.scalars().all())
-    if not jobs:
-        raise HTTPException(404, "未找到选中的岗位")
+    base_template_id = reference_resume.template_id if reference_resume else None
+    base_summary = profile.headline or profile.exit_story or ""
+    if not base_summary and reference_resume and isinstance(reference_resume.summary, str):
+        base_summary = reference_resume.summary
 
-    total = len(jobs)
-    sections = list(profile.sections)
+    async def _stream():
+        total = len(ordered_jobs)
+        created = 0
+        failed = 0
+        created_resume_ids: list[int] = []
 
-    async def event_generator():
-        try:
-            if body.mode == "per_job":
-                # 逐岗位模式：每个岗位生成一份简历
-                for i, job in enumerate(jobs):
-                    yield json.dumps({
-                        "event": "progress",
-                        "data": {
-                            "current": i + 1,
-                            "total": total,
-                            "job_title": job.title,
-                            "company": job.company,
-                            "status": "generating",
-                        },
-                    })
+        yield _sse("heartbeat", {})
 
-                    try:
-                        result = await _generate_for_job(profile, job, sections, db)
-                        yield json.dumps({
-                            "event": "result",
-                            "data": result,
-                        })
-                    except Exception as e:
-                        logger.error("[optimize] failed for job %s: %s", job.id, e)
-                        yield json.dumps({
-                            "event": "error",
-                            "data": {
-                                "job_id": job.id,
-                                "job_title": job.title,
-                                "message": str(e),
-                            },
-                        })
+        if data.mode == "combined":
+            merged_jd = "\n\n".join(job.raw_description or "" for job in ordered_jobs)
+            ranked = _rank_profile_sections(profile_sections, merged_jd, limit=14)
+            selected = [item[0] for item in ranked]
+            used_bullets = [_bullet_text(item) for item in selected]
+            rows = _build_resume_sections(selected)
+            source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
 
-            elif body.mode == "combined":
-                # 综合模式：多个 JD 合并为一个综合 JD → 生成 1 份通用简历
-                yield json.dumps({
-                    "event": "progress",
-                    "data": {
-                        "current": 1,
-                        "total": 1,
-                        "status": "generating",
-                        "message": f"综合 {total} 个岗位 JD 生成通用简历...",
+            try:
+                title = f"{profile.name or '候选人'} - 综合定制简历"
+                resume = await _create_generated_resume(
+                    db=db,
+                    profile=profile,
+                    title=title,
+                    summary=base_summary,
+                    source_mode="combined",
+                    source_job_ids=[job.id for job in ordered_jobs],
+                    contact_json=base_contact_json,
+                    style_config=base_style_config,
+                    template_id=base_template_id,
+                    source_profile_snapshot=source_profile_snapshot,
+                    rows=rows,
+                )
+                created += 1
+                created_resume_ids.append(resume.id)
+                yield _sse("progress", {"index": 1, "total": 1, "status": "success", "mode": "combined"})
+                yield _sse(
+                    "result",
+                    {
+                        "mode": "combined",
+                        "resume_id": resume.id,
+                        "resume_title": resume.title,
+                        "job_ids": [job.id for job in ordered_jobs],
+                        "reference_resume_id": reference_resume.id if reference_resume else None,
+                        "used_bullets": [
+                            {
+                                "id": section.id,
+                                "section_type": section.section_type,
+                                "title": section.title,
+                            }
+                            for section in selected
+                        ],
+                        "missing_keywords": _missing_keywords(merged_jd, used_bullets),
+                        "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
                     },
-                })
+                )
+            except Exception as exc:
+                await db.rollback()
+                failed += 1
+                yield _sse("progress", {"index": 1, "total": 1, "status": "failed", "mode": "combined"})
+                yield _sse("error", {"mode": "combined", "message": str(exc)})
 
-                # 合并 JD 文本
-                combined_jd = "\n\n---\n\n".join(
-                    _format_job(job) for job in jobs
+            yield _sse(
+                "done",
+                {
+                    "mode": "combined",
+                    "total": 1,
+                    "created": created,
+                    "failed": failed,
+                    "resume_ids": created_resume_ids,
+                },
+            )
+            return
+
+        for idx, job in enumerate(ordered_jobs, start=1):
+            yield _sse("heartbeat", {})
+            jd_text = (job.raw_description or "").strip()
+            if not jd_text:
+                failed += 1
+                yield _sse(
+                    "progress",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "status": "failed",
+                    },
+                )
+                yield _sse(
+                    "error",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "message": "岗位缺少 JD 文本，已跳过",
+                    },
+                )
+                continue
+
+            try:
+                ranked = _rank_profile_sections(profile_sections, jd_text, limit=12)
+                selected = [item[0] for item in ranked]
+                used_bullets = [_bullet_text(item) for item in selected]
+                rows = _build_resume_sections(selected)
+                source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
+                resume = await _create_generated_resume(
+                    db=db,
+                    profile=profile,
+                    title=f"{job.company} - {job.title} 定制简历",
+                    summary=base_summary,
+                    source_mode="per_job",
+                    source_job_ids=[job.id],
+                    contact_json=base_contact_json,
+                    style_config=base_style_config,
+                    template_id=base_template_id,
+                    source_profile_snapshot=source_profile_snapshot,
+                    rows=rows,
                 )
 
-                # 创建虚拟 Job 对象用于生成
-                combined_job = Job(
-                    id=0,
-                    title=f"综合简历（{total}个岗位）",
-                    company="",
-                    raw_description=combined_jd[:4000],
-                    hash_key="combined",
+                created += 1
+                created_resume_ids.append(resume.id)
+
+                yield _sse(
+                    "progress",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "status": "success",
+                    },
+                )
+                yield _sse(
+                    "result",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "mode": "per_job",
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "resume_id": resume.id,
+                        "resume_title": resume.title,
+                        "reference_resume_id": reference_resume.id if reference_resume else None,
+                        "used_bullets": [
+                            {
+                                "id": section.id,
+                                "section_type": section.section_type,
+                                "title": section.title,
+                            }
+                            for section in selected
+                        ],
+                        "missing_keywords": _missing_keywords(jd_text, used_bullets),
+                        "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
+                    },
+                )
+            except Exception as exc:
+                await db.rollback()
+                failed += 1
+                yield _sse(
+                    "progress",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "status": "failed",
+                    },
+                )
+                yield _sse(
+                    "error",
+                    {
+                        "index": idx,
+                        "total": total,
+                        "job_id": job.id,
+                        "job_title": job.title,
+                        "message": str(exc),
+                    },
                 )
 
-                try:
-                    result = await _generate_for_job(profile, combined_job, sections, db)
-                    # 修正溯源信息
-                    result["job_ids"] = body.job_ids
-                    result["mode"] = "combined"
+        yield _sse(
+            "done",
+            {
+                "mode": "per_job",
+                "total": total,
+                "created": created,
+                "failed": failed,
+                "resume_ids": created_resume_ids,
+            },
+        )
 
-                    # 更新 Resume 的 source 信息
-                    if result.get("resume_id"):
-                        resume_result = await db.execute(
-                            select(Resume).where(Resume.id == result["resume_id"])
-                        )
-                        resume = resume_result.scalar_one_or_none()
-                        if resume:
-                            resume.source_job_ids = body.job_ids
-                            resume.source_mode = "combined"
-                            await db.commit()
-
-                    yield json.dumps({
-                        "event": "result",
-                        "data": result,
-                    })
-                except Exception as e:
-                    logger.error("[optimize] combined generation failed: %s", e)
-                    yield json.dumps({
-                        "event": "error",
-                        "data": {"message": str(e)},
-                    })
-
-            # 完成
-            yield json.dumps({
-                "event": "done",
-                "data": {"total": total, "mode": body.mode},
-            })
-
-        except Exception as e:
-            yield json.dumps({
-                "event": "error",
-                "data": {"message": f"生成流程异常: {str(e)}"},
-            })
-
-    return EventSourceResponse(event_generator())
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

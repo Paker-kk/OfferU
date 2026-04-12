@@ -10,7 +10,7 @@
 
 import { motion } from "framer-motion";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
-import type { Topic } from "../page";
+type Topic = "education" | "internship" | "project" | "activity" | "skill";
 
 interface TopicStepperProps {
   topics: Topic[];

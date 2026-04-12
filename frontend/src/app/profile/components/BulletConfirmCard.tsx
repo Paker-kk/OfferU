@@ -14,7 +14,9 @@ import { CheckCircle2, Edit3, X, Pin } from "lucide-react";
 import { profileApi } from "@/lib/api";
 
 export interface BulletCandidate {
-  section_id: number;
+  session_id: number;
+  bullet_index: number;
+  section_id?: number;
   title: string;
   organization?: string;
   date_range?: string;
@@ -55,14 +57,16 @@ export function BulletConfirmCard({
   const handleConfirm = async () => {
     setConfirming(true);
     try {
-      // 如果编辑过，先更新描述
-      if (mode === "edit" && editDesc !== bullet.description) {
-        await profileApi.updateSection(bullet.section_id, {
-          description: editDesc,
-        });
-      }
-      // 确认加入档案
-      await profileApi.confirmBullet({ section_id: bullet.section_id });
+      const edits =
+        mode === "edit" && editDesc !== bullet.description
+          ? { content_json: { bullet: editDesc } }
+          : undefined;
+
+      await profileApi.confirmBullet({
+        session_id: bullet.session_id,
+        bullet_index: bullet.bullet_index,
+        edits,
+      });
       setDone(true);
       onConfirmed();
     } catch {
