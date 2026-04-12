@@ -4,7 +4,7 @@
 
 # ---- 依赖目录 ----
 node_modules/
-.venv/
+.venv*/
 __pycache__/
 *.pyc
 
