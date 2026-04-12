@@ -173,6 +173,17 @@ export const profileApi = {
   createTargetRole: (data: { role_name: string; role_level?: string; fit?: string }) =>
     request("/api/profile/target-roles", { method: "POST", body: JSON.stringify(data) }),
 
+  // 兼容旧组件调用签名
+  addTargetRole: (data: { title: string; fit_level?: string; role_level?: string }) =>
+    request("/api/profile/target-roles", {
+      method: "POST",
+      body: JSON.stringify({
+        role_name: data.title,
+        role_level: data.role_level,
+        fit: data.fit_level || "primary",
+      }),
+    }),
+
   deleteTargetRole: (id: number) =>
     request(`/api/profile/target-roles/${id}`, { method: "DELETE" }),
 
@@ -214,6 +225,9 @@ export const profileApi = {
 
   confirmBullet: (data: { session_id: number; bullet_index: number; edits?: Record<string, any> }) =>
     request("/api/profile/chat/confirm", { method: "POST", body: JSON.stringify(data) }),
+
+  instantDraft: (data: { experiences: string[]; target_roles?: string[] }) =>
+    request("/api/profile/instant-draft", { method: "POST", body: JSON.stringify(data) }),
 
   generateNarrative: () =>
     request("/api/profile/generate-narrative", { method: "POST" }),
