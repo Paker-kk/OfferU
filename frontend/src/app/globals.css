@@ -74,3 +74,34 @@ body {
   font-size: 1.2rem;
   font-weight: 600;
 }
+
+/* ========== @chatscope/chat-ui-kit 暗色覆写 ========== */
+.cs-main-container,
+.cs-chat-container,
+.cs-message-list {
+  background: transparent !important;
+  border: none !important;
+}
+.cs-message__content {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #e6e7eb !important;
+  border-radius: 12px !important;
+}
+.cs-message--outgoing .cs-message__content {
+  background: rgba(59, 130, 246, 0.25) !important;
+}
+.cs-message-input {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.cs-message-input__content-editor-wrapper,
+.cs-message-input__content-editor {
+  background: transparent !important;
+  color: #e6e7eb !important;
+}
+.cs-button--send {
+  color: #3b82f6 !important;
+}
+.cs-typing-indicator__dot {
+  background-color: #a5b4fc !important;
+}
