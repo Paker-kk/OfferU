@@ -1,30 +1,60 @@
 # =============================================
 # Jobs 路由 — 岗位管理 API
 # =============================================
-# GET   /api/jobs/              岗位列表（排序、筛选、分页 + triage/pool/batch）
-# GET   /api/jobs/stats         统计汇总（日/周）
-# GET   /api/jobs/trend         每日趋势
-# GET   /api/jobs/batches       批次列表统计
-# GET   /api/jobs/{id}          岗位详情
-# POST  /api/jobs/ingest        批量写入岗位数据
-# PATCH /api/jobs/batch-triage  批量分拣（状态/池）
-# PATCH /api/jobs/{id}          单个岗位分拣
-# GET   /api/jobs/weekly-report 周报分析
+# GET  /api/jobs/          岗位列表（排序、筛选、分页）
+# GET  /api/jobs/batches   批次列表（Inbox 分区）
+# GET  /api/jobs/stats     统计汇总（日/周）
+# GET  /api/jobs/trend     每日趋势
+# PATCH /api/jobs/batch-update 批量更新分拣/分池
+# PATCH /api/jobs/{id}      更新单个岗位分拣状态
+# GET  /api/jobs/{id}      岗位详情
+# POST /api/jobs/ingest    批量写入岗位数据
+# GET  /api/jobs/weekly-report  周报分析
 # =============================================
 
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc, update
+from sqlalchemy import select, func, desc, case, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import Job, Batch
+from app.models.models import Job, Pool, Batch
 from app.services.campus_detector import detect_campus
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+TRIAGE_STATUSES = {"inbox", "picked", "ignored"}
+ALLOWED_SORT_FIELDS = {"created_at", "posted_at", "title", "company"}
+TRIAGE_ALIAS_GROUPS = {
+    "inbox": {"inbox", "unscreened"},
+    "picked": {"picked", "screened"},
+    "ignored": {"ignored"},
+}
+
+
+def _to_internal_status(status: str) -> str:
+    value = (status or "").strip().lower()
+    if value in TRIAGE_ALIAS_GROUPS["inbox"]:
+        return "inbox"
+    if value in TRIAGE_ALIAS_GROUPS["picked"]:
+        return "picked"
+    if value in TRIAGE_ALIAS_GROUPS["ignored"]:
+        return "ignored"
+    return value
+
+
+def _status_filter_values(status: str) -> list[str]:
+    internal = _to_internal_status(status)
+    if internal == "inbox":
+        return list(TRIAGE_ALIAS_GROUPS["inbox"])
+    if internal == "picked":
+        return list(TRIAGE_ALIAS_GROUPS["picked"])
+    if internal == "ignored":
+        return ["ignored"]
+    return [status]
 
 
 # ---- Pydantic Schemas ----
@@ -39,6 +69,7 @@ class JobPayload(BaseModel):
     source: str = "linkedin"
     raw_description: str = ""
     posted_at: Optional[str] = None
+    batch_id: Optional[str] = Field(default=None, max_length=64)
     hash_key: str
     summary: str = ""
     keywords: list[str] = []
@@ -58,6 +89,41 @@ class JobPayload(BaseModel):
 class IngestRequest(BaseModel):
     """批量数据写入请求体"""
     jobs: list[JobPayload]
+    batch_id: Optional[str] = Field(default=None, max_length=64)
+    source: str = "manual"
+    keywords: list[str] = []
+    location: str = ""
+
+
+class JobPatchRequest(BaseModel):
+    """单岗位分拣更新请求"""
+
+    triage_status: Optional[str] = None
+    pool_id: Optional[int] = None
+    clear_pool: bool = False
+
+
+class JobBatchPatchRequest(BaseModel):
+    """批量岗位分拣更新请求"""
+
+    job_ids: list[int]
+    triage_status: Optional[str] = None
+    pool_id: Optional[int] = None
+    clear_pool: bool = False
+
+
+class JobBatchDeleteRequest(BaseModel):
+    """批量岗位彻底删除请求（仅允许回收站岗位）"""
+
+    job_ids: list[int]
+
+
+class BatchTriageRequest(BaseModel):
+    """兼容新接口的批量分拣请求（pool_id=0 表示清空）。"""
+
+    job_ids: list[int]
+    triage_status: Optional[str] = None
+    pool_id: Optional[int] = None
 
 
 # ---- Routes ----
@@ -67,15 +133,15 @@ async def list_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     source: Optional[str] = None,
+    triage_status: Optional[str] = Query(None, description="分拣状态: inbox/picked/ignored"),
+    pool_id: Optional[str] = Query(None, description="岗位池 ID，传 ungrouped 表示未分组"),
+    batch_id: Optional[str] = Query(None, description="采集批次 ID"),
     period: Optional[str] = Query(None, description="today / week / month"),
     sort_by: str = Query("created_at", description="排序字段"),
     keyword: Optional[str] = Query(None, description="标题/公司关键词搜索"),
     job_type: Optional[str] = Query(None, description="岗位类型: 全职/实习/校招"),
     education: Optional[str] = Query(None, description="学历要求: 本科/硕士/博士"),
     is_campus: Optional[bool] = Query(None, description="仅校招岗位"),
-    triage_status: Optional[str] = Query(None, description="分拣状态: unscreened/screened/ignored"),
-    pool_id: Optional[str] = Query(None, description="池ID，'null'表示未分组"),
-    batch_id: Optional[int] = Query(None, description="采集批次ID"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -84,15 +150,43 @@ async def list_jobs(
     - sort_by: created_at / posted_at / title
     - keyword: 模糊匹配标题或公司名
     - job_type / education / is_campus: 精确筛选
-    - triage_status: 分拣状态 (unscreened/screened/ignored)
-    - pool_id: 池ID筛选，传 'null' 表示未分组
-    - batch_id: 按采集批次筛选
     """
     query = select(Job)
 
     # 数据源筛选
     if source:
         query = query.where(Job.source == source)
+
+    # 分拣状态筛选
+    if triage_status:
+        normalized = _to_internal_status(triage_status)
+        if normalized not in TRIAGE_STATUSES:
+            raise HTTPException(status_code=400, detail="invalid triage_status")
+        query = query.where(Job.triage_status.in_(_status_filter_values(triage_status)))
+
+    # 池筛选（ungrouped = pool_id is null）
+    if pool_id:
+        if pool_id == "ungrouped":
+            query = query.where(Job.pool_id.is_(None))
+        else:
+            try:
+                pool_numeric_id = int(pool_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid pool_id") from exc
+
+            pool = (
+                await db.execute(select(Pool).where(Pool.id == pool_numeric_id))
+            ).scalar_one_or_none()
+            if not pool:
+                raise HTTPException(status_code=404, detail="Pool not found")
+            if triage_status and pool.scope != triage_status:
+                raise HTTPException(status_code=400, detail="pool scope does not match triage_status")
+
+            query = query.where(Job.pool_id == pool_numeric_id)
+
+    # 批次筛选
+    if batch_id:
+        query = query.where(Job.batch_id == batch_id)
 
     # 关键词搜索（标题或公司名）
     if keyword:
@@ -113,23 +207,6 @@ async def list_jobs(
     if is_campus is not None:
         query = query.where(Job.is_campus == is_campus)
 
-    # ---- P1 新增筛选 ----
-
-    # 分拣状态
-    if triage_status:
-        query = query.where(Job.triage_status == triage_status)
-
-    # 池筛选：传 "null" 表示未分组
-    if pool_id is not None:
-        if pool_id == "null":
-            query = query.where(Job.pool_id.is_(None))
-        else:
-            query = query.where(Job.pool_id == int(pool_id))
-
-    # 批次筛选
-    if batch_id is not None:
-        query = query.where(Job.batch_id == batch_id)
-
     # 时间范围筛选
     if period == "today":
         query = query.where(Job.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0))
@@ -139,7 +216,7 @@ async def list_jobs(
         query = query.where(Job.created_at >= datetime.utcnow() - timedelta(days=30))
 
     # 排序
-    sort_col = getattr(Job, sort_by, Job.created_at)
+    sort_col = Job.created_at if sort_by not in ALLOWED_SORT_FIELDS else getattr(Job, sort_by)
     query = query.order_by(desc(sort_col))
 
     # 分页
@@ -156,6 +233,197 @@ async def list_jobs(
         "page_size": page_size,
         "items": [_job_to_dict(j) for j in jobs],
     }
+
+
+@router.get("/batches")
+async def list_batches(
+    limit: int = Query(30, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出批次及其岗位数量，供 Inbox 未筛选分区使用"""
+    batch_q = (
+        select(
+            Job.batch_id,
+            func.count(Job.id).label("total"),
+            func.sum(case((Job.triage_status.in_(_status_filter_values("inbox")), 1), else_=0)).label("inbox_count"),
+            func.sum(case((Job.triage_status.in_(_status_filter_values("picked")), 1), else_=0)).label("picked_count"),
+            func.sum(case((Job.triage_status == "ignored", 1), else_=0)).label("ignored_count"),
+            func.max(Job.created_at).label("latest_created_at"),
+        )
+        .group_by(Job.batch_id)
+        .order_by(desc(func.max(Job.created_at)))
+        .limit(limit)
+    )
+    rows = (await db.execute(batch_q)).all()
+
+    batch_ids = [r.batch_id for r in rows if r.batch_id]
+    batch_meta: dict[str, Batch] = {}
+    if batch_ids:
+        meta_rows = await db.execute(select(Batch).where(Batch.id.in_(batch_ids)))
+        for batch in meta_rows.scalars().all():
+            batch_meta[batch.id] = batch
+
+    return [
+        {
+            "batch_id": r.batch_id,
+            "source": batch_meta[r.batch_id].source if r.batch_id in batch_meta else "",
+            "keywords": batch_meta[r.batch_id].keywords if r.batch_id in batch_meta else [],
+            "location": batch_meta[r.batch_id].location if r.batch_id in batch_meta else "",
+            "total": r.total or 0,
+            "inbox_count": r.inbox_count or 0,
+            "picked_count": r.picked_count or 0,
+            "ignored_count": r.ignored_count or 0,
+            "latest_created_at": str(r.latest_created_at) if r.latest_created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.patch("/batch-update")
+async def patch_jobs_batch(data: JobBatchPatchRequest, db: AsyncSession = Depends(get_db)):
+    """批量更新岗位分拣状态/池归属"""
+    if not data.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids is required")
+
+    if len(data.job_ids) > 500:
+        raise HTTPException(status_code=400, detail="job_ids exceeds 500")
+
+    if data.triage_status is None and data.pool_id is None and not data.clear_pool:
+        raise HTTPException(status_code=400, detail="no update fields provided")
+
+    triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
+    if triage_status and triage_status not in TRIAGE_STATUSES:
+        raise HTTPException(status_code=400, detail="invalid triage_status")
+
+    if data.pool_id is not None and data.clear_pool:
+        raise HTTPException(status_code=400, detail="pool_id and clear_pool are mutually exclusive")
+
+    if data.pool_id is not None and triage_status and triage_status != "picked":
+        raise HTTPException(status_code=400, detail="pool_id can only be used with triage_status=picked")
+
+    pool = None
+    if data.pool_id is not None:
+        pool = (
+            await db.execute(select(Pool).where(Pool.id == data.pool_id))
+        ).scalar_one_or_none()
+        if not pool:
+            raise HTTPException(status_code=404, detail="Pool not found")
+        if pool.scope != "picked":
+            raise HTTPException(status_code=400, detail="only picked scope pool can be assigned")
+
+    result = await db.execute(select(Job).where(Job.id.in_(data.job_ids)))
+    jobs = result.scalars().all()
+
+    found_ids = {job.id for job in jobs}
+    missing_ids = sorted(set(data.job_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"some job_ids were not found: {missing_ids}",
+        )
+
+    updated = 0
+    for job in jobs:
+        if triage_status:
+            job.triage_status = triage_status
+            if triage_status != "picked":
+                job.pool_id = None
+            elif data.pool_id is None and not data.clear_pool:
+                # 从未筛选流转到已筛选时，默认清空原池，避免跨分区残留关联
+                job.pool_id = None
+
+        if data.pool_id is not None:
+            job.pool_id = data.pool_id
+            if not data.triage_status:
+                job.triage_status = "picked"
+
+        if data.clear_pool:
+            job.pool_id = None
+
+        updated += 1
+
+    await db.commit()
+    return {"updated": updated, "pool_name": pool.name if pool else None}
+
+
+@router.delete("/batch-delete")
+async def delete_jobs_batch(data: JobBatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    """批量彻底删除岗位（仅回收站 triage_status=ignored）"""
+    if not data.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids is required")
+
+    if len(data.job_ids) > 500:
+        raise HTTPException(status_code=400, detail="job_ids exceeds 500")
+
+    result = await db.execute(select(Job).where(Job.id.in_(data.job_ids)))
+    jobs = result.scalars().all()
+
+    found_ids = {job.id for job in jobs}
+    missing_ids = sorted(set(data.job_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"some job_ids were not found: {missing_ids}")
+
+    non_ignored = [job.id for job in jobs if job.triage_status != "ignored"]
+    if non_ignored:
+        raise HTTPException(
+            status_code=400,
+            detail=f"only ignored jobs can be deleted permanently: {non_ignored}",
+        )
+
+    deleted = 0
+    for job in jobs:
+        await db.delete(job)
+        deleted += 1
+
+    await db.commit()
+    return {"deleted": deleted}
+
+
+@router.patch("/{job_id}")
+async def patch_job(job_id: int, data: JobPatchRequest, db: AsyncSession = Depends(get_db)):
+    """更新单个岗位的分拣状态与池归属"""
+    if data.triage_status is None and data.pool_id is None and not data.clear_pool:
+        raise HTTPException(status_code=400, detail="no update fields provided")
+
+    triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
+    if triage_status and triage_status not in TRIAGE_STATUSES:
+        raise HTTPException(status_code=400, detail="invalid triage_status")
+
+    clear_pool = data.clear_pool or data.pool_id == 0
+    pool_id = None if data.pool_id == 0 else data.pool_id
+
+    if pool_id is not None and clear_pool:
+        raise HTTPException(status_code=400, detail="pool_id and clear_pool are mutually exclusive")
+
+    if pool_id is not None and triage_status and triage_status != "picked":
+        raise HTTPException(status_code=400, detail="pool_id can only be used with triage_status=picked")
+
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if triage_status is not None:
+        job.triage_status = triage_status
+        if triage_status != "picked":
+            job.pool_id = None
+
+    if pool_id is not None:
+        pool = (await db.execute(select(Pool).where(Pool.id == pool_id))).scalar_one_or_none()
+        if not pool:
+            raise HTTPException(status_code=404, detail="Pool not found")
+        if pool.scope != "picked":
+            raise HTTPException(status_code=400, detail="only picked scope pool can be assigned")
+        job.pool_id = pool_id
+        if triage_status is None:
+            job.triage_status = "picked"
+
+    if clear_pool:
+        job.pool_id = None
+
+    await db.commit()
+    await db.refresh(job)
+    return _job_to_dict(job)
 
 
 @router.get("/stats")
@@ -272,46 +540,61 @@ async def weekly_report(db: AsyncSession = Depends(get_db)):
     }
 
 
-# =============================================
-# 分拣计数（用于 Tab 徽章，必须在 /{job_id} 之前注册）
-# =============================================
-
 @router.get("/triage-counts")
 async def triage_counts(db: AsyncSession = Depends(get_db)):
-    """
-    获取三种分拣状态的岗位计数 — 供前端 Tab 徽章展示
-    返回: {unscreened: N, screened: N, ignored: N}
-    """
-    counts = {}
-    for status in ("unscreened", "screened", "ignored"):
-        q = select(func.count(Job.id)).where(Job.triage_status == status)
-        counts[status] = (await db.execute(q)).scalar() or 0
-    return counts
+    """返回分拣状态计数（兼容旧状态和新状态命名）。"""
+    unscreened = (
+        await db.execute(
+            select(func.count(Job.id)).where(Job.triage_status.in_(_status_filter_values("unscreened")))
+        )
+    ).scalar() or 0
+    screened = (
+        await db.execute(
+            select(func.count(Job.id)).where(Job.triage_status.in_(_status_filter_values("screened")))
+        )
+    ).scalar() or 0
+    ignored = (
+        await db.execute(select(func.count(Job.id)).where(Job.triage_status == "ignored"))
+    ).scalar() or 0
+
+    return {
+        "unscreened": unscreened,
+        "screened": screened,
+        "ignored": ignored,
+        "inbox": unscreened,
+        "picked": screened,
+    }
 
 
-# =============================================
-# 批次统计（必须在 /{job_id} 之前注册，否则被 path param 拦截）
-# =============================================
+@router.patch("/batch-triage")
+async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
+    """兼容新接口：批量分拣（pool_id=0 表示清空池）。"""
+    triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
+    clear_pool = data.pool_id == 0
+    pool_id = None if clear_pool else data.pool_id
 
-@router.get("/batches")
-async def list_batches(db: AsyncSession = Depends(get_db)):
-    """获取采集批次列表（含岗位计数）"""
-    result = await db.execute(
-        select(Batch).order_by(desc(Batch.created_at))
-    )
-    batches = result.scalars().all()
-    return [
-        {
-            "id": b.id,
-            "source": b.source,
-            "keywords": b.keywords,
-            "location": b.location,
-            "job_count": b.job_count,
-            "status": b.status,
-            "created_at": b.created_at.isoformat() if b.created_at else None,
-        }
-        for b in batches
-    ]
+    if not data.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids is required")
+    if triage_status and triage_status not in TRIAGE_STATUSES:
+        raise HTTPException(status_code=400, detail="invalid triage_status")
+
+    values: dict = {}
+    if triage_status:
+        values["triage_status"] = triage_status
+    if clear_pool:
+        values["pool_id"] = None
+    elif pool_id is not None:
+        values["pool_id"] = pool_id
+        if triage_status is None:
+            values["triage_status"] = "picked"
+
+    if not values:
+        raise HTTPException(status_code=400, detail="no update fields provided")
+
+    stmt = update(Job).where(Job.id.in_(data.job_ids)).values(**values)
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"updated": result.rowcount or 0}
 
 
 @router.get("/{job_id}")
@@ -332,11 +615,30 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
     """
     created = 0
     skipped = 0
+
+    ingest_batch_id = req.batch_id or f"manual-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    await _ensure_batch(
+        db,
+        batch_id=ingest_batch_id,
+        source=req.source,
+        keywords=req.keywords,
+        location=req.location,
+    )
+
     for item in req.jobs:
         existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
         if existing.scalar_one_or_none():
             skipped += 1
             continue
+
+        job_batch_id = item.batch_id or ingest_batch_id
+        await _ensure_batch(
+            db,
+            batch_id=job_batch_id,
+            source=item.source,
+            keywords=req.keywords,
+            location=req.location,
+        )
 
         job = Job(
             title=item.title,
@@ -346,6 +648,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
             apply_url=item.apply_url,
             source=item.source,
             raw_description=item.raw_description,
+            batch_id=job_batch_id,
+            triage_status="inbox",
             hash_key=item.hash_key,
             summary=item.summary,
             keywords=item.keywords,
@@ -369,8 +673,40 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         db.add(job)
         created += 1
 
+    await db.flush()
+    batch = (await db.execute(select(Batch).where(Batch.id == ingest_batch_id))).scalar_one_or_none()
+    if batch:
+        batch.total_fetched = (batch.total_fetched or 0) + created
+
     await db.commit()
-    return {"created": created, "skipped": skipped}
+    return {"created": created, "skipped": skipped, "batch_id": ingest_batch_id}
+
+
+async def _ensure_batch(
+    db: AsyncSession,
+    *,
+    batch_id: str,
+    source: str,
+    keywords: list[str],
+    location: str,
+):
+    """确保批次元数据存在；用于 Inbox 按批次分区展示"""
+    if not batch_id:
+        return
+
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        return
+
+    db.add(
+        Batch(
+            id=batch_id,
+            source=source or "",
+            keywords=keywords or [],
+            location=location or "",
+        )
+    )
 
 
 def _job_to_dict(job: Job) -> dict:
@@ -397,79 +733,8 @@ def _job_to_dict(job: Job) -> dict:
         "company_industry": job.company_industry or "",
         "company_logo": job.company_logo or "",
         "is_campus": job.is_campus or False,
-        "triage_status": job.triage_status or "unscreened",
+        "triage_status": job.triage_status,
         "pool_id": job.pool_id,
         "batch_id": job.batch_id,
         "created_at": str(job.created_at),
     }
-
-
-# =============================================
-# 分拣操作 — PATCH 端点
-# =============================================
-
-class TriageUpdate(BaseModel):
-    """单岗位分拣请求"""
-    triage_status: Optional[str] = None  # unscreened / screened / ignored
-    pool_id: Optional[int] = None  # 设为 0 表示清除池
-
-
-class BatchTriageRequest(BaseModel):
-    """批量分拣请求"""
-    job_ids: List[int]
-    triage_status: Optional[str] = None
-    pool_id: Optional[int] = None
-
-
-VALID_TRIAGE = {"unscreened", "screened", "ignored"}
-
-
-@router.patch("/batch-triage")
-async def batch_triage(body: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
-    """
-    批量分拣 — 批量修改岗位状态/池归属
-    pool_id=0 表示清除池归属 (set null)
-    """
-    if body.triage_status and body.triage_status not in VALID_TRIAGE:
-        raise HTTPException(400, f"无效的 triage_status: {body.triage_status}")
-    if not body.job_ids:
-        raise HTTPException(400, "job_ids 不能为空")
-
-    values = {}
-    if body.triage_status:
-        values["triage_status"] = body.triage_status
-    if body.pool_id is not None:
-        values["pool_id"] = None if body.pool_id == 0 else body.pool_id
-
-    if not values:
-        raise HTTPException(400, "至少需要提供 triage_status 或 pool_id")
-
-    stmt = update(Job).where(Job.id.in_(body.job_ids)).values(**values)
-    result = await db.execute(stmt)
-    await db.commit()
-
-    return {"updated": result.rowcount}
-
-
-@router.patch("/{job_id}")
-async def triage_job(job_id: int, body: TriageUpdate, db: AsyncSession = Depends(get_db)):
-    """
-    单个岗位分拣 — 修改状态/池归属
-    pool_id=0 表示清除池归属
-    """
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(404, "岗位不存在")
-
-    if body.triage_status:
-        if body.triage_status not in VALID_TRIAGE:
-            raise HTTPException(400, f"无效的 triage_status: {body.triage_status}")
-        job.triage_status = body.triage_status
-
-    if body.pool_id is not None:
-        job.pool_id = None if body.pool_id == 0 else body.pool_id
-
-    await db.commit()
-    await db.refresh(job)
-    return _job_to_dict(job)

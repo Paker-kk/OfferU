@@ -30,6 +30,28 @@ mcp = FastMCP(
 )
 
 
+def _to_internal_status(status: str) -> str:
+    value = (status or "").strip().lower()
+    if value in {"unscreened", "inbox"}:
+        return "inbox"
+    if value in {"screened", "picked"}:
+        return "picked"
+    if value == "ignored":
+        return "ignored"
+    return value
+
+
+def _status_filter_values(status: str) -> list[str]:
+    internal = _to_internal_status(status)
+    if internal == "inbox":
+        return ["inbox", "unscreened"]
+    if internal == "picked":
+        return ["picked", "screened"]
+    if internal == "ignored":
+        return ["ignored"]
+    return [status]
+
+
 # =============================================
 # Helper: 获取数据库会话
 # =============================================
@@ -56,13 +78,15 @@ def _serialize_profile(profile: Profile, sections: list, roles: list) -> dict:
 
 
 def _serialize_job(job: Job) -> dict:
+    internal = _to_internal_status(job.triage_status or "inbox")
+    outward = "unscreened" if internal == "inbox" else ("screened" if internal == "picked" else "ignored")
     return {
         "id": job.id,
         "title": job.title,
         "company": job.company,
         "location": job.location or "",
         "salary_text": job.salary_text or "",
-        "triage_status": job.triage_status or "unscreened",
+        "triage_status": outward,
         "pool_id": job.pool_id,
         "is_campus": job.is_campus,
         "source": job.source or "",
@@ -134,7 +158,8 @@ async def list_pools() -> list[dict]:
         for p in pools:
             cnt_r = await db.execute(
                 select(func.count(Job.id)).where(
-                    Job.pool_id == p.id, Job.triage_status == "screened"
+                    Job.pool_id == p.id,
+                    Job.triage_status.in_(_status_filter_values("screened")),
                 )
             )
             cnt = cnt_r.scalar() or 0
@@ -165,7 +190,7 @@ async def list_jobs(
     async with async_session() as db:
         q = select(Job)
         if triage_status:
-            q = q.where(Job.triage_status == triage_status)
+            q = q.where(Job.triage_status.in_(_status_filter_values(triage_status)))
         if pool_id:
             q = q.where(Job.pool_id == pool_id)
         if keyword:
@@ -221,19 +246,20 @@ async def triage_job(
 ) -> dict:
     """将岗位分拣为 screened（已筛选）/ ignored（忽略），可同时分配到某个池。
     status: screened | ignored | unscreened"""
-    if status not in ("screened", "ignored", "unscreened"):
-        return {"error": "status 必须是 screened / ignored / unscreened"}
+    internal = _to_internal_status(status)
+    if internal not in ("inbox", "picked", "ignored"):
+        return {"error": "status 必须是 screened/unscreened/ignored（兼容 picked/inbox）"}
 
     async with async_session() as db:
         job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
         if not job:
             return {"error": f"岗位 #{job_id} 不存在"}
 
-        job.triage_status = status
+        job.triage_status = internal
         if pool_id is not None:
             job.pool_id = pool_id
         await db.commit()
-        return {"ok": True, "job_id": job_id, "status": status, "pool_id": job.pool_id}
+        return {"ok": True, "job_id": job_id, "status": _serialize_job(job)["triage_status"], "pool_id": job.pool_id}
 
 
 # =============================================
@@ -247,18 +273,20 @@ async def batch_triage(
     pool_id: Optional[int] = None,
 ) -> dict:
     """批量分拣多个岗位。"""
-    if status not in ("screened", "ignored", "unscreened"):
-        return {"error": "status 必须是 screened / ignored / unscreened"}
+    internal = _to_internal_status(status)
+    if internal not in ("inbox", "picked", "ignored"):
+        return {"error": "status 必须是 screened/unscreened/ignored（兼容 picked/inbox）"}
 
     async with async_session() as db:
-        values: dict = {"triage_status": status}
+        values: dict = {"triage_status": internal}
         if pool_id is not None:
             values["pool_id"] = pool_id
         await db.execute(
             update(Job).where(Job.id.in_(job_ids)).values(**values)
         )
         await db.commit()
-        return {"ok": True, "updated": len(job_ids), "status": status}
+        outward = "unscreened" if internal == "inbox" else ("screened" if internal == "picked" else "ignored")
+        return {"ok": True, "updated": len(job_ids), "status": outward}
 
 
 # =============================================

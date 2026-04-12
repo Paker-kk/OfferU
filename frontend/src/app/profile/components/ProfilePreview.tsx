@@ -34,7 +34,8 @@ import {
 } from "lucide-react";
 import type { ProfileData, ProfileSection } from "@/lib/hooks";
 import { profileApi } from "@/lib/api";
-import type { Topic } from "../page";
+
+type Topic = "education" | "internship" | "project" | "activity" | "skill";
 
 interface ProfilePreviewProps {
   profile: ProfileData;
@@ -63,6 +64,7 @@ export function ProfilePreview({
   currentTopic,
   onRefresh,
 }: ProfilePreviewProps) {
+  const baseInfo = profile.base_info_json || {};
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(
     new Set([currentTopic])
   );
@@ -104,8 +106,8 @@ export function ProfilePreview({
             {profile.name || "未命名"}
           </h3>
           <p className="text-xs text-white/40">
-            {profile.school} · {profile.major}
-            {profile.gpa ? ` · GPA ${profile.gpa}` : ""}
+            {String(baseInfo.school || "")} · {String(baseInfo.major || "")}
+            {baseInfo.gpa ? ` · GPA ${String(baseInfo.gpa)}` : ""}
           </p>
         </div>
         <Chip size="sm" variant="flat" color="primary">
@@ -129,7 +131,7 @@ export function ProfilePreview({
           const sections = grouped[topic] || [];
           const isExpanded = expandedTopics.has(topic);
           const isActive = topic === currentTopic;
-          const confirmedCount = sections.filter((s) => s.is_confirmed).length;
+          const confirmedCount = sections.length;
 
           return (
             <div
@@ -214,6 +216,18 @@ function BulletItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const src = SOURCE_LABELS[section.source] || SOURCE_LABELS.manual;
+  const content = (section.content_json || {}) as Record<string, any>;
+  const organization =
+    String(content.organization || content.company || content.school || content.issuer || "").trim();
+  const dateRange = String(
+    content.date_range ||
+      [content.startDate || content.start_date, content.endDate || content.end_date]
+        .filter(Boolean)
+        .join(" - ")
+  ).trim();
+  const description =
+    String(content.bullet || content.description || content.summary || "").trim() || section.title || "";
+  const isConfirmed = Number(section.confidence || 0) >= 0.8;
 
   return (
     <motion.div
@@ -223,7 +237,7 @@ function BulletItem({
     >
       <div className="flex items-start gap-2">
         {/* 确认状态 */}
-        {section.is_confirmed ? (
+        {isConfirmed ? (
           <CheckCircle2 size={14} className="text-green-400 mt-0.5 flex-shrink-0" />
         ) : (
           <Tooltip content={`置信度 ${Math.round(section.confidence * 100)}%`}>
@@ -253,24 +267,24 @@ function BulletItem({
           </div>
 
           {/* 组织 + 时间 */}
-          {(section.organization || section.date_range) && (
+          {(organization || dateRange) && (
             <p className="text-xs text-white/30 mt-0.5">
-              {section.organization}
-              {section.organization && section.date_range ? " · " : ""}
-              {section.date_range}
+              {organization}
+              {organization && dateRange ? " · " : ""}
+              {dateRange}
             </p>
           )}
 
           {/* 展开描述 */}
           <AnimatePresence>
-            {expanded && section.description && (
+            {expanded && description && (
               <motion.p
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 className="text-xs text-white/50 mt-1 overflow-hidden"
               >
-                {section.description}
+                {description}
               </motion.p>
             )}
           </AnimatePresence>

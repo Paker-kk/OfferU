@@ -11,21 +11,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.routing import Mount
 
 from app.config import get_settings
 from app.database import init_db
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile
-from app.routes import optimize
-from app.routes import agent as agent_route
 from app.mcp_server import mcp as mcp_server
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize
+from app.routes import agent as agent_route
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动时初始化数据库表 + MCP Session Manager"""
+    """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
     async with mcp_server.session_manager.run():
         yield
@@ -51,15 +49,15 @@ app.add_middleware(
 
 # ---- 注册路由 ----
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
+app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])
 app.include_router(email.router, prefix="/api/email", tags=["Email"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
-app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
-app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
-app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(agent_route.router, prefix="/api/agent", tags=["Agent"])
 
 # ---- 静态文件（头像等上传文件） ----
@@ -68,7 +66,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ---- MCP Server (Streamable HTTP) ----
-# 连接方式: claude mcp add --transport http offeru http://localhost:8000/mcp
 mcp_server.settings.streamable_http_path = "/"
 app.mount("/mcp", mcp_server.streamable_http_app())
 
