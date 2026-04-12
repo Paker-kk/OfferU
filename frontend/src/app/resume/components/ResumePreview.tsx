@@ -99,6 +99,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
             {/* 头像区 */}
             <div style={{ textAlign: "center", paddingTop: "8px" }}>
               {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt="" style={{
                   width: "72px", height: "72px", borderRadius: "50%",
                   objectFit: "cover", border: "3px solid rgba(255,255,255,0.3)",

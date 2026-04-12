@@ -46,9 +46,145 @@ class Job(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     keywords: Mapped[Optional[list]] = mapped_column(JSON, default=list)
 
+    # ---- Inbox 分拣与池分组 ----
+    triage_status: Mapped[str] = mapped_column(String(20), default="inbox", index=True)
+    pool_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("pools.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # 采集批次 ID；历史数据统一回填为 legacy-import
+    batch_id: Mapped[str] = mapped_column(String(64), default="legacy-import", index=True)
+
     # ---- 元数据 ----
     hash_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    pool: Mapped[Optional["Pool"]] = relationship(back_populates="jobs")
+
+
+class Pool(Base):
+    """岗位池：用于在已筛选岗位中按主题做分组（前端语义为文件夹）"""
+
+    __tablename__ = "pools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    scope: Mapped[str] = mapped_column(String(20), default="picked", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    jobs: Mapped[list["Job"]] = relationship(back_populates="pool")
+
+
+class Batch(Base):
+    """采集批次：记录一次采集任务的上下文，用于 Inbox 分区"""
+
+    __tablename__ = "batches"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(50), default="")
+    keywords: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    location: Mapped[str] = mapped_column(String(100), default="")
+    total_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Profile(Base):
+    """个人档案主表：承载基础信息与叙事字段"""
+
+    __tablename__ = "profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), default="默认档案")
+    headline: Mapped[str] = mapped_column(String(300), default="")
+    exit_story: Mapped[str] = mapped_column(Text, default="")
+    cross_cutting_advantage: Mapped[str] = mapped_column(Text, default="")
+    base_info_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    target_roles: Mapped[list["ProfileTargetRole"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+    sections: Mapped[list["ProfileSection"]] = relationship(
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="ProfileSection.sort_order",
+    )
+    chat_sessions: Mapped[list["ProfileChatSession"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+
+
+class ProfileTargetRole(Base):
+    """目标岗位条目：支持 fit 分级"""
+
+    __tablename__ = "profile_target_roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    role_name: Mapped[str] = mapped_column(String(120), index=True)
+    role_level: Mapped[str] = mapped_column(String(60), default="")
+    fit: Mapped[str] = mapped_column(String(30), default="primary")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    profile: Mapped["Profile"] = relationship(back_populates="target_roles")
+
+
+class ProfileSection(Base):
+    """档案条目：Bullet 级事实条目，支持来源与置信度"""
+
+    __tablename__ = "profile_sections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    section_type: Mapped[str] = mapped_column(String(60), index=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("profile_sections.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(220), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(30), default="manual")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="sections")
+
+
+class ProfileChatSession(Base):
+    """档案对话会话：记录多轮消息与候选条目提取结果"""
+
+    __tablename__ = "profile_chat_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    topic: Mapped[str] = mapped_column(String(60), default="general")
+    messages_json: Mapped[list] = mapped_column(JSON, default=list)
+    extracted_bullets_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    profile: Mapped["Profile"] = relationship(back_populates="chat_sessions")
 
 
 class ResumeTemplate(Base):
@@ -101,6 +237,9 @@ class Resume(Base):
     style_config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_primary: Mapped[bool] = mapped_column(default=True)
     language: Mapped[str] = mapped_column(String(10), default="zh")
+    source_mode: Mapped[str] = mapped_column(String(30), default="manual")
+    source_job_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    source_profile_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

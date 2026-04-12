@@ -42,7 +42,13 @@ class Settings(BaseSettings):
     gmail_client_secret: str = ""
     gmail_redirect_uri: str = ""  # 自定义回调地址，为空则自动从 cors_origins 推导
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Ignore unrelated env vars (for example docker-style db_user/db_password/db_name)
+    # so local startup does not fail when extra keys exist.
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 @lru_cache

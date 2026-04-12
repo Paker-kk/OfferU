@@ -8,6 +8,7 @@
 
 "use client";
 
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, Chip, Avatar, Checkbox } from "@nextui-org/react";
 import { MapPin, Briefcase, GraduationCap, DollarSign, Building2 } from "lucide-react";
@@ -25,43 +26,45 @@ const sourceColorMap: Record<string, "primary" | "success" | "warning" | "danger
 
 interface JobCardProps {
   job: Job;
-  selectable?: boolean;
+  showCheckbox?: boolean;
   selected?: boolean;
-  onToggle?: (id: number) => void;
+  onToggle?: (id: number, options?: { shiftKey?: boolean }) => void;
+  onSelectPointerDown?: (id: number, options?: { shiftKey?: boolean }) => void;
+  onSelectPointerEnter?: (id: number) => void;
 }
 
-export function JobCard({ job, selectable, selected, onToggle }: JobCardProps) {
+export function JobCard({
+  job,
+  showCheckbox,
+  selected,
+  onToggle,
+  onSelectPointerDown,
+  onSelectPointerEnter,
+}: JobCardProps) {
   const router = useRouter();
   const sourceColor = sourceColorMap[job.source] || "primary";
+  const shiftKeyRef = useRef(false);
+  const openDetail = () => {
+    router.push(`/jobs/${job.id}`);
+  };
 
   return (
     <Card
-      isPressable
-      onPress={() => {
-        if (selectable && onToggle) {
-          onToggle(job.id);
-        } else {
-          router.push(`/jobs/${job.id}`);
-        }
-      }}
-      className={`bg-white/5 border transition-colors h-[240px] ${
-        selectable && selected
+      className={`relative w-full max-w-full bg-white/5 border transition-colors cursor-pointer h-[248px] min-h-[248px] max-h-[248px] ${
+        selected
           ? "border-blue-500 ring-2 ring-blue-500/30"
           : "border-white/10 hover:border-white/20"
       }`}
+      onMouseEnter={() => onSelectPointerEnter?.(job.id)}
     >
+      <button
+        type="button"
+        aria-label={`查看岗位详情-${job.title}`}
+        className="absolute inset-0 z-10"
+        onClick={openDetail}
+      />
+
       <CardBody className="p-5 flex flex-col gap-2.5 overflow-hidden">
-        {/* 批量选择 Checkbox */}
-        {selectable && (
-          <div className="absolute top-2 right-2 z-10">
-            <Checkbox
-              isSelected={selected}
-              onValueChange={() => onToggle?.(job.id)}
-              size="sm"
-              color="primary"
-            />
-          </div>
-        )}
         {/* 头部：公司Logo + 标题 + 来源 */}
         <div className="flex items-start gap-3 shrink-0">
           <Avatar
@@ -71,7 +74,7 @@ export function JobCard({ job, selectable, selected, onToggle }: JobCardProps) {
             className="shrink-0 bg-white/10"
           />
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-blue-300 leading-tight truncate">
+            <h3 className="text-base font-bold text-blue-300 leading-tight break-words line-clamp-2 min-h-[2.5rem]">
               {job.title}
             </h3>
             <div className="flex items-center gap-2 text-sm text-white/50 mt-0.5">
@@ -90,29 +93,29 @@ export function JobCard({ job, selectable, selected, onToggle }: JobCardProps) {
         </div>
 
         {/* 薪资 + 标签行 */}
-        <div className="flex flex-wrap items-center gap-2 text-xs text-white/50 shrink-0">
+        <div className="flex items-center gap-2 text-xs text-white/50 shrink-0 overflow-hidden whitespace-nowrap">
           {job.salary_text && (
-            <span className="flex items-center gap-0.5 text-green-400 font-semibold text-sm">
+            <span className="flex items-center gap-0.5 text-green-400 font-semibold text-sm truncate max-w-[8.5rem]">
               <DollarSign size={14} />{job.salary_text}
             </span>
           )}
           {job.location && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5 truncate max-w-[7rem]">
               <MapPin size={12} />{job.location}
             </span>
           )}
           {job.education && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5 truncate max-w-[5rem]">
               <GraduationCap size={12} />{job.education}
             </span>
           )}
           {job.experience && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5 truncate max-w-[6rem]">
               <Briefcase size={12} />{job.experience}
             </span>
           )}
           {job.company_size && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5 truncate max-w-[6rem]">
               <Building2 size={12} />{job.company_size}
             </span>
           )}
@@ -147,6 +150,35 @@ export function JobCard({ job, selectable, selected, onToggle }: JobCardProps) {
           ))}
         </div>
       </CardBody>
+
+      {showCheckbox && (
+        <div
+          data-role="selection-control"
+          className="absolute right-3 bottom-3 z-30 rounded-md bg-black/35 p-0.5 backdrop-blur-sm"
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            isSelected={selected}
+            onClick={(event) => {
+              event.stopPropagation();
+              shiftKeyRef.current = event.shiftKey;
+            }}
+            onMouseDown={(event) => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              shiftKeyRef.current = event.shiftKey;
+              onSelectPointerDown?.(job.id, { shiftKey: event.shiftKey });
+            }}
+            onValueChange={() => {
+              onToggle?.(job.id, { shiftKey: shiftKeyRef.current });
+              shiftKeyRef.current = false;
+            }}
+            size="sm"
+            color="primary"
+          />
+        </div>
+      )}
     </Card>
   );
 }

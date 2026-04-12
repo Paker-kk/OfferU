@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_db
-from app.routes import jobs, resume, calendar, email, config, applications, scraper
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize
 
 settings = get_settings()
 
@@ -46,6 +46,9 @@ app.add_middleware(
 
 # ---- 注册路由 ----
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
+app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])
 app.include_router(email.router, prefix="/api/email", tags=["Email"])

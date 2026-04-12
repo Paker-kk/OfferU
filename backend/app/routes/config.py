@@ -161,6 +161,7 @@ class ConfigUpdate(BaseModel):
     top_n: int = 15
     email_to: str = ""
     sources_enabled: list[str] = Field(default_factory=lambda: ["linkedin"])
+    profile_source_sync_enabled: bool = False
 
     llm_provider: str = "deepseek"
     llm_model: str = "deepseek-chat"
