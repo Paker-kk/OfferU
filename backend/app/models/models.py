@@ -71,6 +71,9 @@ class Pool(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    color: Mapped[str] = mapped_column(String(20), default="#3B82F6")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
     scope: Mapped[str] = mapped_column(String(20), default="picked", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -89,6 +92,9 @@ class Batch(Base):
     source: Mapped[str] = mapped_column(String(50), default="")
     keywords: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     location: Mapped[str] = mapped_column(String(100), default="")
+    max_results: Mapped[int] = mapped_column(Integer, default=0)
+    job_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="completed")
     total_fetched: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -100,11 +106,19 @@ class Profile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), default="默认档案")
+    school: Mapped[str] = mapped_column(String(200), default="")
+    major: Mapped[str] = mapped_column(String(200), default="")
+    degree: Mapped[str] = mapped_column(String(50), default="")
+    gpa: Mapped[str] = mapped_column(String(20), default="")
+    email: Mapped[str] = mapped_column(String(200), default="")
+    phone: Mapped[str] = mapped_column(String(50), default="")
+    wechat: Mapped[str] = mapped_column(String(100), default="")
     headline: Mapped[str] = mapped_column(String(300), default="")
     exit_story: Mapped[str] = mapped_column(Text, default="")
     cross_cutting_advantage: Mapped[str] = mapped_column(Text, default="")
     base_info_json: Mapped[dict] = mapped_column(JSON, default=dict)
     is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    onboarding_step: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -177,6 +191,7 @@ class ProfileChatSession(Base):
     )
     topic: Mapped[str] = mapped_column(String(60), default="general")
     messages_json: Mapped[list] = mapped_column(JSON, default=list)
+    extracted_bullets: Mapped[list] = mapped_column(JSON, default=list)
     extracted_bullets_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

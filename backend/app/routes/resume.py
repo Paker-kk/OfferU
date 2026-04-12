@@ -30,13 +30,14 @@ import uuid
 from io import BytesIO
 from typing import Optional, Any
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field
 from jinja2 import Template
+from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
@@ -1224,16 +1225,14 @@ class BatchOptimizeRequest(BaseModel):
 async def ai_batch_optimize(
     resume_id: int,
     data: BatchOptimizeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     批量 AI 简历定制 — SSE 流式版本
     ─────────────────────────────────────────────
-    返回 text/event-stream，逐个岗位实时推送进度：
-      event: progress  → 单个岗位处理完成
-      event: done      → 全部完成，附带汇总
-
-    前端通过 fetch + ReadableStream 消费事件。
+        返回 text/event-stream，逐个岗位实时推送进度。
+        兼容断连检测和心跳，提升长连接稳定性。
     """
     import copy
     import json as _json
@@ -1263,8 +1262,20 @@ async def ai_batch_optimize(
     async def _stream():
         pipeline = SkillPipeline()
         all_results = []
+        event_id = 0
+
+        event_id += 1
+        yield ServerSentEvent(
+            data=_json.dumps({"total": len(job_ids)}, ensure_ascii=False),
+            event="started",
+            id=str(event_id),
+        )
 
         for idx, job_id in enumerate(job_ids):
+            if await request.is_disconnected():
+                logger.info("客户端已断开，停止批量优化，已处理 %s/%s", idx, len(job_ids))
+                break
+
             job = jobs_map[job_id]
             jd_text = (job.raw_description or "").strip()
 
@@ -1281,11 +1292,32 @@ async def ai_batch_optimize(
                 "total": len(job_ids),
             }
 
+            event_id += 1
+            yield ServerSentEvent(
+                data=_json.dumps(
+                    {
+                        "index": idx,
+                        "total": len(job_ids),
+                        "job_id": job_id,
+                        "job_title": job.title,
+                        "company": job.company,
+                    },
+                    ensure_ascii=False,
+                ),
+                event="processing",
+                id=str(event_id),
+            )
+
             if not jd_text:
                 entry["status"] = "skipped"
                 entry["error"] = "岗位无 JD 文本"
                 all_results.append(entry)
-                yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
+                event_id += 1
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="progress",
+                    id=str(event_id),
+                )
                 continue
 
             try:
@@ -1388,17 +1420,28 @@ async def ai_batch_optimize(
                     entry["suggestions_applied"] = applied_count
 
                 entry["status"] = "success"
+                await db.commit()
 
             except Exception as e:
                 logger.error(f"批量优化岗位 {job_id} 失败: {e}")
                 entry["status"] = "failed"
                 entry["error"] = str(e)
+                await db.rollback()
 
             all_results.append(entry)
-            # 每完成一个岗位即时推送
-            yield f"event: progress\ndata: {_json.dumps(entry, ensure_ascii=False)}\n\n"
-
-        await db.commit()
+            event_id += 1
+            if entry["status"] == "failed":
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="error",
+                    id=str(event_id),
+                )
+            else:
+                yield ServerSentEvent(
+                    data=_json.dumps(entry, ensure_ascii=False),
+                    event="progress",
+                    id=str(event_id),
+                )
 
         # 全部完成后推送汇总
         success_count = sum(1 for r in all_results if r["status"] == "success")
@@ -1407,11 +1450,17 @@ async def ai_batch_optimize(
             "success": success_count,
             "results": all_results,
         }
-        yield f"event: done\ndata: {_json.dumps(summary, ensure_ascii=False)}\n\n"
+        event_id += 1
+        yield ServerSentEvent(
+            data=_json.dumps(summary, ensure_ascii=False),
+            event="done",
+            id=str(event_id),
+        )
 
-    return StreamingResponse(
+    return EventSourceResponse(
         _stream(),
-        media_type="text/event-stream",
+        ping=15,
+        send_timeout=60,
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # nginx 不缓冲

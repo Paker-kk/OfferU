@@ -221,11 +221,11 @@ def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
 def _profile_to_contact_json(profile: Profile) -> dict:
     info = profile.base_info_json or {}
     if not isinstance(info, dict):
-        return {}
+        info = {}
     contact = {
-        "email": info.get("email") or "",
-        "phone": info.get("phone") or "",
-        "wechat": info.get("wechat") or "",
+        "email": info.get("email") or getattr(profile, "email", "") or "",
+        "phone": info.get("phone") or getattr(profile, "phone", "") or "",
+        "wechat": info.get("wechat") or getattr(profile, "wechat", "") or "",
     }
     return {key: value for key, value in contact.items() if isinstance(value, str) and value.strip()}
 
@@ -311,6 +311,76 @@ async def _create_generated_resume(
     await db.commit()
     await db.refresh(resume)
     return resume
+
+
+async def _generate_for_job(
+    profile: Profile,
+    job: Job,
+    sections: list[ProfileSection],
+    db: AsyncSession,
+    reference_resume: Resume | None = None,
+) -> dict:
+    """供 MCP/Agent 复用的单岗位生成入口。"""
+    jd_text = (job.raw_description or "").strip()
+    if not jd_text:
+        raise HTTPException(status_code=400, detail=f"岗位 {job.id} 缺少 JD 文本")
+
+    ranked = _rank_profile_sections(sections, jd_text, limit=12)
+    selected = [item[0] for item in ranked]
+    rows = _build_resume_sections(selected)
+
+    base_contact_json = (
+        (reference_resume.contact_json or {})
+        if reference_resume and isinstance(reference_resume.contact_json, dict)
+        else _profile_to_contact_json(profile)
+    )
+    base_style_config = (
+        (reference_resume.style_config or {})
+        if reference_resume and isinstance(reference_resume.style_config, dict)
+        else {}
+    )
+    base_template_id = reference_resume.template_id if reference_resume else None
+    base_summary = profile.headline or profile.exit_story or ""
+    if not base_summary and reference_resume and isinstance(reference_resume.summary, str):
+        base_summary = reference_resume.summary
+
+    resume = await _create_generated_resume(
+        db=db,
+        profile=profile,
+        title=f"{job.company} - {job.title} 定制简历",
+        summary=base_summary,
+        source_mode="per_job",
+        source_job_ids=[job.id],
+        contact_json=base_contact_json,
+        style_config=base_style_config,
+        template_id=base_template_id,
+        source_profile_snapshot=_build_source_profile_snapshot(profile, selected),
+        rows=rows,
+    )
+
+    used_bullets = [
+        {
+            "id": section.id,
+            "section_type": section.section_type,
+            "title": section.title,
+        }
+        for section in selected
+    ]
+    used_texts = [_bullet_text(section) for section in selected]
+    missing_keywords = _missing_keywords(jd_text, used_texts)
+
+    return {
+        "job_id": job.id,
+        "job_title": job.title,
+        "resume_id": resume.id,
+        "resume_title": resume.title,
+        "used_bullets": used_bullets,
+        "used_bullets_count": len(used_bullets),
+        "missing_keywords": missing_keywords,
+        "missing_capabilities": missing_keywords,
+        "profile_hit_ratio": f"{len(selected)}/{len(sections)}",
+        "match_rate": f"{len(selected)}/{len(sections)}",
+    }
 
 
 @router.post("/generate")

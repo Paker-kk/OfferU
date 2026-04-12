@@ -115,6 +115,8 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
             source=req.source,
             keywords=req.keywords,
             location=req.location,
+            max_results=req.max_results,
+            status="running",
         )
     )
     await db.commit()
@@ -215,6 +217,8 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
             ).scalar_one_or_none()
             if batch:
                 batch.total_fetched = (batch.total_fetched or 0) + created
+                batch.job_count = created
+                batch.status = "completed"
 
             await db.commit()
 
@@ -232,6 +236,14 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
         logger.error("[scraper] task failed: %s", e)
         task_info["status"] = "failed"
         task_info["result"] = {"error": str(e)}
+
+        async with async_session() as db:
+            batch = (
+                await db.execute(select(Batch).where(Batch.id == task_info.get("batch_id")))
+            ).scalar_one_or_none()
+            if batch:
+                batch.status = "failed"
+                await db.commit()
 
 
 @router.get("/tasks")

@@ -44,6 +44,11 @@ from app.services.profile_schema import (
     normalize_section_type_alias,
 )
 
+try:
+    from app.agents.skills.conversational_extractor import generate_instant_draft as _generate_instant_draft
+except Exception:
+    _generate_instant_draft = None
+
 router = APIRouter()
 
 VALID_TOPICS = {"education", "experience", "project", "activity", "skill", "general"}
@@ -100,6 +105,11 @@ class ProfileChatConfirmRequest(BaseModel):
     session_id: int
     bullet_index: int = Field(..., ge=0)
     edits: Optional[dict] = None
+
+
+class InstantDraftRequest(BaseModel):
+    experiences: list[str] = Field(..., min_length=1, max_length=20)
+    target_roles: list[str] = Field(default_factory=list)
 
 
 def _serialize_target_role(role: ProfileTargetRole) -> dict:
@@ -987,4 +997,43 @@ async def generate_narrative(db: AsyncSession = Depends(get_db)):
         "headline": profile.headline,
         "exit_story": profile.exit_story,
         "cross_cutting_advantage": profile.cross_cutting_advantage,
+    }
+
+
+@router.post("/instant-draft")
+async def instant_draft(data: InstantDraftRequest):
+    """Step 2.5 即时价值钩子：根据经历标题快速生成简历草稿框架。"""
+    experiences = [item.strip() for item in data.experiences if isinstance(item, str) and item.strip()]
+    if not experiences:
+        raise HTTPException(status_code=400, detail="请至少提供一段经历名称")
+
+    target_roles = [item.strip() for item in data.target_roles if isinstance(item, str) and item.strip()]
+
+    if _generate_instant_draft is not None:
+        try:
+            generated = await _generate_instant_draft(experiences=experiences, target_roles=target_roles)
+            if isinstance(generated, dict) and generated:
+                return generated
+        except Exception:
+            pass
+
+    role_text = "、".join(target_roles) if target_roles else "通用岗位"
+    sections = []
+    for exp in experiences[:5]:
+        sections.append(
+            {
+                "section_type": "project",
+                "title": exp,
+                "bullets": [
+                    f"负责{exp}相关事项，完成关键任务，[具体成果待补充]",
+                    "与团队协作推进项目落地，[数据指标待补充]",
+                ],
+            }
+        )
+
+    return {
+        "headline": f"面向{role_text}方向的候选人",
+        "sections": sections,
+        "missing_hints": ["请补充量化结果（如增长、转化、效率）", "请补充时间范围和你的具体角色"],
+        "encouragement": "你已经有很好的素材，补上细节后会非常有竞争力。",
     }

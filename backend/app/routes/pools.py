@@ -25,10 +25,16 @@ POOL_SCOPES = {"inbox", "picked", "ignored"}
 class PoolCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     scope: str = Field(default="picked", max_length=20)
+    description: str = Field(default="", max_length=500)
+    color: str = Field(default="#3B82F6", max_length=20)
+    sort_order: int = 0
 
 
 class PoolUpdateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+    color: Optional[str] = Field(default=None, max_length=20)
+    sort_order: Optional[int] = None
 
 
 def _serialize_pool(pool: Pool, job_count: int = 0) -> dict:
@@ -36,6 +42,9 @@ def _serialize_pool(pool: Pool, job_count: int = 0) -> dict:
         "id": pool.id,
         "name": pool.name,
         "scope": pool.scope,
+        "description": pool.description or "",
+        "color": pool.color or "#3B82F6",
+        "sort_order": pool.sort_order or 0,
         "job_count": job_count,
         "created_at": str(pool.created_at),
         "updated_at": str(pool.updated_at),
@@ -75,7 +84,7 @@ async def list_pools(
     query = (
         select(Pool, func.coalesce(counts_subquery.c.job_count, 0).label("job_count"))
         .outerjoin(counts_subquery, counts_subquery.c.pool_id == Pool.id)
-        .order_by(Pool.created_at.desc())
+        .order_by(Pool.sort_order.asc(), Pool.created_at.desc())
     )
     if scope:
         query = query.where(Pool.scope == scope)
@@ -106,7 +115,13 @@ async def create_pool(data: PoolCreateRequest, db: AsyncSession = Depends(get_db
     if existing:
         raise HTTPException(status_code=409, detail="Pool name already exists")
 
-    pool = Pool(name=name, scope=scope)
+    pool = Pool(
+        name=name,
+        scope=scope,
+        description=(data.description or "").strip(),
+        color=(data.color or "#3B82F6").strip(),
+        sort_order=data.sort_order,
+    )
     db.add(pool)
     try:
         await db.commit()
@@ -128,8 +143,8 @@ async def update_pool(
     if scope and scope not in POOL_SCOPES:
         raise HTTPException(status_code=400, detail="invalid pool scope")
 
-    name = data.name.strip()
-    if not name:
+    name = data.name.strip() if isinstance(data.name, str) else None
+    if name is not None and not name:
         raise HTTPException(status_code=400, detail="Pool name is required")
 
     query = select(Pool).where(Pool.id == pool_id)
@@ -139,19 +154,26 @@ async def update_pool(
     if not pool:
         raise HTTPException(status_code=404, detail="Pool not found")
 
-    conflict = (
-        await db.execute(
-            select(Pool).where(
-                func.lower(Pool.name) == name.lower(),
-                Pool.id != pool_id,
-                Pool.scope == pool.scope,
+    if name is not None:
+        conflict = (
+            await db.execute(
+                select(Pool).where(
+                    func.lower(Pool.name) == name.lower(),
+                    Pool.id != pool_id,
+                    Pool.scope == pool.scope,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if conflict:
-        raise HTTPException(status_code=409, detail="Pool name already exists")
+        ).scalar_one_or_none()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Pool name already exists")
+        pool.name = name
 
-    pool.name = name
+    if data.description is not None:
+        pool.description = data.description.strip()
+    if data.color is not None:
+        pool.color = data.color.strip()
+    if data.sort_order is not None:
+        pool.sort_order = int(data.sort_order)
     try:
         await db.commit()
     except IntegrityError as exc:
