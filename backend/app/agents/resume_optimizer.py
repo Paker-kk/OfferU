@@ -139,6 +139,7 @@ async def optimize_resume(
         temperature=0.3,
         json_mode=True,
         max_tokens=4096,
+        tier="premium",
     )
 
     if not raw:

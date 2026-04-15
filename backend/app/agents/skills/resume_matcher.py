@@ -144,6 +144,7 @@ class ResumeMatcherSkill(BaseSkill):
             temperature=0.2,
             json_mode=True,
             max_tokens=3072,
+            tier="standard",
         )
 
         if not raw:

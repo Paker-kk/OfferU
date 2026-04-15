@@ -153,6 +153,7 @@ class ContentRewriterSkill(BaseSkill):
             temperature=0.3,  # 比分析稍高，允许创意改写
             json_mode=True,
             max_tokens=4096,  # 改写输出较长
+            tier="premium",
         )
 
         if not raw:

@@ -1,7 +1,7 @@
 ﻿<h1 align="center">OfferU</h1>
 
 <p align="center">
-  <em>Offer + U = OfferU — 面向文科生小白的 AI 校招简历定制系统</em>
+  <em>AI 驱动的校招简历定制系统 — 一个岗位一份简历，全程自动化</em>
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 ---
 
-> 💡 灵感来源于 [santifer/career-ops](https://github.com/santifer/career-ops)（31k⭐，CLI-first AI 求职系统）。Career-Ops 面向有技术能力的资深职场人（Claude Code CLI + $20/月），OfferU 将同样的 AI 求职理念带给**中国校招文科生**——零门槛 Web UI、¥0.15/百万 token 的 Qwen 模型、中文全链路。
+> 💡 灵感来源于 [santifer/career-ops](https://github.com/santifer/career-ops)（31k⭐，CLI-first AI 求职系统）。Career-Ops 面向有技术能力的资深职场人（Claude Code CLI + $20/月），OfferU 将同样的 AI 求职理念带给**中国校招求职者**——零门槛 Web UI、¥0.15/百万 token 的 Qwen 模型、中文全链路。
 
 ---
 
@@ -43,16 +43,16 @@
 
 ## 🎯 OfferU 解决什么问题？
 
-**你是文科生，校招季来了，但你：**
-- ❌ 不知道简历该写什么，经历写不出"成就感"
-- ❌ 海投时每个岗位都手动改简历，效率极低
-- ❌ 不懂 ATS 关键词匹配，简历被机器筛掉自己都不知道
-- ❌ 不会用 CLI 工具，看到命令行就头疼
+**校招季，你面对的困境：**
+- ❌ 每个岗位手动改简历，10 个岗位改 10 遍，效率极低
+- ❌ 不清楚简历该怎么写才能通过 ATS 关键词筛选
+- ❌ 经历描述平淡无力，缺乏量化成果和行动导向
+- ❌ 不同岗位侧重点不同，但不知道该怎么"精准匹配"
 
 **OfferU 的方案：**
-1. **AI 对话引导** → 从零帮你挖掘经历，生成 Bullet Points（STAR 法则）
-2. **一键批量定制** → 选中 N 个岗位，AI 自动从你的档案中召回最相关经历，逐岗位生成定制简历
-3. **全程 Web UI** → 打开浏览器就能用，不需要任何技术背景
+1. **AI 对话引导** → 从零帮你挖掘经历，用 STAR 法则生成 Bullet Points
+2. **一键批量定制** → 选中 N 个岗位，AI 自动匹配最相关经历并改写
+3. **全程 Web UI** → 打开浏览器就能用，无需命令行或编程知识
 
 ---
 
@@ -161,7 +161,7 @@
 
 ### 前置要求
 
-- Python 3.12+
+- Python 3.9+（推荐 3.12）
 - Node.js 18+
 - [Docker](https://www.docker.com/products/docker-desktop/)（可选，用于一键部署）
 - 阿里云百炼 API Key（[免费领取](https://bailian.console.aliyun.com/)）或其他 LLM Key
@@ -405,6 +405,10 @@ OfferU/
 - [x] 简历溯源标记（"基于 XX 岗位生成"）
 - [x] 多 LLM 支持（Qwen / DeepSeek / OpenAI / SiliconFlow / Gemini / 智谱 / Ollama）
 - [x] Dashboard + 周报分析 + 日程管理
+- [x] LLM STAR 法则改写引擎（premium tier 自动改写简历内容）
+- [x] jieba 中文分词（精准提取缺失关键词，替代暴力 bigram）
+- [x] 三级模型档位系统（fast / standard / premium，用户可自定义映射）
+- [x] SSE 降级 warning（LLM 改写失败时通知前端，不再静默 fallback）
 
 ### 进行中 🔄
 - [ ] PDF/Word 简历解析导入（pdfplumber + Qwen 结构化）
@@ -414,6 +418,28 @@ OfferU/
 - [ ] 投递自动化（自动填表提交）
 - [ ] 简历 PDF 导出美化（ATS 优化模板）
 - [ ] 面试准备模块（STAR 故事库 + 模拟面试）
+
+---
+
+## 📝 更新记录
+
+### 2026-04-15 v3.1 — AI 改写引擎 + 分词修复 + 模型分级
+
+**核心改进：**
+- **LLM STAR 改写引擎**：在简历生成流水线中接入 AI 改写层，自动将 Bullet Points 按 STAR 法则（Situation-Task-Action-Result）重写，经历描述从平铺直叙变为量化成果导向
+- **jieba 中文分词**：替换原先暴力 2-char bigram 分词，`missing_keywords` 现在返回 "项目管理"、"数据分析" 等有意义的词语，而非 "频生"、"类产" 等无效碎片
+- **三级模型档位（tier）**：`chat_completion()` 新增 `tier` 参数（fast / standard / premium），不同场景自动选择最合适的模型：JD 分析用 fast、对话用 standard、简历改写用 premium
+- **用户可自定义 tier 映射**：通过 `PUT /api/config/` 的 `tier_model_map` 字段覆盖默认映射，无需改代码即可切换模型
+- **SSE 降级通知**：LLM 改写失败时发送 `warning` SSE 事件，前端可展示提示而非静默 fallback
+
+**Bug 修复：**
+- 修复技能 section 分词器将 "ComfyUI 工作流" 拆分为无意义 token 的问题
+- 修复教育/经历/项目 section 未读取 `normalized` 字段导致内容缺失
+- 修复 `_to_tokens` 将中英文混合字符串合并为超长 token 的正则 bug
+- 更新 Qwen provider 预设模型列表（qwen-flash / qwen3.5-plus / qwen3.6-plus）
+- 修复 Windows Clash 代理导致的 SSL 证书主机名不匹配问题
+
+**E2E 验证：** 33/33 检查项全通过（Profile 9 + Jobs 3 + Optimize SSE 7 + Resume 8 + Config 4）。
 
 ---
 

@@ -5,6 +5,8 @@
 # 用户消息 → LLM 判断需要哪些 Tools → 调用 → 组装结果 → 回复
 # =============================================
 
+from __future__ import annotations
+
 import json
 import traceback
 from typing import Optional
@@ -177,6 +179,7 @@ async def agent_chat(body: AgentChatRequest):
                 temperature=0.3,
                 json_mode=True,
                 max_tokens=2048,
+                tier="standard",
             )
 
             if not llm_response:

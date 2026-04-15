@@ -84,6 +84,7 @@ class NarrativeGeneratorSkill(BaseSkill):
             temperature=0.6,
             json_mode=True,
             max_tokens=1024,
+            tier="standard",
         )
 
         if not raw:

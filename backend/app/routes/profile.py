@@ -17,6 +17,8 @@
 # POST   /api/profile/generate-narrative   生成叙事字段
 # =============================================
 
+from __future__ import annotations
+
 import json
 from typing import Any, Optional
 
@@ -313,12 +315,28 @@ def _fallback_chat_payload(topic: str, user_message: str) -> dict[str, Any]:
 
 async def _generate_chat_payload(topic: str, user_message: str) -> dict[str, Any]:
     prompt = (
-        "你是求职档案构建助手。"
-        "请根据用户输入，输出严格 JSON，不要输出其他文字。"
-        "JSON 格式: {\"assistant_message\": string, \"bullet_candidates\": "
-        "[{\"section_type\": string, \"title\": string, \"content_json\": object, \"confidence\": number}],"
-        "\"topic_complete\": boolean}."
-        "要求: 1) 不得编造事实；2) 候选条目 1-3 条；3) confidence 在 0-1。"
+        "你是求职档案构建助手。根据用户输入提取结构化事实，输出严格JSON（不要输出其他文字）。\n"
+        "JSON 格式:\n"
+        '{"assistant_message": "对用户的回复，可追问细节或鼓励补充",\n'
+        ' "bullet_candidates": [\n'
+        '   {"section_type": "education|experience|project|skill|certificate",\n'
+        '    "title": "条目标题",\n'
+        '    "content_json": {见下方字段规范},\n'
+        '    "confidence": 0.0-1.0}\n'
+        ' ],\n'
+        ' "topic_complete": false}\n\n'
+        "## content_json 字段规范（必须按类型填写对应字段名）：\n"
+        "education: {\"school\":学校, \"degree\":学位, \"major\":专业, \"start_date\":\"\", \"end_date\":\"\", \"gpa\":\"\", \"description\":描述, \"bullet\":一行摘要}\n"
+        "experience: {\"company\":公司, \"position\":职位, \"start_date\":\"\", \"end_date\":\"\", \"description\":用•分隔的多条业绩描述, \"bullet\":一行摘要}\n"
+        "project: {\"name\":项目名, \"role\":角色, \"start_date\":\"\", \"end_date\":\"\", \"description\":用•分隔的多条描述, \"bullet\":一行摘要含量化数据}\n"
+        "skill: {\"category\":技能分类, \"items\":[技能1,技能2,...], \"bullet\":逗号分隔技能}\n"
+        "certificate: {\"name\":证书名, \"issuer\":颁发机构, \"date\":日期, \"bullet\":一行摘要}\n\n"
+        "## 核心规则：\n"
+        "1. 严禁编造事实，所有数字必须来自用户原文\n"
+        "2. description 中必须保留用户提到的所有量化数据（人数、金额、时长、排名等）\n"
+        "3. bullet 是一行浓缩摘要，格式：关键词1 | 关键词2 | 量化成果\n"
+        "4. 候选条目 1-3 条，confidence: 1.0=用户明确说了, 0.7=推断, 0.5以下=需确认\n"
+        "5. 如果用户信息不够，assistant_message 中友好追问具体数据"
     )
 
     try:
@@ -333,6 +351,7 @@ async def _generate_chat_payload(topic: str, user_message: str) -> dict[str, Any
             temperature=0.2,
             json_mode=True,
             max_tokens=1000,
+            tier="standard",
         )
     except Exception:
         return _fallback_chat_payload(topic, user_message)
@@ -394,12 +413,16 @@ def _fallback_resume_candidates(resume_text: str) -> list[dict[str, Any]]:
 
 async def _extract_resume_candidates(resume_text: str) -> list[dict[str, Any]]:
     prompt = (
-        "你是求职档案结构化助手。"
-        "请从简历文本中抽取 3-12 条可入库的事实 bullet，并输出严格 JSON。"
-        "JSON 格式: {\"bullets\": ["
-        "{\"section_type\": string, \"title\": string, \"content_json\": object, \"confidence\": number}]}."
-        "section_type 仅允许 education/experience/project/activity/skill/certificate/honor/language/general。"
-        "要求: 1) 只改写不编造；2) confidence 在 0-1；3) 内容尽量可量化。"
+        "你是求职档案结构化助手。从简历文本中抽取 3-12 条可入库的事实 bullet，输出严格JSON。\n"
+        "JSON 格式: {\"bullets\": [{\"section_type\": string, \"title\": string, \"content_json\": object, \"confidence\": number}]}\n\n"
+        "## content_json 字段规范（必须按类型填写对应字段名）：\n"
+        "education: {\"school\":学校, \"degree\":学位, \"major\":专业, \"start_date\":\"\", \"end_date\":\"\", \"gpa\":\"\", \"description\":描述, \"bullet\":一行摘要}\n"
+        "experience: {\"company\":公司, \"position\":职位, \"start_date\":\"\", \"end_date\":\"\", \"description\":用•分隔的多条业绩, \"bullet\":一行摘要}\n"
+        "project: {\"name\":项目名, \"role\":角色, \"start_date\":\"\", \"end_date\":\"\", \"description\":用•分隔的多条描述, \"bullet\":一行摘要含量化数据}\n"
+        "skill: {\"category\":技能分类, \"items\":[技能1,技能2,...], \"bullet\":逗号分隔技能}\n"
+        "certificate: {\"name\":证书名, \"issuer\":颁发机构, \"date\":日期, \"bullet\":一行摘要}\n\n"
+        "section_type 仅允许 education/experience/project/activity/skill/certificate/honor/language/general。\n"
+        "要求: 1) 只改写不编造；2) 所有数字必须来自原文；3) description 保留完整量化数据；4) confidence 在 0-1。"
     )
 
     try:
@@ -411,6 +434,7 @@ async def _extract_resume_candidates(resume_text: str) -> list[dict[str, Any]]:
             temperature=0.2,
             json_mode=True,
             max_tokens=1800,
+            tier="standard",
         )
         parsed = extract_json(llm_result or "")
     except Exception:
@@ -973,6 +997,7 @@ async def generate_narrative(db: AsyncSession = Depends(get_db)):
             temperature=0.3,
             json_mode=True,
             max_tokens=800,
+            tier="fast",
         )
         parsed = extract_json(llm_result or "")
     except Exception:
