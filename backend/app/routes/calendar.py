@@ -83,6 +83,55 @@ async def create_event(data: EventCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/auto-fill")
-async def auto_fill_events():
-    """Agent 自动从简历信息 + 面试通知生成日历事件（TODO: 接入 LLM Agent）"""
-    return {"message": "Auto-fill endpoint - pending implementation"}
+async def auto_fill_events(db: AsyncSession = Depends(get_db)):
+    """
+    自动补建日历事件：扫描所有有 interview_time 但尚未关联 CalendarEvent 的通知。
+    作为兜底机制 —— 正常 sync 时已自动创建，此接口处理遗漏。
+    """
+    from datetime import timedelta
+    from app.models.models import InterviewNotification
+
+    # 需要自动创建日历的分类
+    auto_categories = {
+        "written_test", "assessment",
+        "interview_1", "interview_2", "interview_hr",
+    }
+    category_display = {
+        "written_test": "笔试通知", "assessment": "在线测评",
+        "interview_1": "初面/技术面", "interview_2": "复面/交叉面",
+        "interview_hr": "HR面/终面",
+    }
+
+    # 找出有 interview_time 且未关联日历事件的通知
+    subq = select(CalendarEvent.related_notification_id).where(
+        CalendarEvent.related_notification_id.is_not(None)
+    )
+    stmt = (
+        select(InterviewNotification)
+        .where(
+            InterviewNotification.interview_time.is_not(None),
+            InterviewNotification.id.not_in(subq),
+        )
+    )
+    result = await db.execute(stmt)
+    notifications = result.scalars().all()
+
+    created = 0
+    for n in notifications:
+        category = getattr(n, "category", "unknown")
+        if category not in auto_categories:
+            continue
+        event = CalendarEvent(
+            title=f"{category_display.get(category, '面试')} - {n.company}",
+            description=f"岗位: {n.position}\n{getattr(n, 'action_required', '')}",
+            event_type="interview",
+            start_time=n.interview_time,
+            end_time=n.interview_time + timedelta(hours=1),
+            location=n.location or "",
+            related_notification_id=n.id,
+        )
+        db.add(event)
+        created += 1
+
+    await db.commit()
+    return {"created": created, "scanned": len(notifications)}
