@@ -11,6 +11,8 @@
 # 4. 低置信度标记提醒用户核实
 # =============================================
 
+from __future__ import annotations
+
 from typing import Optional
 from app.agents.llm import chat_completion, extract_json
 from app.agents.skills.base import BaseSkill
@@ -124,6 +126,7 @@ class ConversationalExtractorSkill(BaseSkill):
             temperature=0.4,
             json_mode=True,
             max_tokens=2048,
+            tier="standard",
         )
 
         if not raw:
@@ -202,6 +205,7 @@ async def generate_instant_draft(
         temperature=0.5,
         json_mode=True,
         max_tokens=2048,
+        tier="standard",
     )
 
     if not raw:

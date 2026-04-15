@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     active_llm_config_id: str = ""
     active_llm_base_url: str = ""
     active_llm_api_key: str = ""
+    # tier → model 自定义映射 (覆盖 llm.py 中的 TIER_MODEL_MAP)
+    tier_model_map: dict = {}
 
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"

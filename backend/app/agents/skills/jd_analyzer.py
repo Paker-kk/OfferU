@@ -95,6 +95,7 @@ class JDAnalyzerSkill(BaseSkill):
             temperature=0.1,  # JD 解析需要高确定性
             json_mode=True,
             max_tokens=2048,
+            tier="fast",
         )
 
         if not raw:

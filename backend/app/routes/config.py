@@ -5,6 +5,8 @@
 # PUT  /api/config/  -> update settings (supports patch updates)
 # =============================================
 
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
@@ -64,9 +66,10 @@ PROVIDER_PRESETS: list[dict[str, Any]] = [
         "description": "Alibaba DashScope OpenAI-compatible API",
         "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "models": [
-            {"id": "qwen-plus", "name": "Qwen Plus", "description": "Balanced default"},
-            {"id": "qwen-turbo", "name": "Qwen Turbo", "description": "Low latency option"},
-            {"id": "qwen-max", "name": "Qwen Max", "description": "Stronger complex reasoning"},
+            {"id": "qwen-flash", "name": "Qwen Flash", "description": "Ultra-fast, lowest cost (tier=fast)"},
+            {"id": "qwen3.5-plus", "name": "Qwen3.5 Plus", "description": "Balanced quality and speed (tier=standard/premium)"},
+            {"id": "qwen3.6-plus", "name": "Qwen3.6 Plus", "description": "Best reasoning quality (tier=premium)"},
+            {"id": "qwen3.5-flash", "name": "Qwen3.5 Flash", "description": "Fast with good quality"},
         ],
         "key_prefix": "sk-",
     },
@@ -178,6 +181,10 @@ class ConfigUpdate(BaseModel):
     active_llm_config_id: str = ""
     active_llm_base_url: str = ""
     active_llm_api_key: str = ""
+
+    # tier → model 自定义映射（覆盖 llm.py 中的 TIER_MODEL_MAP）
+    # 格式: {"fast": "model-id", "standard": "model-id", "premium": "model-id"}
+    tier_model_map: dict[str, str] = Field(default_factory=dict)
 
     boss_cookie: str = ""
     zhilian_cookie: str = ""
@@ -557,6 +564,7 @@ def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
     settings.active_llm_config_id = cfg.active_llm_config_id
     settings.active_llm_base_url = cfg.active_llm_base_url
     settings.active_llm_api_key = cfg.active_llm_api_key
+    settings.tier_model_map = cfg.tier_model_map
 
 
 _current_config = _load_config()

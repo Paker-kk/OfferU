@@ -119,6 +119,7 @@ class SectionReorderSkill(BaseSkill):
             temperature=0.1,  # 排序建议需要高确定性
             json_mode=True,
             max_tokens=1024,  # 排序输出较短
+            tier="fast",
         )
 
         if not raw:

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import Counter, defaultdict
 from typing import Iterable, Literal
@@ -95,8 +96,15 @@ def _ordered_unique_ids(ids: list[int]) -> list[int]:
 
 
 def _to_tokens(text: str) -> list[str]:
-    words = re.findall(r"[a-zA-Z0-9\u4e00-\u9fff]+", (text or "").lower())
-    return [w for w in words if len(w) >= 2 and w not in STOPWORDS]
+    import jieba
+    text = (text or "").lower()
+    # 英文/数字词组（保持完整，如 "aigc", "comfyui"）
+    en_words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", text)
+    # 中文：jieba 分词
+    cn_text = re.sub(r"[a-zA-Z0-9]+", " ", text)  # 去英文后分词
+    cn_words = [w for w in jieba.cut(cn_text) if len(w) >= 2]
+    words = en_words + cn_words
+    return [w for w in words if w not in STOPWORDS]
 
 
 def _bullet_text(section: ProfileSection) -> str:
@@ -153,42 +161,61 @@ def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
         bullet = _bullet_text(section)
 
         if mapped == "education":
+            payload = section.content_json or {}
+            normalized = payload.get("normalized") if isinstance(payload, dict) else {}
+            if not isinstance(normalized, dict):
+                normalized = {}
             grouped[mapped].append(
                 {
-                    "school": section.title or "教育经历",
-                    "degree": "",
-                    "major": "",
-                    "description": bullet,
+                    "school": normalized.get("school") or section.title or "教育经历",
+                    "degree": normalized.get("degree", ""),
+                    "major": normalized.get("major", ""),
+                    "description": normalized.get("description") or bullet,
                 }
             )
             continue
 
         if mapped == "experience":
+            payload = section.content_json or {}
+            normalized = payload.get("normalized") if isinstance(payload, dict) else {}
+            if not isinstance(normalized, dict):
+                normalized = {}
             grouped[mapped].append(
                 {
-                    "company": section.title or "实践经历",
-                    "position": "",
-                    "description": bullet,
+                    "company": normalized.get("company") or section.title or "实践经历",
+                    "position": normalized.get("position", ""),
+                    "description": normalized.get("description") or bullet,
                 }
             )
             continue
 
         if mapped == "project":
+            payload = section.content_json or {}
+            normalized = payload.get("normalized") if isinstance(payload, dict) else {}
+            if not isinstance(normalized, dict):
+                normalized = {}
             grouped[mapped].append(
                 {
-                    "name": section.title or "项目经历",
-                    "role": "",
-                    "description": bullet,
+                    "name": normalized.get("name") or section.title or "项目经历",
+                    "role": normalized.get("role", ""),
+                    "description": normalized.get("description") or bullet,
                 }
             )
             continue
 
         if mapped == "skill":
-            keywords = _keywords_from_bullets([bullet], limit=8)
+            # 优先使用 normalized.items（保持完整技能名如 "Cursor Vibe Coding"）
+            payload = section.content_json or {}
+            normalized = payload.get("normalized") if isinstance(payload, dict) else None
+            items = (normalized.get("items") if isinstance(normalized, dict) else None) or []
+            if not items:
+                items = _keywords_from_bullets([bullet], limit=8)
+            if not items:
+                items = [bullet] if bullet else []
             grouped[mapped].append(
                 {
                     "category": section.title or "核心技能",
-                    "items": keywords or [bullet],
+                    "items": items,
                 }
             )
             continue
@@ -216,6 +243,81 @@ def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
             }
         )
     return rows
+
+
+_logger = logging.getLogger(__name__)
+
+_REWRITE_SYSTEM_PROMPT = """你是一位资深 HR 顾问。请根据目标岗位 JD，改写候选人的简历各模块内容，使其更匹配岗位要求。
+
+## 规则
+1. **保留所有事实和数字**，严禁编造经历或虚构数据
+2. **STAR 改写**：用 Situation-Task-Action-Result 结构优化描述
+3. **关键词注入**：将 JD 中的关键技能词自然融入描述（不要生硬堆砌）
+4. **量化优化**：已有数字保留，描述模糊处可建议追加"[待量化]"标记
+5. **教育经历**：一般不改写，原样保留
+6. **技能清单**：可根据 JD 调整顺序，将 JD 匹配的技能排前面
+
+## 输入
+你会收到 JSON 格式的 resume_sections 和 jd_text。
+
+## 输出
+返回严格 JSON，格式同 resume_sections，但 content_json 中的描述文本已改写：
+{"sections": [同输入结构，description/bullet 已优化]}"""
+
+
+async def _llm_rewrite_sections(rows: list[dict], jd_text: str) -> tuple:
+    """调 LLM 对已组装的简历 sections 做 JD 定制化改写。
+    返回 (rows, rewrite_applied: bool)。失败时 rewrite_applied=False。"""
+    from app.agents.llm import chat_completion, extract_json
+
+    # 构建紧凑的输入（只传必要信息，控制 token）
+    compact_sections = []
+    for row in rows:
+        compact_sections.append({
+            "section_type": row["section_type"],
+            "title": row["title"],
+            "content_json": row["content_json"],
+        })
+
+    user_content = json.dumps(
+        {"resume_sections": compact_sections, "jd_text": jd_text[:4000]},
+        ensure_ascii=False,
+    )
+
+    try:
+        raw = await chat_completion(
+            messages=[
+                {"role": "system", "content": _REWRITE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.3,
+            json_mode=True,
+            max_tokens=4096,
+            tier="premium",
+        )
+    except Exception as exc:
+        _logger.warning("LLM rewrite failed, using original rows: %s", exc)
+        return rows, False
+
+    parsed = extract_json(raw or "")
+    if not isinstance(parsed, dict):
+        _logger.warning("LLM rewrite returned non-dict, using original rows")
+        return rows, False
+
+    rewritten = parsed.get("sections")
+    if not isinstance(rewritten, list) or len(rewritten) == 0:
+        return rows, False
+
+    # 合并：用 LLM 返回的 content_json 替换原 rows
+    result = []
+    for idx, row in enumerate(rows):
+        new_row = dict(row)
+        if idx < len(rewritten) and isinstance(rewritten[idx], dict):
+            llm_content = rewritten[idx].get("content_json")
+            if isinstance(llm_content, list) and len(llm_content) > 0:
+                new_row["content_json"] = llm_content
+        result.append(new_row)
+    return result, True
 
 
 def _profile_to_contact_json(profile: Profile) -> dict:
@@ -328,6 +430,7 @@ async def _generate_for_job(
     ranked = _rank_profile_sections(sections, jd_text, limit=12)
     selected = [item[0] for item in ranked]
     rows = _build_resume_sections(selected)
+    rows, rewrite_applied = await _llm_rewrite_sections(rows, jd_text)
 
     base_contact_json = (
         (reference_resume.contact_json or {})
@@ -380,6 +483,7 @@ async def _generate_for_job(
         "missing_capabilities": missing_keywords,
         "profile_hit_ratio": f"{len(selected)}/{len(sections)}",
         "match_rate": f"{len(selected)}/{len(sections)}",
+        "rewrite_applied": rewrite_applied,
     }
 
 
@@ -442,6 +546,9 @@ async def optimize_generate(
             selected = [item[0] for item in ranked]
             used_bullets = [_bullet_text(item) for item in selected]
             rows = _build_resume_sections(selected)
+            rows, rewrite_applied = await _llm_rewrite_sections(rows, merged_jd)
+            if not rewrite_applied:
+                yield _sse("warning", {"message": "AI 改写失败，已使用原始内容生成简历", "mode": "combined"})
             source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
 
             try:
@@ -532,6 +639,9 @@ async def optimize_generate(
                 selected = [item[0] for item in ranked]
                 used_bullets = [_bullet_text(item) for item in selected]
                 rows = _build_resume_sections(selected)
+                rows, rewrite_applied = await _llm_rewrite_sections(rows, jd_text)
+                if not rewrite_applied:
+                    yield _sse("warning", {"message": "AI 改写失败，已使用原始内容", "job_id": job.id})
                 source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
                 resume = await _create_generated_resume(
                     db=db,
