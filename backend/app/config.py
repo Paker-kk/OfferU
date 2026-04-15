@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     gmail_client_secret: str = ""
     gmail_redirect_uri: str = ""  # 自定义回调地址，为空则自动从 cors_origins 推导
 
+    # ---- IMAP 邮箱直连（QQ/163/Gmail等，无需 GCP） ----
+    imap_host: str = ""          # 如 imap.qq.com / imap.163.com / imap.gmail.com
+    imap_port: int = 993
+    imap_user: str = ""          # 完整邮箱地址
+    imap_password: str = ""      # 授权码（QQ/163）或应用专用密码（Gmail）
+
     # Ignore unrelated env vars (for example docker-style db_user/db_password/db_name)
     # so local startup does not fail when extra keys exist.
     model_config = {

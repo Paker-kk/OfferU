@@ -312,8 +312,10 @@ class InterviewNotification(Base):
     email_body: Mapped[str] = mapped_column(Text, default="")
     company: Mapped[str] = mapped_column(String(300), default="")
     position: Mapped[str] = mapped_column(String(500), default="")
+    category: Mapped[str] = mapped_column(String(50), default="unknown")  # 8种校招状态分类
     interview_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     location: Mapped[str] = mapped_column(String(500), default="")
+    action_required: Mapped[str] = mapped_column(String(500), default="")  # 用户待办操作
     parsed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

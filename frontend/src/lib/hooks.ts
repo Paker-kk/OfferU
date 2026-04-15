@@ -102,8 +102,11 @@ export interface Notification {
   email_from: string;
   company: string;
   position: string;
+  category: string;
+  category_display: string;
   interview_time: string | null;
   location: string;
+  action_required: string;
   parsed_at: string;
 }
 
@@ -352,10 +355,39 @@ export async function getEmailAuthUrl(): Promise<{ auth_url?: string; message?: 
   return res.json();
 }
 
-/** 获取邮箱授权状态 */
-export interface EmailStatus { connected: boolean; has_refresh: boolean; }
+/** 获取邮箱授权状态（双通道） */
+export interface EmailStatus {
+  connected: boolean;
+  gmail_connected: boolean;
+  has_refresh: boolean;
+  imap_connected: boolean;
+  imap_host: string;
+  imap_user: string;
+}
 export function useEmailStatus() {
   return useSWR<EmailStatus>(`${API_BASE}/api/email/status`, fetcher);
+}
+
+/** IMAP 直连（QQ/163/Gmail 等） */
+export async function imapConnect(data: {
+  user: string;
+  password: string;
+  provider?: string;
+  host?: string;
+  port?: number;
+}) {
+  const res = await fetch(`${API_BASE}/api/email/imap-connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return { ok: res.ok, data: await res.json() };
+}
+
+/** 自动补建日历事件 */
+export async function autoFillCalendar() {
+  const res = await fetch(`${API_BASE}/api/calendar/auto-fill`, { method: "POST" });
+  return res.json();
 }
 
 /** 创建简历 */
