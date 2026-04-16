@@ -3,14 +3,15 @@
 # =============================================
 # 输入：岗位 JD + 简历内容
 # 输出：针对该岗位定制的中英文求职信
-# 使用 OpenAI GPT-4o-mini，json_object 格式输出
+# 使用统一 LLM 接口 (chat_completion)，tier=standard
 # =============================================
 
 import json
+import logging
 
-from openai import AsyncOpenAI
+from app.agents.llm import chat_completion
 
-from app.config import get_settings
+_logger = logging.getLogger(__name__)
 
 COVER_LETTER_PROMPT = """你是一位专业的求职信撰写助手。
 根据提供的【岗位描述】和【求职者简历】，撰写一封针对性的求职信。
@@ -42,21 +43,20 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
     调用 LLM 生成针对特定岗位的求职信
     返回 { cover_letter, language, key_highlights }
     """
-    settings = get_settings()
-    if not settings.openai_api_key:
-        return {"cover_letter": "", "language": "zh", "key_highlights": []}
-
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
     prompt = COVER_LETTER_PROMPT.format(jd=jd[:3000], resume=resume[:3000])
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+    raw = await chat_completion(
         messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
+        json_mode=True,
         temperature=0.7,
+        tier="standard",
     )
 
+    if not raw:
+        return {"cover_letter": "", "language": "zh", "key_highlights": []}
+
     try:
-        return json.loads(response.choices[0].message.content)
-    except (json.JSONDecodeError, IndexError):
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        _logger.warning("Cover letter JSON decode failed: %s", raw[:200])
         return {"cover_letter": "", "language": "zh", "key_highlights": []}

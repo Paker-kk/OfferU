@@ -14,6 +14,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Iterable, Literal
 
+import jieba
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -24,6 +25,7 @@ from app.database import get_db
 from app.models.models import Job, Profile, ProfileSection, Resume, ResumeSection
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 STOPWORDS = {
     "and",
@@ -96,7 +98,6 @@ def _ordered_unique_ids(ids: list[int]) -> list[int]:
 
 
 def _to_tokens(text: str) -> list[str]:
-    import jieba
     text = (text or "").lower()
     # 英文/数字词组（保持完整，如 "aigc", "comfyui"）
     en_words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", text)

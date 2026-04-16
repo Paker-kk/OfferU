@@ -345,6 +345,16 @@ async def sync_emails(db: AsyncSession = Depends(get_db)):
         interview_time = _parse_datetime(parsed.get("interview_time"))
         category = parsed.get("category", "unknown")
 
+        # B7: 去重 — 同 subject+from 的邮件不重复入库
+        dup = await db.execute(
+            select(InterviewNotification).where(
+                InterviewNotification.email_subject == subject,
+                InterviewNotification.email_from == from_addr,
+            )
+        )
+        if dup.scalar_one_or_none():
+            continue
+
         # 写入 InterviewNotification
         notification = InterviewNotification(
             email_subject=subject,
@@ -401,7 +411,7 @@ def _fetch_imap_emails() -> list[dict]:
     """
     creds = _imap_credentials
     ctx = ssl.create_default_context()
-    conn = imaplib.IMAP4_SSL(creds["host"], creds["port"], ssl_context=ctx)
+    conn = imaplib.IMAP4_SSL(creds["host"], creds["port"], ssl_context=ctx, timeout=15)
     conn.login(creds["user"], creds["password"])
     conn.select("INBOX", readonly=True)
 

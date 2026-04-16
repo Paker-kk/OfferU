@@ -14,9 +14,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_db
-from app.mcp_server import mcp as mcp_server
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize
-from app.routes import agent as agent_route
+try:
+    from app.mcp_server import mcp as mcp_server
+    from app.routes import agent as agent_route
+    _HAS_MCP = True
+except ImportError:
+    mcp_server = None
+    agent_route = None
+    _HAS_MCP = False
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize, interview
 
 settings = get_settings()
 
@@ -25,7 +31,10 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
-    async with mcp_server.session_manager.run():
+    if _HAS_MCP and mcp_server is not None:
+        async with mcp_server.session_manager.run():
+            yield
+    else:
         yield
 
 
@@ -58,7 +67,9 @@ app.include_router(email.router, prefix="/api/email", tags=["Email"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
-app.include_router(agent_route.router, prefix="/api/agent", tags=["Agent"])
+app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
+if agent_route is not None:
+    app.include_router(agent_route.router, prefix="/api/agent", tags=["Agent"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
@@ -66,8 +77,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ---- MCP Server (Streamable HTTP) ----
-mcp_server.settings.streamable_http_path = "/"
-app.mount("/mcp", mcp_server.streamable_http_app())
+if _HAS_MCP and mcp_server is not None:
+    mcp_server.settings.streamable_http_path = "/"
+    app.mount("/mcp", mcp_server.streamable_http_app())
 
 
 @app.get("/api/health")
