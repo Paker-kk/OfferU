@@ -5,6 +5,8 @@
 # 连接方式: claude mcp add --transport http offeru http://localhost:8000/mcp
 # =============================================
 
+from __future__ import annotations
+
 import json
 from typing import Optional
 

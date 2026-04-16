@@ -15,6 +15,8 @@
 #   result = await pipeline.run(resume_text, resume_data, jd_text)
 # =============================================
 
+from __future__ import annotations
+
 from typing import Optional
 
 from app.agents.desensitize import desensitize, restore

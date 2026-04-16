@@ -2,6 +2,8 @@
 Mock 数据生成脚本 — 生成测试岗位数据
 运行: cd backend && python -m scripts.seed_mock_jobs
 """
+from __future__ import annotations
+
 import hashlib
 import json
 import random

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OfferU 岗位采集器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">📥</span>
+        <h1>OfferU</h1>
+      </div>
+      <p class="subtitle">Boss直聘岗位采集器</p>
+    </header>
+
+    <div class="status-card" id="statusCard">
+      <div class="stat">
+        <span class="stat-number" id="jobCount">0</span>
+        <span class="stat-label">待同步岗位</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="syncBtn">
+        <span class="btn-icon">🚀</span>
+        一键同步到 OfferU
+      </button>
+      <button class="btn btn-secondary" id="clearBtn">
+        <span class="btn-icon">🗑️</span>
+        清空已采集
+      </button>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <details class="settings">
+      <summary>⚙️ 服务器设置</summary>
+      <div class="settings-body">
+        <label for="serverUrl">OfferU 后端地址</label>
+        <input
+          type="url"
+          id="serverUrl"
+          placeholder="http://localhost:8000"
+          spellcheck="false"
+        >
+        <button class="btn btn-sm" id="saveSettingsBtn">保存</button>
+      </div>
+    </details>
+
+    <footer class="footer">
+      在 Boss直聘 页面点击 "采集" 按钮收集岗位
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
