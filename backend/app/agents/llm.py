@@ -13,7 +13,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from typing import Optional
 
@@ -22,17 +24,23 @@ from openai import AsyncOpenAI
 
 from app.config import get_settings
 
+_logger = logging.getLogger(__name__)
+
 
 def _make_http_client() -> httpx.AsyncClient:
     """
     构造绕过系统代理（Clash / IE Settings）的 httpx 客户端。
     ─────────────────────────────────────────────
     Windows 下 httpx 会自动读取系统代理，导致 SSL 证书主机名
-    不匹配错误。使用自定义 transport 并关闭 SSL 验证来绕过。
+    不匹配错误。使用自定义 transport 来绕过。
+    ssl_verify 由 config.py Settings.ssl_verify 控制：
+      - True (默认)  = 正常 SSL 验证
+      - False (开发) = 跳过验证（Clash 等代理场景）
     """
+    settings = get_settings()
     return httpx.AsyncClient(
         transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"),
-        verify=False,
+        verify=settings.ssl_verify,
     )
 
 
@@ -77,8 +85,10 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     """
     根据当前配置的 LLM Provider 创建对应客户端
     ─────────────────────────────────────────────
-    DeepSeek 和 Ollama 都兼容 OpenAI API 协议，
-    因此只需切换 base_url 和 api_key 即可复用同一个客户端。
+    所有提供商统一走 OpenAI 兼容协议。
+    配置路由（routes/config.py）已将激活的 provider 信息
+    同步到 active_llm_base_url / active_llm_api_key，
+    因此这里只需读取这两个字段即可，无需硬编码 provider 分支。
 
     返回: (client, model_name)
     """
@@ -89,77 +99,48 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     active_api_key = (settings.active_llm_api_key or "").strip()
     http_client = _make_http_client()
 
-    if provider == "deepseek":
-        api_key = settings.deepseek_api_key or active_api_key
-        if not api_key:
-            raise ValueError("DeepSeek API Key 未配置，请在设置页面填写")
+    # Ollama 特殊处理：确保 /v1 后缀，使用占位 key
+    if provider == "ollama":
+        base_url = active_base_url or settings.ollama_base_url
         client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=active_base_url or DEFAULT_BASE_URLS["deepseek"],
+            api_key="ollama",
+            base_url=_ensure_ollama_v1(base_url),
             http_client=http_client,
         )
-    elif provider == "openai":
-        api_key = settings.openai_api_key or active_api_key
-        if not api_key:
-            raise ValueError("OpenAI API Key 未配置，请在设置页面填写")
-        if active_base_url:
-            client = AsyncOpenAI(api_key=api_key, base_url=active_base_url, http_client=http_client)
-        else:
-            client = AsyncOpenAI(api_key=api_key, http_client=http_client)
-    elif provider == "qwen":
-        api_key = settings.qwen_api_key or active_api_key
-        if not api_key:
-            raise ValueError("Qwen API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=active_base_url or DEFAULT_BASE_URLS["qwen"],
-            http_client=http_client,
-        )
-    elif provider == "siliconflow":
-        api_key = settings.siliconflow_api_key or active_api_key
-        if not api_key:
-            raise ValueError("SiliconFlow API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=active_base_url or DEFAULT_BASE_URLS["siliconflow"],
-            http_client=http_client,
-        )
-    elif provider == "gemini":
-        api_key = settings.gemini_api_key or active_api_key
-        if not api_key:
-            raise ValueError("Gemini API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=active_base_url or DEFAULT_BASE_URLS["gemini"],
-            http_client=http_client,
-        )
-    elif provider == "zhipu":
-        api_key = settings.zhipu_api_key or active_api_key
-        if not api_key:
-            raise ValueError("智谱 API Key 未配置，请在设置页面填写")
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=active_base_url or DEFAULT_BASE_URLS["zhipu"],
-            http_client=http_client,
-        )
-    elif provider == "ollama":
-        ollama_base_url = active_base_url or settings.ollama_base_url
-        client = AsyncOpenAI(
-            api_key="ollama",  # Ollama 不需要真实 key
-            base_url=_ensure_ollama_v1(ollama_base_url),
-            http_client=http_client,
-        )
-    else:
-        # 自定义 OpenAI 兼容服务商
-        if not active_base_url:
-            raise ValueError(f"不支持的 LLM Provider: {provider}，且未配置 active_llm_base_url")
-        if not active_api_key:
-            raise ValueError(f"自定义 Provider {provider} 缺少 API Key")
-        client = AsyncOpenAI(
-            api_key=active_api_key,
-            base_url=active_base_url,
-            http_client=http_client,
-        )
+        return client, model
+
+    # 通用路径：所有 OpenAI 兼容提供商（DeepSeek / Qwen / OpenAI / Gemini / 智谱 / SiliconFlow / 任意第三方）
+    # 1) 优先使用 active_llm_* 字段（由设置页同步）
+    # 2) 回退到 per-provider 专属 key + 默认 base_url（兼容旧配置 / 环境变量启动）
+    api_key = active_api_key
+    base_url = active_base_url
+
+    if not api_key:
+        # 兼容旧版：从 per-provider key 字段读取
+        legacy_keys = {
+            "deepseek": settings.deepseek_api_key,
+            "openai": settings.openai_api_key,
+            "qwen": settings.qwen_api_key,
+            "siliconflow": settings.siliconflow_api_key,
+            "gemini": settings.gemini_api_key,
+            "zhipu": settings.zhipu_api_key,
+        }
+        api_key = legacy_keys.get(provider, "")
+
+    if not api_key:
+        raise ValueError(f"LLM API Key 未配置（provider={provider}），请在设置页面填写")
+
+    if not base_url:
+        base_url = DEFAULT_BASE_URLS.get(provider, "")
+
+    if not base_url:
+        raise ValueError(f"LLM Base URL 未配置（provider={provider}），请在设置页面填写")
+
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        http_client=http_client,
+    )
 
     return client, model
 
@@ -213,11 +194,16 @@ async def chat_completion(
         kwargs["response_format"] = {"type": "json_object"}
 
     try:
-        response = await client.chat.completions.create(**kwargs)
+        response = await asyncio.wait_for(
+            client.chat.completions.create(**kwargs),
+            timeout=settings.llm_timeout,
+        )
         return response.choices[0].message.content
+    except asyncio.TimeoutError:
+        _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}): 超过 {settings.llm_timeout}s")
+        return None
     except Exception as e:
-        # 日志记录（后续可替换为 logging）
-        print(f"[LLM Error] {provider}/{model} (tier={tier}): {e}")
+        _logger.error(f"[LLM Error] {provider}/{model} (tier={tier}): {e}")
         return None
 
 
@@ -238,7 +224,7 @@ def extract_json(text: str) -> Optional[dict]:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        pass
+        _logger.debug("extract_json: direct parse failed, trying fallback: %s", text[:200])
 
     # 尝试从 markdown code block 中提取
     match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)

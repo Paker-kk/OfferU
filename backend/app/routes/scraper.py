@@ -6,6 +6,8 @@
 # GET  /api/scraper/tasks        获取任务列表
 # =============================================
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import logging
@@ -27,7 +29,16 @@ logger = logging.getLogger(__name__)
 
 
 # ---- 内存中的任务状态（轻量实现，后续可换 Redis / DB） ----
+# 限制最多保留 200 条任务记录，超出后丢弃最旧的
+_MAX_TASK_HISTORY = 200
 _tasks: list[dict] = []
+
+
+def _append_task(task: dict) -> None:
+    """添加任务记录，超过上限时丢弃最旧的条目"""
+    _tasks.append(task)
+    if len(_tasks) > _MAX_TASK_HISTORY:
+        del _tasks[:len(_tasks) - _MAX_TASK_HISTORY]
 
 
 class RunRequest(BaseModel):
@@ -133,7 +144,7 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
         "created_at": datetime.utcnow().isoformat(),
         "result": None,
     }
-    _tasks.append(task_info)
+    _append_task(task_info)
 
     # 异步执行爬虫任务
     asyncio.create_task(_execute_scraper(task_info, scraper, req))
