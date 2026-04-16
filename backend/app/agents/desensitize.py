@@ -10,6 +10,8 @@
 # 仅对云端 Provider（DeepSeek / OpenAI）生效，Ollama 本地不脱敏
 # =============================================
 
+from __future__ import annotations
+
 import re
 from typing import Tuple
 

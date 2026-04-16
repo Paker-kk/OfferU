@@ -9,6 +9,8 @@
 #   - Indeed 是最稳定的源，LinkedIn 需要代理
 # =============================================
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 from typing import Optional
