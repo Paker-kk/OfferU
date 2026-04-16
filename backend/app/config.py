@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # tier → model 自定义映射 (覆盖 llm.py 中的 TIER_MODEL_MAP)
     tier_model_map: dict = {}
 
+    # ---- 网络 ----
+    # ssl_verify=False 仅用于开发环境（如 Clash 代理导致证书主机名不匹配）。
+    # 普通用户保持默认 True。
+    ssl_verify: bool = True
+    # LLM API 全局超时（秒），防止请求挂起
+    llm_timeout: int = 60
+
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"
     cors_origins: str = "http://localhost:3000"

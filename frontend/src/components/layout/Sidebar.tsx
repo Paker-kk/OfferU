@@ -26,6 +26,7 @@ import {
   Bug,
   UserRound,
   Bot,
+  GraduationCap,
 } from "lucide-react";
 
 const navItems = [
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/optimize", label: "AI优化", icon: Sparkles },
   { href: "/resume", label: "简历", icon: FileText },
   { href: "/applications", label: "投递", icon: Send },
+  { href: "/interview", label: "面经题库", icon: GraduationCap },
   { href: "/calendar", label: "日程", icon: Calendar },
   { href: "/email", label: "邮件通知", icon: Mail },
   { href: "/analytics", label: "周报分析", icon: BarChart3 },

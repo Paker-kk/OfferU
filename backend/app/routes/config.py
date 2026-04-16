@@ -120,6 +120,14 @@ PROVIDER_PRESETS: list[dict[str, Any]] = [
         ],
         "key_prefix": "",
     },
+    {
+        "id": "custom",
+        "name": "自定义 (OpenAI 兼容)",
+        "description": "Any OpenAI-compatible API endpoint (e.g. Groq, Mistral, Together, Azure OpenAI, etc.)",
+        "default_base_url": "",
+        "models": [],
+        "key_prefix": "",
+    },
 ]
 
 _PRESET_BY_ID: dict[str, dict[str, Any]] = {preset["id"]: preset for preset in PROVIDER_PRESETS}
@@ -185,6 +193,10 @@ class ConfigUpdate(BaseModel):
     # tier → model 自定义映射（覆盖 llm.py 中的 TIER_MODEL_MAP）
     # 格式: {"fast": "model-id", "standard": "model-id", "premium": "model-id"}
     tier_model_map: dict[str, str] = Field(default_factory=dict)
+
+    # 网络 — 仅开发环境需要改
+    ssl_verify: bool = True       # False = 跳过 SSL 验证（Clash 代理场景）
+    llm_timeout: int = 60         # LLM API 超时秒数
 
     boss_cookie: str = ""
     zhilian_cookie: str = ""
@@ -565,6 +577,8 @@ def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
     settings.active_llm_base_url = cfg.active_llm_base_url
     settings.active_llm_api_key = cfg.active_llm_api_key
     settings.tier_model_map = cfg.tier_model_map
+    settings.ssl_verify = cfg.ssl_verify
+    settings.llm_timeout = cfg.llm_timeout
 
 
 _current_config = _load_config()

@@ -330,6 +330,10 @@ export async function updateConfig(data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新配置失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -340,12 +344,20 @@ export async function createCalendarEvent(data: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建日历事件失败 (${res.status})`);
+  }
   return res.json();
 }
 
 /** 触发邮件同步 */
 export async function syncEmails() {
   const res = await fetch(`${API_BASE}/api/email/sync`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || `邮件同步失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -387,6 +399,10 @@ export async function imapConnect(data: {
 /** 自动补建日历事件 */
 export async function autoFillCalendar() {
   const res = await fetch(`${API_BASE}/api/calendar/auto-fill`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `自动补建日历失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -1475,4 +1491,103 @@ export async function streamOptimizeGenerate(
 
   const tail = buffer.trim();
   if (tail) emit(tail);
+}
+
+// =============================================
+// Interview 面经题库 hooks
+// =============================================
+
+export interface InterviewQuestion {
+  id: number;
+  experience_id: number;
+  question_text: string;
+  round_type: string;
+  category: string;
+  difficulty: number;
+  frequency: number;
+  suggested_answer: string | null;
+  job_id: number | null;
+  created_at: string | null;
+}
+
+export interface InterviewExperience {
+  id: number;
+  company: string;
+  role: string;
+  source_platform: string;
+  source_url: string | null;
+  collected_at: string | null;
+  questions_count: number;
+}
+
+export function useInterviewQuestions(params?: {
+  company?: string;
+  role?: string;
+  job_id?: number;
+  category?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.company) searchParams.set("company", params.company);
+  if (params?.role) searchParams.set("role", params.role);
+  if (params?.job_id) searchParams.set("job_id", String(params.job_id));
+  if (params?.category) searchParams.set("category", params.category);
+  const qs = searchParams.toString();
+  return useSWR<InterviewQuestion[]>(
+    `${API_BASE}/api/interview/questions${qs ? `?${qs}` : ""}`,
+    fetcher
+  );
+}
+
+export function useInterviewExperiences(company?: string) {
+  const qs = company ? `?company=${encodeURIComponent(company)}` : "";
+  return useSWR<InterviewExperience[]>(
+    `${API_BASE}/api/interview/experiences${qs}`,
+    fetcher
+  );
+}
+
+export async function collectExperience(body: {
+  company: string;
+  role: string;
+  raw_text: string;
+  source_url?: string;
+  source_platform?: string;
+  job_id?: number;
+}) {
+  const res = await fetch(`${API_BASE}/api/interview/collect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `提交面经失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function extractQuestions(experienceId: number) {
+  const res = await fetch(`${API_BASE}/api/interview/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ experience_id: experienceId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `提炼问题失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function generateAnswer(questionId: number) {
+  const res = await fetch(`${API_BASE}/api/interview/generate-answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question_id: questionId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `生成回答失败 (${res.status})`);
+  }
+  return res.json();
 }

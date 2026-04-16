@@ -366,3 +366,44 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+# =============================================
+# 面经模块 (PRD §8.5)
+# =============================================
+
+class InterviewExperience(Base):
+    """收集到的面经原文"""
+    __tablename__ = "interview_experiences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company: Mapped[str] = mapped_column(String(300), index=True)
+    role: Mapped[str] = mapped_column(String(300), index=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_platform: Mapped[str] = mapped_column(String(50), default="manual")  # manual / niuke / zhihu
+    raw_text: Mapped[str] = mapped_column(Text)
+    interview_rounds: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON: 面试轮次
+    job_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    questions: Mapped[list["InterviewQuestion"]] = relationship(
+        back_populates="experience", cascade="all, delete-orphan"
+    )
+
+
+class InterviewQuestion(Base):
+    """从面经中提炼的结构化问题"""
+    __tablename__ = "interview_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    experience_id: Mapped[int] = mapped_column(Integer, ForeignKey("interview_experiences.id"))
+    question_text: Mapped[str] = mapped_column(Text)
+    round_type: Mapped[str] = mapped_column(String(50), default="department")  # hr / department / final
+    category: Mapped[str] = mapped_column(String(50), default="behavioral")  # behavioral / technical / case / motivation
+    difficulty: Mapped[int] = mapped_column(Integer, default=3)  # 1-5
+    frequency: Mapped[int] = mapped_column(Integer, default=1)  # 出现次数
+    suggested_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    job_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    experience: Mapped["InterviewExperience"] = relationship(back_populates="questions")
