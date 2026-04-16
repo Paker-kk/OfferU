@@ -24,7 +24,10 @@
 #   POST   /api/resume/parse                       Agent 解析简历（TODO）
 # =============================================
 
+from __future__ import annotations
+
 import os
+
 import re
 import uuid
 from io import BytesIO

@@ -14,6 +14,8 @@
 #   4. 未来扩展：自动填写各平台申请表单
 # =============================================
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 
