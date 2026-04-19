@@ -45,12 +45,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+
 # ---- CORS 允许前端跨域访问 ----
 # cors_origins 以逗号分隔多个来源，如 "http://localhost:3000,http://localhost:8080"
 # allow_credentials=True 允许带 cookie 的跨域请求（Gmail OAuth 回调需要）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_origins=cors_origins,
+    allow_origin_regex=r"^(chrome-extension|ms-browser-extension)://[a-z0-9]{16,64}$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

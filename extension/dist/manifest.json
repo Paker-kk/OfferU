@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "OfferU 岗位采集助手",
+  "name": "OfferU 简历购物车助手",
   "version": "0.1.0",
-  "description": "从 Boss直聘等招聘平台一键采集岗位信息到 OfferU 系统",
+  "description": "在招聘站列表页/详情页手动采集岗位并同步到 OfferU",
   "permissions": [
     "storage",
     "activeTab"
   ],
   "host_permissions": [
+    "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],
   "action": {
@@ -20,11 +21,17 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.zhipin.com/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": ["content.js"],
       "css": [],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "offeru-extension@offeru.local"
+    }
+  }
 }

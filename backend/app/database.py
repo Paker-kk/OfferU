@@ -45,6 +45,7 @@ async def init_db():
 
 def _auto_migrate(connection):
     """对比模型定义与实际表结构，用 ALTER TABLE ADD COLUMN 补全缺失列"""
+    import json
     from sqlalchemy import inspect as sa_inspect, text
     inspector = sa_inspect(connection)
     for table in Base.metadata.sorted_tables:
@@ -54,18 +55,31 @@ def _auto_migrate(connection):
         for col in table.columns:
             if col.name not in existing_cols:
                 col_type = col.type.compile(connection.dialect)
+                col_type_upper = col_type.upper()
                 default_clause = ""
                 if col.default is not None:
                     val = col.default.arg
+                    if callable(val):
+                        try:
+                            val = val()
+                        except Exception:
+                            val = None
                     if isinstance(val, str):
                         default_clause = f" DEFAULT '{val}'"
                     elif isinstance(val, bool):
                         default_clause = f" DEFAULT {1 if val else 0}"
                     elif isinstance(val, (int, float)):
                         default_clause = f" DEFAULT {val}"
+                    elif isinstance(val, (list, dict)):
+                        default_clause = f" DEFAULT '{json.dumps(val, ensure_ascii=False)}'"
                 nullable = "" if col.nullable else " NOT NULL"
                 if nullable and not default_clause:
-                    default_clause = " DEFAULT ''" if "CHAR" in col_type or "TEXT" in col_type else " DEFAULT 0"
+                    if "CHAR" in col_type_upper or "TEXT" in col_type_upper:
+                        default_clause = " DEFAULT ''"
+                    elif "JSON" in col_type_upper:
+                        default_clause = " DEFAULT '[]'"
+                    else:
+                        default_clause = " DEFAULT 0"
                 ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{nullable}{default_clause}'
                 connection.execute(text(ddl))
 
