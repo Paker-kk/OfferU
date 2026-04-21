@@ -45,6 +45,9 @@ npm-debug.log*
 coverage/
 .pytest_cache/
 
+# ---- 本地敏感讨论文档 ----
+docs/产品分歧分析_*.md
+
 # ---- Trae 本地元数据 ----
 .trae/
 .Trae/
