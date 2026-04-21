@@ -1,21 +1,13 @@
-// =============================================
-// 岗位详情页 — 单岗位完整信息
-// =============================================
-// 路由: /jobs/[id]
-// 展示岗位全部信息：标题、公司、AI摘要、关键词
-// =============================================
-
 "use client";
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  Button,
   Card,
   CardBody,
   Chip,
-  Button,
-  Spinner,
   Link,
   Modal,
   ModalBody,
@@ -24,16 +16,21 @@ import {
   ModalHeader,
   Select,
   SelectItem,
+  Spinner,
 } from "@nextui-org/react";
 import {
   ArrowLeft,
-  ExternalLink,
-  MapPin,
   Building2,
   Calendar,
+  ExternalLink,
+  MapPin,
   Send,
 } from "lucide-react";
 import { createApplication, patchJob, useJob, usePools } from "@/lib/hooks";
+import {
+  bauhausModalContentClassName,
+  bauhausSelectClassNames,
+} from "@/lib/bauhaus";
 
 export default function JobDetailPage() {
   const params = useParams();
@@ -46,12 +43,10 @@ export default function JobDetailPage() {
   const [targetPool, setTargetPool] = useState<string>("ungrouped");
   const [actionLoading, setActionLoading] = useState<"join" | "trash" | null>(null);
 
-  const poolOptions = useMemo(() => {
-    return [
-      { key: "ungrouped", label: "未分组" },
-      ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name }))),
-    ];
-  }, [pickedPools]);
+  const poolOptions = useMemo(
+    () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
+    [pickedPools]
+  );
 
   const handleJoinPicked = async () => {
     if (!job) return;
@@ -87,167 +82,195 @@ export default function JobDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spinner size="lg" />
+      <div className="flex min-h-[420px] items-center justify-center">
+        <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-5 py-4">
+          <Spinner size="sm" color="warning" />
+          <span className="text-sm font-semibold tracking-[0.04em] text-black/70">正在载入岗位详情...</span>
+        </div>
       </div>
     );
   }
 
   if (error || !job) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-white/50">岗位不存在或加载失败</p>
-        <Button variant="bordered" onPress={() => router.push("/jobs")}>
-          返回列表
-        </Button>
+      <div className="flex min-h-[420px] items-center justify-center">
+        <div className="bauhaus-panel bg-white p-8 text-center">
+          <p className="text-lg font-black uppercase tracking-[-0.05em] text-black">岗位不存在或加载失败</p>
+          <Button onPress={() => router.push("/jobs")} className="bauhaus-button bauhaus-button-outline mt-5 !px-4 !py-3 !text-[11px]">
+            返回列表
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 15 }}
-      className="space-y-6 max-w-4xl"
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="mx-auto max-w-5xl space-y-8"
     >
-      {/* 顶栏：返回 + 标题 */}
-      <div className="flex items-center gap-3">
-        <Button
-          isIconOnly
-          variant="light"
-          onPress={() => router.push("/jobs")}
-        >
-          <ArrowLeft size={20} />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">{job.title}</h1>
-          <div className="flex items-center gap-3 mt-1 text-white/60 text-sm">
-            <span className="flex items-center gap-1">
-              <Building2 size={14} /> {job.company}
-            </span>
-            <span className="flex items-center gap-1">
-              <MapPin size={14} /> {job.location}
-            </span>
-            {job.posted_at && (
-              <span className="flex items-center gap-1">
-                <Calendar size={14} /> {job.posted_at}
-              </span>
-            )}
-            <Chip size="sm" variant="flat">
-              {job.source}
-            </Chip>
+      <section className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                isIconOnly
+                variant="light"
+                onPress={() => router.push("/jobs")}
+                className="min-h-11 min-w-11 border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]"
+              >
+                <ArrowLeft size={18} />
+              </Button>
+              <span className="bauhaus-chip bg-[#F0C020]">Job Profile</span>
+            </div>
+
+            <div>
+              <p className="bauhaus-label text-black/55">Detail Sheet</p>
+              <h1 className="mt-3 text-4xl font-black leading-[0.92] tracking-[-0.06em] text-black sm:text-5xl">
+                {job.title}
+              </h1>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-black/62">
+                <span className="flex items-center gap-1"><Building2 size={14} /> {job.company}</span>
+                <span className="flex items-center gap-1"><MapPin size={14} /> {job.location || "未知地点"}</span>
+                {job.posted_at && <span className="flex items-center gap-1"><Calendar size={14} /> {job.posted_at}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Source</p>
+              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{job.source}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
+              <p className="bauhaus-label text-black/60">Keywords</p>
+              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{job.keywords?.length ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white sm:col-span-2 xl:col-span-1">
+              <p className="bauhaus-label text-white/70">Actions</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onPress={() => setJoinModalOpen(true)} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]">
+                  加入已筛选
+                </Button>
+                <Button onPress={() => setTrashConfirmOpen(true)} isLoading={actionLoading === "trash"} isDisabled={actionLoading === "join"} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
+                  移入回收站
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* AI 摘要 */}
       {job.summary && (
-        <Card className="bg-white/5 border border-white/10">
-          <CardBody>
-            <h3 className="text-lg font-semibold mb-2">AI 摘要</h3>
-            <p className="text-white/70 leading-relaxed">{job.summary}</p>
+        <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+          <CardBody className="p-5">
+            <p className="bauhaus-label text-black/55">AI Summary</p>
+            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-black">岗位摘要</h2>
+            <p className="mt-4 text-sm font-medium leading-relaxed text-black/72">{job.summary}</p>
           </CardBody>
         </Card>
       )}
 
-      {/* 完整 JD（仅在二级详情页展示） */}
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody>
-          <h3 className="text-lg font-semibold mb-2">职位描述（完整 JD）</h3>
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5">
+          <div>
+            <p className="bauhaus-label text-black/55">Raw Description</p>
+            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-black">职位描述</h2>
+          </div>
           {job.raw_description ? (
-            <div className="max-h-[420px] overflow-auto rounded-lg border border-white/10 bg-black/20 p-4">
-              <pre className="whitespace-pre-wrap text-sm text-white/75 leading-relaxed font-sans">
+            <div className="bauhaus-panel-sm max-h-[460px] overflow-auto bg-[#F0F0F0] p-4">
+              <pre className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-black/76">
                 {job.raw_description}
               </pre>
             </div>
           ) : (
-            <p className="text-sm text-white/45">暂无 JD 原文内容</p>
+            <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4 text-sm font-medium text-black/60">
+              暂无 JD 原文内容。
+            </div>
           )}
         </CardBody>
       </Card>
 
-      {/* 关键词 */}
       {job.keywords?.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {job.keywords.map((kw) => (
-            <Chip key={kw} size="sm" variant="flat" className="bg-white/10">
-              {kw}
+        <section className="flex flex-wrap gap-2">
+          {job.keywords.map((keyword, index) => (
+            <Chip
+              key={keyword}
+              size="sm"
+              variant="flat"
+              className={`border-2 border-black font-semibold ${
+                index % 3 === 0
+                  ? "bg-[#1040C0] text-white"
+                  : index % 3 === 1
+                    ? "bg-[#F0C020] text-black"
+                    : "bg-white text-black"
+              }`}
+            >
+              {keyword}
             </Chip>
           ))}
-        </div>
+        </section>
       )}
 
-      {/* 操作按钮（两行两列） */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          className="h-11 w-full bg-blue-600 text-white hover:bg-blue-500"
-          onPress={() => setJoinModalOpen(true)}
-          isLoading={actionLoading === "join"}
-        >
+      <section className="grid gap-3 md:grid-cols-2">
+        <Button onPress={() => setJoinModalOpen(true)} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-yellow !justify-center !px-4 !py-3 !text-[11px]">
           加入已筛选
         </Button>
-        <Button
-          className="h-11 w-full bg-amber-500 text-white hover:bg-amber-400"
-          onPress={() => setTrashConfirmOpen(true)}
-          isLoading={actionLoading === "trash"}
-          isDisabled={actionLoading === "join"}
-        >
+        <Button onPress={() => setTrashConfirmOpen(true)} isLoading={actionLoading === "trash"} isDisabled={actionLoading === "join"} className="bauhaus-button bauhaus-button-red !justify-center !px-4 !py-3 !text-[11px]">
           移入回收站
         </Button>
-
         {job.url ? (
           <Button
             as={Link}
             href={job.url}
             target="_blank"
             rel="noopener noreferrer"
-            variant="bordered"
-            className="h-11 w-full border-white/25 text-white/70 hover:bg-white/5"
             endContent={<ExternalLink size={16} />}
+            className="bauhaus-button bauhaus-button-outline !justify-center !px-4 !py-3 !text-[11px]"
           >
             查看原文
           </Button>
         ) : (
-          <Button
-            variant="bordered"
-            isDisabled
-            className="h-11 w-full border-white/15 text-white/35"
-          >
+          <Button isDisabled className="bauhaus-button bauhaus-button-outline !justify-center !px-4 !py-3 !text-[11px] opacity-60">
             查看原文
           </Button>
         )}
-
         <Button
-          color="success"
           endContent={<Send size={16} />}
-          className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-500"
           onPress={async () => {
             await createApplication(job.id);
             router.push("/applications");
           }}
+          className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
         >
           一键投递
         </Button>
-      </div>
+      </section>
 
       <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} size="md">
-        <ModalContent>
-          <ModalHeader>加入已筛选</ModalHeader>
-          <ModalBody className="space-y-3">
-            <p className="text-sm text-white/60">选择目标池，确认后将该岗位流转到已筛选。</p>
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            加入已筛选
+          </ModalHeader>
+          <ModalBody className="space-y-3 px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/68">选择目标池，确认后将该岗位流转到已筛选。</p>
             <Select
               aria-label="目标已筛选池"
               selectedKeys={[targetPool]}
               onSelectionChange={(keys) => setTargetPool(Array.from(keys)[0] as string)}
               items={poolOptions}
+              classNames={bauhausSelectClassNames}
             >
               {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
             </Select>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={() => setJoinModalOpen(false)}>取消</Button>
-            <Button color="primary" onPress={handleJoinPicked} isLoading={actionLoading === "join"}>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" onPress={() => setJoinModalOpen(false)} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
+              取消
+            </Button>
+            <Button onPress={handleJoinPicked} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]">
               确认加入
             </Button>
           </ModalFooter>
@@ -255,18 +278,20 @@ export default function JobDetailPage() {
       </Modal>
 
       <Modal isOpen={trashConfirmOpen} onClose={() => setTrashConfirmOpen(false)} size="md">
-        <ModalContent>
-          <ModalHeader>移入回收站</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-white/70">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+            移入回收站
+          </ModalHeader>
+          <ModalBody className="px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
               确认将该岗位移入回收站吗？移入后可在回收站页面恢复或永久删除。
             </p>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={() => setTrashConfirmOpen(false)}>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" onPress={() => setTrashConfirmOpen(false)} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
               取消
             </Button>
-            <Button color="danger" isLoading={actionLoading === "trash"} onPress={handleMoveToTrash}>
+            <Button isLoading={actionLoading === "trash"} onPress={handleMoveToTrash} className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]">
               确认移入
             </Button>
           </ModalFooter>

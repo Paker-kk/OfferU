@@ -157,8 +157,8 @@ export function useJobBatches(limit = 30) {
 }
 
 /** 获取岗位池列表 */
-export function usePools(scope?: "inbox" | "picked" | "ignored") {
-  const query = scope ? `?scope=${scope}` : "";
+export function usePools(scope?: "all" | "inbox" | "picked" | "ignored") {
+  const query = scope && scope !== "all" ? `?scope=${scope}` : "";
   return useSWR<Pool[]>(`${API_BASE}/api/pools/${query}`, fetcher);
 }
 

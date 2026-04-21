@@ -20,7 +20,7 @@ import {
   Card, CardBody, Input, Button, Divider, Checkbox,
   Dropdown, DropdownTrigger, DropdownMenu, DropdownItem,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Textarea, Select, SelectItem, Chip, Progress,
+  Textarea, Select, SelectItem, Chip,
   useDisclosure,
 } from "@nextui-org/react";
 import {
@@ -66,13 +66,42 @@ import { CSS } from "@dnd-kit/utilities";
 
 /** 段落类型选项（包含图标和主题色） */
 const SECTION_TYPES = [
-  { key: "education", label: "教育经历", icon: GraduationCap, color: "text-blue-400" },
-  { key: "experience", label: "工作经历", icon: Briefcase, color: "text-emerald-400" },
-  { key: "skill", label: "技能", icon: Wrench, color: "text-amber-400" },
-  { key: "project", label: "项目经历", icon: FolderKanban, color: "text-purple-400" },
-  { key: "certificate", label: "证书", icon: Award, color: "text-rose-400" },
-  { key: "custom", label: "自定义段落", icon: LayoutList, color: "text-cyan-400" },
+  { key: "education", label: "教育经历", icon: GraduationCap, color: "text-[#1040C0]" },
+  { key: "experience", label: "工作经历", icon: Briefcase, color: "text-[#D02020]" },
+  { key: "skill", label: "技能", icon: Wrench, color: "text-[#F0C020]" },
+  { key: "project", label: "项目经历", icon: FolderKanban, color: "text-[#1040C0]" },
+  { key: "certificate", label: "证书", icon: Award, color: "text-[#D02020]" },
+  { key: "custom", label: "自定义段落", icon: LayoutList, color: "text-[#121212]" },
 ];
+
+const bauhausFieldClassNames = {
+  inputWrapper:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+  input: "font-medium text-black placeholder:text-black/45",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
+  description: "text-black/55",
+  errorMessage: "font-medium text-[#D02020]",
+};
+
+const bauhausToolbarButtonClassName =
+  "bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-3 !text-[11px]";
+
+const bauhausToolbarIconButtonClassName =
+  "min-h-10 min-w-10 border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]";
+
+const bauhausModalContentClassName =
+  "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+
+const bauhausSelectClassNames = {
+  trigger:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] data-[hover=true]:border-black",
+  value: "font-medium text-black",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
+  selectorIcon: "text-black/70",
+  popoverContent:
+    "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]",
+  listboxWrapper: "max-h-64 bg-[#F0F0F0] p-1",
+};
 
 /** 根据 section_type 获取图标和颜色 */
 function getSectionMeta(type: string) {
@@ -103,7 +132,7 @@ function SortableSectionItem({ id, children }: { id: number; children: React.Rea
           data-testid={`resume-section-drag-handle-${id}`}
           className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10"
         >
-          <GripVertical size={14} className="text-white/25" />
+          <GripVertical size={14} className="text-black/30" aria-hidden="true" />
         </div>
         <div className="pl-2">
           {children}
@@ -822,32 +851,33 @@ export default function ResumeEditorPage() {
     }
   };
 
-  /** 导出 PDF — html2canvas 截取 A4 预览 → jsPDF 生成 */
+  /** 导出 PDF — @react-pdf/renderer 矢量 PDF（ATS 可解析） */
   const handleExportPdf = async () => {
-    if (!previewRef.current) return;
     setExporting(true);
     await handleSave();
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const { jsPDF } = await import("jspdf");
-      const el = previewRef.current;
-      const prevOverflow = el.style.overflow;
-      const prevMaxHeight = el.style.maxHeight;
-      el.style.overflow = "visible";
-      el.style.maxHeight = "none";
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
+      const { pdf } = await import("@react-pdf/renderer");
+      const { default: ResumePDF } = await import("../components/ResumePDF");
+      const resolvedPhoto = photoUrl.startsWith("/")
+        ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${photoUrl}`
+        : photoUrl;
+      const doc = ResumePDF({
+        userName,
+        photoUrl: resolvedPhoto,
+        summary,
+        contactJson,
+        sections,
+        styleConfig,
       });
-      el.style.overflow = prevOverflow;
-      el.style.maxHeight = prevMaxHeight;
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = pdf.internal.pageSize.getHeight();
-      pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
-      pdf.save(`${title || "resume"}.pdf`);
+      const blob = await pdf(doc).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title || "resume"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF export failed:", err);
     } finally {
@@ -900,53 +930,53 @@ export default function ResumeEditorPage() {
 
   if (!resume) {
     return (
-      <div className="flex items-center justify-center h-screen text-white/40">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
-          <span className="text-sm">加载中...</span>
+      <div className="flex h-screen items-center justify-center bg-[#F0F0F0]">
+        <div className="bauhaus-panel flex items-center gap-3 bg-white px-6 py-5 text-sm font-medium text-black/70">
+          <div className="h-7 w-7 animate-spin rounded-full border-4 border-black/15 border-t-[#D02020]" />
+          <span>正在载入简历编辑器...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] -m-6 md:-m-8">
+    <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden bg-[#F0F0F0] -m-6 md:-m-8">
       {/* ========== 顶部工具栏 ========== */}
-      <div className="flex-shrink-0 bg-background/95 backdrop-blur-xl border-b border-white/8 z-20">
+      <div className="z-20 flex-shrink-0 border-b-2 border-black bg-[#F0F0F0]">
         {/* 第一行：返回 + 标题 + 操作按钮 */}
-        <div className="flex items-center justify-between px-4 h-12">
+        <div className="flex min-h-[88px] flex-wrap items-center justify-between gap-3 px-4 py-4 md:px-6">
           <div className="flex items-center gap-2">
             <Button
               variant="light"
               isIconOnly
               size="sm"
               onPress={() => router.push("/resume")}
-              className="text-white/50 hover:text-white"
+              aria-label="返回简历列表"
+              className={bauhausToolbarIconButtonClassName}
             >
               <ArrowLeft size={18} />
             </Button>
-            <div className="w-px h-5 bg-white/10" />
+            <div className="h-7 w-px bg-black/15" />
             <Input
-              variant="underlined"
+              variant="bordered"
               value={title}
               onValueChange={setTitle}
               classNames={{
-                base: "max-w-[200px]",
-                input: "text-sm font-semibold text-white/90",
-                innerWrapper: "pb-0",
+                ...bauhausFieldClassNames,
+                base: "w-[220px] max-w-[220px] md:w-[280px] md:max-w-[280px]",
+                input: "text-sm font-black uppercase tracking-[-0.04em] text-black",
               }}
               placeholder="简历标题"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* 模板选择器 */}
             <Dropdown>
               <DropdownTrigger>
                 <Button
-                  variant="flat"
                   size="sm"
                   startContent={<Palette size={14} />}
-                  className="bg-white/5 hover:bg-white/10 text-white/60"
+                  className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
                 >
                   模板
                 </Button>
@@ -957,7 +987,7 @@ export default function ResumeEditorPage() {
                     key={String(tpl.id)}
                     startContent={
                       <div
-                        className="w-3 h-3 rounded-full border border-white/20"
+                        className="h-3 w-3 rounded-full border-2 border-black"
                         style={{ backgroundColor: tpl.css_variables?.primaryColor || "#666" }}
                       />
                     }
@@ -969,14 +999,15 @@ export default function ResumeEditorPage() {
               </DropdownMenu>
             </Dropdown>
             <StyleToolbar config={styleConfig} onChange={setStyleConfig} onFitOnePage={handleFitOnePage} fitting={fitting} />
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="mx-1 h-7 w-px bg-black/15" />
             <Button
               variant="light"
               isIconOnly
               size="sm"
               isDisabled={!canUndo}
               onPress={handleUndo}
-              className="text-white/40 hover:text-white disabled:opacity-20"
+              aria-label="撤销"
+              className={bauhausToolbarIconButtonClassName}
               title="撤销 (Ctrl+Z)"
             >
               <Undo2 size={15} />
@@ -987,54 +1018,54 @@ export default function ResumeEditorPage() {
               size="sm"
               isDisabled={!canRedo}
               onPress={handleRedo}
-              className="text-white/40 hover:text-white disabled:opacity-20"
+              aria-label="重做"
+              className={bauhausToolbarIconButtonClassName}
               title="重做 (Ctrl+Shift+Z)"
             >
               <Redo2 size={15} />
             </Button>
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="mx-1 h-7 w-px bg-black/15" />
             <Button
               startContent={<Wand2 size={14} />}
-              variant="flat"
               size="sm"
               isLoading={aiLoading}
               onPress={onAiModalOpen}
-              className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 text-purple-300 border border-purple-500/20"
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
             >
               AI 优化
             </Button>
             <Button
               startContent={<ArrowDownToLine size={14} />}
-              variant="flat"
               size="sm"
               onPress={() => openProfileImportModal(null)}
               data-testid="resume-import-all-button"
-              className="bg-white/5 hover:bg-white/10 text-white/70"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
             >
               从档案导入
             </Button>
-            <div className="w-px h-5 bg-white/10 mx-1" />
+            <div className="mx-1 h-7 w-px bg-black/15" />
             <Button
               startContent={<FileDown size={14} />}
-              variant="flat"
               size="sm"
               isLoading={exporting}
               onPress={handleExportPdf}
-              className="bg-white/5 hover:bg-white/10 text-white/70"
+              className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
             >
               导出
             </Button>
             <Button
               startContent={<Save size={14} />}
-              color="primary"
               size="sm"
               isLoading={saving}
               onPress={handleSave}
               data-testid="resume-save-button"
+              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
             >
               {saving ? "保存中" : "保存"}
             </Button>
-            <span className="text-[10px] text-white/25 hidden sm:inline">自动保存</span>
+            <span className="hidden text-[10px] font-semibold tracking-[0.06em] text-black/35 sm:inline">
+              自动保存
+            </span>
           </div>
         </div>
       </div>
@@ -1042,23 +1073,21 @@ export default function ResumeEditorPage() {
       {/* ========== 主体区域：编辑面板 + 预览画布 ========== */}
       <div className="flex flex-1 min-h-0">
         {/* ---- 左侧编辑面板（固定360px宽度，可滚动） ---- */}
-        <div className="w-[360px] flex-shrink-0 border-r border-white/8 bg-background/50 overflow-y-auto custom-scrollbar">
+        <div className="custom-scrollbar w-[360px] flex-shrink-0 overflow-y-auto border-r-2 border-black bg-[#E7E7E2]">
           <div className="p-4 space-y-4">
             {staleImportedItems.length > 0 && (
-              <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5" data-testid="resume-source-sync-banner">
+              <div className="bauhaus-panel-sm bg-[#F0C020] px-3 py-3 text-black" data-testid="resume-source-sync-banner">
                 <div className="flex items-start gap-2">
-                  <AlertCircle size={14} className="mt-0.5 text-amber-300" />
+                  <AlertCircle size={14} className="mt-0.5 text-black" />
                   <div className="flex-1 min-w-0 space-y-1">
-                    <p className="text-xs text-amber-100/90">
+                    <p className="text-xs font-medium text-black/80">
                       有 {staleImportedItems.length} 条从档案导入的内容已检测到源数据更新。
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
-                        color="warning"
-                        variant="flat"
                         isLoading={syncingProfileSources}
-                        className="h-7 px-2 text-[11px]"
+                        className="bauhaus-button bauhaus-button-red !h-8 !px-3 !py-2 !text-[11px]"
                         onPress={syncProfileSourceUpdates}
                         data-testid="resume-sync-source-button"
                       >
@@ -1067,7 +1096,7 @@ export default function ResumeEditorPage() {
                       <Button
                         size="sm"
                         variant="light"
-                        className="h-7 px-2 text-[11px] text-white/65"
+                        className="bauhaus-button bauhaus-button-outline !h-8 !px-3 !py-2 !text-[11px]"
                         onPress={keepCurrentImportedContent}
                         data-testid="resume-keep-current-button"
                       >
@@ -1080,31 +1109,31 @@ export default function ResumeEditorPage() {
             )}
 
             {/* 基本信息区块 */}
-            <div className="space-y-4">
+            <div className="bauhaus-panel space-y-4 bg-white p-4">
               <div className="flex items-center gap-2 px-1">
-                <div className="w-1 h-4 rounded-full bg-blue-500" />
-                <h3 className="text-xs font-semibold text-white/60 uppercase tracking-wider">基本信息</h3>
+                <div className="h-4 w-4 rounded-full bg-[#D02020]" />
+                <h3 className="text-xs font-black tracking-[0.04em] text-black/60">基本信息</h3>
               </div>
 
               {/* 头像上传 — 更精致的设计 */}
-              <div className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <div className="bauhaus-panel-sm flex items-center gap-4 bg-[#F0F0F0] p-3">
                 <div className="relative group">
                   {photoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={photoUrl.startsWith("/") ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${photoUrl}` : photoUrl}
                       alt="头像"
-                      className="w-14 h-14 rounded-xl object-cover border border-white/15"
+                      className="h-14 w-14 object-cover border-2 border-black"
                     />
                   ) : (
-                    <div className="w-14 h-14 rounded-xl bg-white/[0.06] border border-dashed border-white/15 flex items-center justify-center">
-                      <ImageIcon size={18} className="text-white/25" />
+                    <div className="flex h-14 w-14 items-center justify-center border-2 border-black bg-white">
+                      <ImageIcon size={18} className="text-black/35" />
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <label className="cursor-pointer">
-                    <Button size="sm" variant="flat" as="span" className="bg-white/5 hover:bg-white/10 text-xs">
+                    <Button size="sm" variant="light" as="span" className="bauhaus-button bauhaus-button-outline !px-3 !py-2 !text-[11px]">
                       {photoUrl ? "更换头像" : "上传头像"}
                     </Button>
                     <input
@@ -1114,39 +1143,27 @@ export default function ResumeEditorPage() {
                       onChange={handlePhotoUpload}
                     />
                   </label>
-                  <p className="text-[10px] text-white/25 mt-1">JPG/PNG/WebP · 5MB</p>
+                  <p className="mt-1 text-[10px] font-medium text-black/35">JPG/PNG/WebP · 5MB</p>
                 </div>
               </div>
 
               {/* 联系信息网格 — 更宽松的间距 */}
               <div className="space-y-2.5">
-                <Input label="姓名" variant="bordered" size="sm" value={userName} onValueChange={setUserName}
-                  classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15 group-data-[focus=true]:border-blue-500/50" }}
-                />
+                <Input label="姓名" variant="bordered" size="sm" value={userName} onValueChange={setUserName} classNames={bauhausFieldClassNames} />
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Input label="电话" variant="bordered" size="sm" value={contactJson.phone || ""} onValueChange={(v) => updateContact("phone", v)}
-                    classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15" }}
-                  />
-                  <Input label="邮箱" variant="bordered" size="sm" value={contactJson.email || ""} onValueChange={(v) => updateContact("email", v)}
-                    classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15" }}
-                  />
+                  <Input label="电话" variant="bordered" size="sm" value={contactJson.phone || ""} onValueChange={(v) => updateContact("phone", v)} classNames={bauhausFieldClassNames} />
+                  <Input label="邮箱" variant="bordered" size="sm" value={contactJson.email || ""} onValueChange={(v) => updateContact("email", v)} classNames={bauhausFieldClassNames} />
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Input label="LinkedIn" variant="bordered" size="sm" value={contactJson.linkedin || ""} onValueChange={(v) => updateContact("linkedin", v)}
-                    classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15" }}
-                  />
-                  <Input label="GitHub" variant="bordered" size="sm" value={contactJson.github || ""} onValueChange={(v) => updateContact("github", v)}
-                    classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15" }}
-                  />
+                  <Input label="LinkedIn" variant="bordered" size="sm" value={contactJson.linkedin || ""} onValueChange={(v) => updateContact("linkedin", v)} classNames={bauhausFieldClassNames} />
+                  <Input label="GitHub" variant="bordered" size="sm" value={contactJson.github || ""} onValueChange={(v) => updateContact("github", v)} classNames={bauhausFieldClassNames} />
                 </div>
-                <Input label="个人网站" variant="bordered" size="sm" value={contactJson.website || ""} onValueChange={(v) => updateContact("website", v)}
-                  classNames={{ inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15" }}
-                />
+                <Input label="个人网站" variant="bordered" size="sm" value={contactJson.website || ""} onValueChange={(v) => updateContact("website", v)} classNames={bauhausFieldClassNames} />
               </div>
 
               {/* 个人简介 */}
               <div>
-                <label className="text-[11px] text-white/40 mb-1.5 block font-medium">个人简介</label>
+                <label className="mb-1.5 block text-[11px] font-semibold tracking-[0.06em] text-black/55">个人简介</label>
                 <RichTextEditor
                   content={summary}
                   onChange={setSummary}
@@ -1156,13 +1173,11 @@ export default function ResumeEditorPage() {
               </div>
             </div>
 
-            <div className="h-px bg-white/[0.06]" />
-
             {/* ---- 各段落编辑 ---- */}
-            <div className="space-y-3">
+            <div className="bauhaus-panel space-y-3 bg-white p-4">
               <div className="flex items-center gap-2 px-1">
-                <div className="w-1 h-4 rounded-full bg-purple-500" />
-                <h3 className="text-xs font-semibold text-white/60 uppercase tracking-wider">段落内容</h3>
+                <div className="h-4 w-4 rotate-45 bg-[#1040C0]" />
+                <h3 className="text-xs font-black tracking-[0.04em] text-black/60">段落内容</h3>
               </div>
 
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1186,14 +1201,14 @@ export default function ResumeEditorPage() {
                     <SortableSectionItem key={sec.id} id={sec.id}>
                     <div
                       data-testid={`resume-section-card-${sec.id}`}
-                      className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden transition-colors hover:border-white/10"
+                      className="bauhaus-panel-sm overflow-hidden bg-[#F0F0F0] transition-transform hover:-translate-y-[1px]"
                     >
                       {/* 段落头部 — 带类型图标和颜色标识 */}
                       <div className="px-3 py-2.5 select-none space-y-2">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-2 min-w-[124px] flex-1 overflow-hidden">
                             <SectionIcon size={15} className={`${meta.color} flex-shrink-0 opacity-70`} />
-                            <span className="text-xs font-semibold text-white/80 truncate whitespace-nowrap">{sectionDisplayTitle}</span>
+                            <span className="truncate whitespace-nowrap text-xs font-semibold tracking-[0.06em] text-black/70">{sectionDisplayTitle}</span>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <Button
@@ -1202,9 +1217,9 @@ export default function ResumeEditorPage() {
                               isIconOnly
                               onPress={() => toggleSectionVisibility(sec.id)}
                               aria-label="切换模块显示"
-                              className="w-7 h-7 min-w-7"
+                              className="min-h-8 min-w-8 border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]"
                             >
-                              {sec.visible ? <Eye size={12} className="text-white/40" /> : <EyeOff size={12} className="text-white/20" />}
+                              {sec.visible ? <Eye size={12} className="text-black/70" /> : <EyeOff size={12} className="text-black/35" />}
                             </Button>
                             <Button
                               size="sm"
@@ -1213,14 +1228,14 @@ export default function ResumeEditorPage() {
                               onPress={() => handleDeleteSection(sec.id)}
                               aria-label="删除模块"
                               data-testid={`resume-section-delete-${sec.id}`}
-                              className="w-7 h-7 min-w-7 text-red-300 bg-red-500/10 hover:bg-red-500/20"
+                              className="min-h-8 min-w-8 border-2 border-black bg-[#D02020] text-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]"
                             >
                               <Trash2 size={11} />
                             </Button>
                             <Button
                               size="sm"
                               variant="light"
-                              className="h-7 px-2 text-[10px] text-white/45"
+                              className="bauhaus-button bauhaus-button-outline !h-8 !px-3 !py-2 !text-[10px]"
                               onPress={() => toggleExpanded(sec.id)}
                               data-testid={`resume-section-toggle-${sec.id}`}
                             >
@@ -1228,7 +1243,7 @@ export default function ResumeEditorPage() {
                                 {isExpanded ? "折叠" : "展开"}
                                 <ChevronDown
                                   size={12}
-                                  className={`text-white/30 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                                  className={`text-black/45 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
                                 />
                               </span>
                             </Button>
@@ -1238,8 +1253,8 @@ export default function ResumeEditorPage() {
                         <div className="flex items-center gap-1">
                           <Button
                             size="sm"
-                            variant="flat"
-                            className="h-7 px-2 text-[10px] text-white/70 bg-white/[0.03]"
+                            variant="light"
+                            className="bauhaus-button bauhaus-button-outline !h-8 !px-3 !py-2 !text-[10px]"
                             onPress={() => openProfileImportModal(sec.id)}
                             data-testid={`resume-section-import-${sec.id}`}
                           >
@@ -1247,8 +1262,8 @@ export default function ResumeEditorPage() {
                           </Button>
                           <Button
                             size="sm"
-                            variant="flat"
-                            className="h-7 px-2 text-[10px] text-white/70 bg-white/[0.03]"
+                            variant="light"
+                            className="bauhaus-button bauhaus-button-yellow !h-8 !px-3 !py-2 !text-[10px]"
                             onPress={() => addBlankItemToSection(sec.id)}
                             data-testid={`resume-section-add-item-${sec.id}`}
                           >
@@ -1267,7 +1282,7 @@ export default function ResumeEditorPage() {
                             transition={{ duration: 0.2, ease: "easeInOut" }}
                             className="overflow-hidden"
                           >
-                            <div className="px-3 pb-3 pt-1 border-t border-white/[0.04]">
+                            <div className="border-t-2 border-black/10 px-3 pb-3 pt-2">
                               <SectionEditor
                                 sectionType={sec.section_type}
                                 contentJson={sec.content_json || []}
@@ -1287,9 +1302,8 @@ export default function ResumeEditorPage() {
               {/* 添加段落按钮 */}
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  variant="flat"
                   size="sm"
-                  className="border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-white/70 h-10"
+                  className="bauhaus-button bauhaus-button-blue !h-10 !justify-center !px-4 !py-3 !text-[11px]"
                   onPress={() => openProfileImportModal(null)}
                   data-testid="resume-import-all-button-bottom"
                 >
@@ -1299,10 +1313,9 @@ export default function ResumeEditorPage() {
                 <Dropdown>
                   <DropdownTrigger>
                     <Button
-                      variant="flat"
                       size="sm"
                       startContent={<Plus size={14} />}
-                      className="border border-dashed border-white/10 bg-transparent hover:bg-white/[0.03] text-white/40 hover:text-white/60 h-10"
+                      className="bauhaus-button bauhaus-button-outline !h-10 !justify-center !px-4 !py-3 !text-[11px]"
                     >
                       添加段落
                     </Button>
@@ -1324,8 +1337,8 @@ export default function ResumeEditorPage() {
         </div>
 
         {/* ---- 右侧 A4 预览画布（居中展示，深色画布背景） ---- */}
-        <div className={`flex-1 bg-[#1a1a1f] overflow-auto flex items-start justify-center p-8 transition-all ${aiResult ? "mr-[380px]" : ""}`}>
-          <div className="sticky top-0">
+        <div className={`flex flex-1 items-start justify-center overflow-auto bg-[#EFEDE6] p-8 transition-all [background-image:radial-gradient(#121212_1.2px,transparent_1.2px)] [background-size:26px_26px] ${aiResult ? "mr-[380px]" : ""}`}>
+          <div className="bauhaus-panel sticky top-0 bg-white p-4 md:p-5">
             <ResumePreview
               ref={previewRef}
               userName={userName}
@@ -1349,44 +1362,45 @@ export default function ResumeEditorPage() {
               initial={{ x: 380, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 380, opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="fixed right-0 top-0 bottom-0 w-[380px] bg-background/95 backdrop-blur-xl border-l border-white/8 z-30 flex flex-col"
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="fixed bottom-0 right-0 top-0 z-30 flex w-[380px] flex-col border-l-2 border-black bg-[#E8E4DA] text-black shadow-[-4px_0_0_0_rgba(18,18,18,0.35)]"
             >
               {/* 面板头部 */}
-              <div className="flex items-center justify-between px-4 h-12 border-b border-white/8 flex-shrink-0">
+              <div className="flex h-16 flex-shrink-0 items-center justify-between border-b-2 border-black bg-[#F0C020] px-5">
                 <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-purple-400" />
-                  <span className="text-sm font-semibold text-white/80">AI 优化建议</span>
+                  <Sparkles size={16} className="text-[#121212]" aria-hidden="true" />
+                  <span className="text-sm font-black tracking-[0.06em] text-black">AI 优化建议</span>
                 </div>
                 <Button
                   variant="light"
                   isIconOnly
                   size="sm"
                   onPress={handleCloseAiPanel}
-                  className="text-white/40 hover:text-white"
+                  aria-label="关闭 AI 建议面板"
+                  className="min-h-10 min-w-10 border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]"
                 >
                   <X size={16} />
                 </Button>
               </div>
 
               {/* 面板内容（可滚动） */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
                 {/* 加载中 */}
                 {aiLoading && (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <div className="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
-                    <span className="text-sm text-white/40">AI 正在分析简历...</span>
-                    <span className="text-xs text-white/25">通常需要 10-30 秒</span>
+                  <div className="bauhaus-panel-sm flex flex-col items-center justify-center gap-3 bg-white px-5 py-12 text-center">
+                    <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-black border-t-[#1040C0]" />
+                    <span className="text-sm font-semibold tracking-[0.04em] text-black/75">AI 正在分析简历...</span>
+                    <span className="text-xs font-medium text-black/55">通常需要 10-30 秒</span>
                   </div>
                 )}
 
                 {/* 错误提示 */}
                 {aiError && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                    <AlertTriangle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+                  <div className="bauhaus-panel-sm flex items-start gap-3 bg-[#D02020] p-4 text-white">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0 text-white" />
                     <div>
-                      <p className="text-sm text-red-300 font-medium">优化失败</p>
-                      <p className="text-xs text-red-300/60 mt-1">{aiError}</p>
+                      <p className="text-sm font-black tracking-[0.04em]">优化失败</p>
+                      <p className="mt-1 text-xs font-medium text-white/80">{aiError}</p>
                     </div>
                   </div>
                 )}
@@ -1396,26 +1410,31 @@ export default function ResumeEditorPage() {
                   <>
                     {/* ATS 关键词匹配度 */}
                     {aiResult.keyword_match && (
-                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4 space-y-3">
-                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">关键词匹配度</h4>
+                      <div className="bauhaus-panel-sm space-y-3 bg-white p-4">
+                        <h4 className="bauhaus-label text-black/55">关键词匹配度</h4>
                         <div className="flex items-end gap-3">
-                          <div className="text-3xl font-bold text-white/90">{aiResult.keyword_match.score}</div>
-                          <span className="text-sm text-white/40 mb-1">/ 100</span>
+                          <div className="text-4xl font-black uppercase tracking-[-0.08em] text-black">{aiResult.keyword_match.score}</div>
+                          <span className="mb-1 text-sm font-bold text-black/45">/ 100</span>
                         </div>
-                        <Progress
-                          value={aiResult.keyword_match.score}
-                          maxValue={100}
-                          color={aiResult.keyword_match.score >= 70 ? "success" : aiResult.keyword_match.score >= 40 ? "warning" : "danger"}
-                          size="sm"
-                          className="mt-1"
-                        />
+                        <div className="border-2 border-black bg-[#F0F0F0] p-1 shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]">
+                          <div
+                            className={`h-4 ${
+                              aiResult.keyword_match.score >= 70
+                                ? "bg-[#1040C0]"
+                                : aiResult.keyword_match.score >= 40
+                                  ? "bg-[#F0C020]"
+                                  : "bg-[#D02020]"
+                            }`}
+                            style={{ width: `${Math.max(0, Math.min(aiResult.keyword_match.score, 100))}%` }}
+                          />
+                        </div>
                         {/* 已匹配关键词 */}
                         {aiResult.keyword_match.matched.length > 0 && (
                           <div className="space-y-1">
-                            <span className="text-[10px] text-emerald-400/60 uppercase font-semibold">已匹配</span>
+                            <span className="bauhaus-label text-black/45">已匹配</span>
                             <div className="flex flex-wrap gap-1">
                               {aiResult.keyword_match.matched.map((kw, i) => (
-                                <Chip key={i} size="sm" variant="flat" className="bg-emerald-500/10 text-emerald-300 text-[10px] h-5">
+                                <Chip key={i} size="sm" variant="flat" className="border-2 border-black bg-[#1040C0] px-2 text-[10px] font-semibold text-white">
                                   {kw}
                                 </Chip>
                               ))}
@@ -1427,11 +1446,11 @@ export default function ResumeEditorPage() {
 
                     {/* 缺失关键词 */}
                     {aiResult.keyword_match?.missing && aiResult.keyword_match.missing.length > 0 && (
-                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4 space-y-2">
-                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">缺失关键词</h4>
+                      <div className="bauhaus-panel-sm space-y-2 bg-white p-4">
+                        <h4 className="bauhaus-label text-black/55">缺失关键词</h4>
                         <div className="flex flex-wrap gap-1.5">
                           {aiResult.keyword_match.missing.map((kw, i) => (
-                            <Chip key={i} size="sm" variant="flat" className="bg-orange-500/10 text-orange-300 text-xs">
+                            <Chip key={i} size="sm" variant="flat" className="border-2 border-black bg-[#F0C020] px-2 text-xs font-semibold text-black">
                               {kw}
                             </Chip>
                           ))}
@@ -1441,15 +1460,15 @@ export default function ResumeEditorPage() {
 
                     {/* 总结 */}
                     {aiResult.summary && (
-                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">
-                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">优化总结</h4>
-                        <p className="text-xs text-white/60 leading-relaxed">{aiResult.summary}</p>
+                      <div className="bauhaus-panel-sm bg-white p-4">
+                        <h4 className="bauhaus-label mb-2 text-black/55">优化总结</h4>
+                        <p className="text-sm font-medium leading-relaxed text-black/72">{aiResult.summary}</p>
                       </div>
                     )}
 
                     {/* 建议列表 — 逐条展示 Diff，支持采纳/拒绝 */}
                     <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider px-1">
+                      <h4 className="bauhaus-label px-1 text-black/55">
                         优化建议 ({aiResult.suggestions.length})
                       </h4>
                       {aiResult.suggestions.map((sug, idx) => {
@@ -1457,10 +1476,10 @@ export default function ResumeEditorPage() {
                         return (
                           <div
                             key={idx}
-                            className={`rounded-xl border p-3 space-y-2 transition-colors ${
+                            className={`space-y-2 border-2 border-black p-3 shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px] ${
                               isApplied
-                                ? "bg-emerald-500/5 border-emerald-500/20"
-                                : "bg-white/[0.02] border-white/[0.06] hover:border-white/10"
+                                ? "bg-[#F0C020]"
+                                : "bg-white"
                             }`}
                           >
                             {/* 建议类型标签 */}
@@ -1470,10 +1489,10 @@ export default function ResumeEditorPage() {
                                 variant="flat"
                                 className={
                                   sug.type === "bullet_rewrite"
-                                    ? "bg-blue-500/10 text-blue-300"
+                                    ? "border-2 border-black bg-[#1040C0] font-semibold text-white"
                                     : sug.type === "keyword_add"
-                                    ? "bg-purple-500/10 text-purple-300"
-                                    : "bg-amber-500/10 text-amber-300"
+                                      ? "border-2 border-black bg-[#D02020] font-semibold text-white"
+                                      : "border-2 border-black bg-[#F0C020] font-semibold text-black"
                                 }
                               >
                                 {sug.type === "bullet_rewrite"
@@ -1483,7 +1502,7 @@ export default function ResumeEditorPage() {
                                   : "模块排序"}
                               </Chip>
                               {isApplied && (
-                                <Chip size="sm" color="success" variant="flat" startContent={<Check size={10} />}>
+                                <Chip size="sm" variant="flat" startContent={<Check size={10} />} className="border-2 border-black bg-white font-semibold text-black">
                                   已采纳
                                 </Chip>
                               )}
@@ -1491,22 +1510,22 @@ export default function ResumeEditorPage() {
 
                             {/* 条目标识 */}
                             {sug.item_label && (
-                              <p className="text-[11px] text-white/40 font-medium">{sug.section_title} · {sug.item_label}</p>
+                              <p className="text-[11px] font-semibold tracking-[0.04em] text-black/55">{sug.section_title} · {sug.item_label}</p>
                             )}
 
                             {/* 原文 → 建议 Diff 展示 */}
                             {sug.original && (
-                              <div className="rounded-lg bg-red-500/5 border border-red-500/10 p-2">
-                                <span className="text-[10px] text-red-400/60 uppercase font-semibold">原文</span>
-                                <p className="text-xs text-white/50 mt-0.5 line-clamp-4">
+                              <div className="border-2 border-black bg-[#F6D7D7] p-2">
+                                <span className="text-[10px] font-semibold tracking-[0.04em] text-black/55">原文</span>
+                                <p className="mt-0.5 text-xs font-medium text-black/65 line-clamp-4">
                                   {typeof sug.original === "string" ? sug.original : JSON.stringify(sug.original)}
                                 </p>
                               </div>
                             )}
                             {sug.suggested && (
-                              <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-2">
-                                <span className="text-[10px] text-emerald-400/60 uppercase font-semibold">建议</span>
-                                <p className="text-xs text-white/70 mt-0.5 line-clamp-4">
+                              <div className="border-2 border-black bg-[#DCE7FF] p-2">
+                                <span className="text-[10px] font-semibold tracking-[0.04em] text-black/55">建议</span>
+                                <p className="mt-0.5 text-xs font-medium text-black/78 line-clamp-4">
                                   {typeof sug.suggested === "string" ? sug.suggested : JSON.stringify(sug.suggested)}
                                 </p>
                               </div>
@@ -1514,7 +1533,7 @@ export default function ResumeEditorPage() {
 
                             {/* 原因说明 */}
                             {sug.reason && (
-                              <p className="text-[11px] text-white/35 italic">{sug.reason}</p>
+                              <p className="text-[11px] font-medium italic text-black/55">{sug.reason}</p>
                             )}
 
                             {/* 操作按钮 */}
@@ -1522,10 +1541,9 @@ export default function ResumeEditorPage() {
                               <div className="flex justify-end gap-2 pt-1">
                                 <Button
                                   size="sm"
-                                  variant="flat"
                                   startContent={<Check size={12} />}
                                   onPress={() => handleApplySuggestion(idx, sug)}
-                                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs h-7"
+                                  className="bauhaus-button bauhaus-button-yellow !min-h-8 !px-3 !py-2 !text-[11px]"
                                 >
                                   采纳
                                 </Button>
@@ -1548,26 +1566,21 @@ export default function ResumeEditorPage() {
         isOpen={isAiModalOpen}
         onClose={onAiModalClose}
         size="lg"
-        classNames={{
-          base: "bg-background border border-white/10",
-          header: "border-b border-white/8",
-          footer: "border-t border-white/8",
-        }}
       >
-        <ModalContent>
-          <ModalHeader className="flex items-center gap-2">
-            <Wand2 size={18} className="text-purple-400" />
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="flex items-center gap-2 border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            <Wand2 size={18} className="text-black" />
             <span>AI 简历优化</span>
           </ModalHeader>
-          <ModalBody className="py-4 space-y-4">
-            <p className="text-sm text-white/50">
+          <ModalBody className="space-y-4 px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/70">
               粘贴目标岗位的 JD（职位描述），AI 将分析 ATS 匹配度并生成优化建议。
             </p>
 
             {!isApiKeyConfigured && (
-              <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-300/80">
+              <div className="bauhaus-panel-sm flex items-start gap-3 bg-[#F0C020] p-4">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0 text-black" />
+                <p className="text-xs font-medium leading-relaxed text-black/78">
                   未配置 AI 服务。请先前往 <a href="/settings" className="underline">设置页面</a> 配置 LLM API Key。
                 </p>
               </div>
@@ -1585,9 +1598,7 @@ export default function ResumeEditorPage() {
                   setAiPoolFilter(val || "all");
                 }}
                 items={aiPoolOptions}
-                classNames={{
-                  trigger: "bg-white/[0.03] border-white/[0.08]",
-                }}
+                classNames={bauhausSelectClassNames}
               >
                 {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
               </Select>
@@ -1599,9 +1610,7 @@ export default function ResumeEditorPage() {
                 placeholder="输入岗位名或公司名"
                 value={aiJobKeyword}
                 onValueChange={setAiJobKeyword}
-                classNames={{
-                  inputWrapper: "bg-white/[0.03] border-white/[0.08]",
-                }}
+                classNames={bauhausFieldClassNames}
               />
             </div>
 
@@ -1617,22 +1626,20 @@ export default function ResumeEditorPage() {
               }}
               isLoading={aiJobsLoading}
               disabledKeys={aiJobsLoading ? [] : undefined}
-              classNames={{
-                trigger: "bg-white/[0.03] border-white/[0.08]",
-              }}
+              classNames={bauhausSelectClassNames}
             >
               {aiJobs.map((job) => (
                 <SelectItem key={String(job.id)} textValue={`${job.title} ${job.company}`}>
                   <div className="flex flex-col">
-                    <span className="text-xs">{job.title}</span>
-                    <span className="text-[10px] text-white/40">{job.company}</span>
+                    <span className="text-xs font-medium text-black">{job.title}</span>
+                    <span className="text-[10px] text-black/45">{job.company}</span>
                   </div>
                 </SelectItem>
               ))}
             </Select>
 
             {!aiJobsLoading && aiJobs.length === 0 && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/45">
+              <div className="bauhaus-panel-sm bg-white px-3 py-3 text-xs font-medium text-black/60">
                 当前筛选条件下暂无可选岗位，可直接切换为手动输入 JD。
               </div>
             )}
@@ -1647,20 +1654,18 @@ export default function ResumeEditorPage() {
                 maxRows={12}
                 value={jdText}
                 onValueChange={setJdText}
-                classNames={{
-                  inputWrapper: "bg-white/[0.03] border-white/[0.08]",
-                }}
+                classNames={bauhausFieldClassNames}
               />
             )}
 
             {selectedJobId && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-500/5 border border-blue-500/10">
-                <Briefcase size={14} className="text-blue-400" />
-                <span className="text-xs text-white/60">将使用所选职位的描述进行分析</span>
+              <div className="bauhaus-panel-sm flex items-center gap-2 bg-white px-4 py-3">
+                <Briefcase size={14} className="text-[#1040C0]" />
+                <span className="text-xs font-medium text-black/65">将使用所选职位的描述进行分析</span>
                 <Button
                   size="sm"
                   variant="light"
-                  className="text-xs text-white/40 ml-auto"
+                  className="bauhaus-button bauhaus-button-outline !ml-auto !min-h-8 !px-3 !py-2 !text-[11px]"
                   onPress={() => setSelectedJobId("")}
                 >
                   改为手动输入
@@ -1668,17 +1673,17 @@ export default function ResumeEditorPage() {
               </div>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" size="sm" onPress={onAiModalClose} className="text-white/50">
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" size="sm" onPress={onAiModalClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
               取消
             </Button>
             <Button
-              color="secondary"
               size="sm"
               startContent={<Sparkles size={14} />}
               isLoading={aiLoading}
               isDisabled={(!jdText.trim() && !selectedJobId) || !isApiKeyConfigured}
               onPress={handleAiOptimize}
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
             >
               开始优化
             </Button>
@@ -1692,31 +1697,26 @@ export default function ResumeEditorPage() {
         size="3xl"
         scrollBehavior="inside"
         data-testid="resume-profile-import-modal"
-        classNames={{
-          base: "bg-background border border-white/10",
-          header: "border-b border-white/8",
-          footer: "border-t border-white/8",
-        }}
       >
-        <ModalContent>
-          <ModalHeader>
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#1040C0] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
             {profileImportTargetSection
               ? `从档案导入到「${profileImportTargetSection.title || "当前模块"}」`
               : "从档案导入"}
           </ModalHeader>
-          <ModalBody className="space-y-3">
+          <ModalBody className="space-y-3 px-6 py-6">
             {profileImportError && (
-              <div className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              <div className="bauhaus-panel-sm bg-[#D02020] px-3 py-3 text-xs font-medium text-white">
                 {profileImportError}
               </div>
             )}
             {profileImportTargetSection && (
-              <div className="rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100/85">
+              <div className="bauhaus-panel-sm bg-[#F0C020] px-3 py-3 text-xs font-medium text-black/75">
                 仅显示可映射到该模块类型的档案条目，确保导入后结构与字段保持一致。
               </div>
             )}
             {visibleProfileSections.length === 0 ? (
-              <div className="text-sm text-white/45">
+              <div className="text-sm font-medium text-black/55">
                 {profileImportTargetSection
                   ? "当前档案中没有与该模块类型兼容的条目，请切换模块或先到档案页补充对应分类。"
                   : "当前档案没有可导入条目，请先在档案页面补充内容。"}
@@ -1729,19 +1729,19 @@ export default function ResumeEditorPage() {
                   <button
                     key={section.id}
                     onClick={() => toggleProfileSectionSelection(section.id)}
-                    className={`w-full rounded-lg border p-3 text-left transition-all ${
+                    className={`w-full border-2 border-black p-3 text-left shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px] ${
                       checked
-                        ? "border-cyan-400/40 bg-cyan-500/10"
-                        : "border-white/[0.08] bg-white/[0.02] hover:border-white/20"
+                        ? "bg-[#F0C020]"
+                        : "bg-white"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1 min-w-0">
-                        <div className="text-sm text-white/85 truncate">{section.title || "未命名条目"}</div>
-                        <div className="text-[11px] text-white/45">
+                        <div className="truncate text-sm font-bold text-black">{section.title || "未命名条目"}</div>
+                        <div className="text-[11px] font-semibold tracking-[0.04em] text-black/55">
                           档案类型 {section.section_type} {"->"} 简历模块 {mappedType}
                         </div>
-                        <div className="text-xs text-white/60 line-clamp-2">{getProfileBulletText(section)}</div>
+                        <div className="line-clamp-2 text-xs font-medium text-black/68">{getProfileBulletText(section)}</div>
                       </div>
                       <Checkbox
                         isSelected={checked}
@@ -1754,15 +1754,15 @@ export default function ResumeEditorPage() {
               })
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={closeProfileImportModal}>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" onPress={closeProfileImportModal} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
               取消
             </Button>
             <Button
-              color="primary"
               isLoading={importingProfileSections}
               isDisabled={selectedProfileSectionIds.size === 0}
               onPress={importFromProfile}
+              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
             >
               导入 {selectedProfileSectionIds.size} 条
             </Button>
@@ -1776,22 +1776,23 @@ export default function ResumeEditorPage() {
           if (!deletingSection) setDeleteSectionTarget(null);
         }}
       >
-        <ModalContent>
-          <ModalHeader>确认删除模块</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-white/70">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">确认删除模块</ModalHeader>
+          <ModalBody className="px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
               确认删除「{deleteSectionTarget?.title || "未命名模块"}」吗？删除后该模块下的内容将被移除。
             </p>
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
             <Button
-              variant="flat"
+              variant="light"
               isDisabled={deletingSection}
               onPress={() => setDeleteSectionTarget(null)}
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
             >
               取消
             </Button>
-            <Button color="danger" isLoading={deletingSection} onPress={confirmDeleteSection}>
+            <Button isLoading={deletingSection} onPress={confirmDeleteSection} className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]">
               确认删除
             </Button>
           </ModalFooter>

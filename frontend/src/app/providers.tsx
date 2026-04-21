@@ -7,17 +7,20 @@
 import { NextUIProvider } from "@nextui-org/react";
 import { SWRConfig } from "swr";
 import { AnimatePresence } from "framer-motion";
+import { usePathname } from "next/navigation";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { useOnboarding } from "@/lib/useOnboarding";
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { shouldShowWizard, completeWizard, skipWizard } = useOnboarding();
+  const pathname = usePathname();
+  const canShowWizard = pathname === "/";
 
   return (
     <>
       {children}
       <AnimatePresence>
-        {shouldShowWizard && (
+        {shouldShowWizard && canShowWizard && (
           <OnboardingWizard
             onComplete={completeWizard}
             onSkip={skipWizard}

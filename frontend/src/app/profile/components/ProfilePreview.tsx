@@ -98,19 +98,19 @@ export function ProfilePreview({
   };
 
   return (
-    <Card className="h-full bg-white/5 border border-white/10">
-      <CardHeader className="flex items-center gap-3 border-b border-white/10 pb-3">
-        <User size={20} className="text-blue-400" />
+    <Card className="h-full border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] rounded-none">
+      <CardHeader className="flex items-center gap-3 border-b-2 border-black pb-3">
+        <User size={20} className="text-[#1040C0]" />
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-white">
+          <h3 className="text-lg font-bold text-black">
             {profile.name || "未命名"}
           </h3>
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-black/45">
             {String(baseInfo.school || "")} · {String(baseInfo.major || "")}
             {baseInfo.gpa ? ` · GPA ${String(baseInfo.gpa)}` : ""}
           </p>
         </div>
-        <Chip size="sm" variant="flat" color="primary">
+        <Chip size="sm" variant="flat" color="primary" className="border border-black/60 bg-[#ECE6DC] text-black text-[10px]">
           {(profile.sections ?? []).length} 条目
         </Chip>
       </CardHeader>
@@ -118,8 +118,8 @@ export function ProfilePreview({
       <CardBody className="overflow-auto p-0">
         {/* Narrative (Headline / Exit Story) */}
         {profile.headline && (
-          <div className="px-4 py-3 border-b border-white/5">
-            <p className="text-sm text-white/70 italic">
+          <div className="px-4 py-3 border-b border-black/10">
+            <p className="text-sm text-black/60 italic">
               &ldquo;{profile.headline}&rdquo;
             </p>
           </div>
@@ -136,19 +136,19 @@ export function ProfilePreview({
           return (
             <div
               key={topic}
-              className={`border-b border-white/5 ${
-                isActive ? "bg-blue-500/5" : ""
+              className={`border-b border-black/10 ${
+                isActive ? "bg-[#ECE6DC]" : ""
               }`}
             >
               {/* Topic Header */}
               <button
                 onClick={() => toggleTopic(topic)}
-                className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[#ECE6DC] transition-colors"
               >
-                <Icon size={16} className={isActive ? "text-blue-400" : "text-white/40"} />
+                <Icon size={16} className={isActive ? "text-[#1040C0]" : "text-black/40"} />
                 <span
                   className={`text-sm font-medium flex-1 ${
-                    isActive ? "text-blue-400" : "text-white/70"
+                    isActive ? "text-[#1040C0] font-semibold" : "text-black/65"
                   }`}
                 >
                   {topic === "education"
@@ -161,13 +161,13 @@ export function ProfilePreview({
                     ? "社团"
                     : "技能"}
                 </span>
-                <span className="text-xs text-white/30">
+                <span className="text-xs text-black/35">
                   {confirmedCount}/{sections.length}
                 </span>
                 {isExpanded ? (
-                  <ChevronDown size={14} className="text-white/30" />
+                  <ChevronDown size={14} className="text-black/30" />
                 ) : (
-                  <ChevronRight size={14} className="text-white/30" />
+                  <ChevronRight size={14} className="text-black/30" />
                 )}
               </button>
 
@@ -182,7 +182,7 @@ export function ProfilePreview({
                     className="overflow-hidden"
                   >
                     {sections.length === 0 ? (
-                      <p className="px-6 py-2 text-xs text-white/20">
+                      <p className="px-6 py-2 text-xs text-black/30">
                         暂无条目，请通过右侧对话添加
                       </p>
                     ) : (
@@ -217,23 +217,36 @@ function BulletItem({
   const [expanded, setExpanded] = useState(false);
   const src = SOURCE_LABELS[section.source] || SOURCE_LABELS.manual;
   const content = (section.content_json || {}) as Record<string, any>;
+  const norm = (content.normalized || {}) as Record<string, any>;
+  const fv = (content.field_values || {}) as Record<string, any>;
   const organization =
-    String(content.organization || content.company || content.school || content.issuer || "").trim();
+    String(norm.company || norm.school || norm.issuer || content.organization || content.company || content.school || "").trim();
   const dateRange = String(
     content.date_range ||
-      [content.startDate || content.start_date, content.endDate || content.end_date]
+      [norm.start_date || content.startDate || content.start_date, norm.end_date || content.endDate || content.end_date]
         .filter(Boolean)
         .join(" - ")
   ).trim();
-  const description =
-    String(content.bullet || content.description || content.summary || "").trim() || section.title || "";
+  // Build rich description from normalized/field_values, fallback to bullet
+  const richDesc = (() => {
+    const desc = String(norm.description || "").trim();
+    if (desc) return desc;
+    // Collect all field_values that contain "description"
+    for (const key of Object.keys(fv)) {
+      if (key.endsWith(".description") && fv[key]) return String(fv[key]).trim();
+    }
+    // For skills, join items
+    if (norm.items && Array.isArray(norm.items)) return norm.items.join("、");
+    return "";
+  })();
+  const description = richDesc || String(content.bullet || "").trim() || section.title || "";
   const isConfirmed = Number(section.confidence || 0) >= 0.8;
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      className="group px-6 py-2 border-t border-white/5 hover:bg-white/5 transition-colors"
+      className="group px-6 py-2 border-t border-black/10 hover:bg-[#ECE6DC] transition-colors"
     >
       <div className="flex items-start gap-2">
         {/* 确认状态 */}
@@ -257,7 +270,7 @@ function BulletItem({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-sm font-medium text-white/80 hover:text-white truncate text-left"
+              className="text-sm font-medium text-black/75 hover:text-black truncate text-left"
             >
               {section.title || "未命名条目"}
             </button>
@@ -268,7 +281,7 @@ function BulletItem({
 
           {/* 组织 + 时间 */}
           {(organization || dateRange) && (
-            <p className="text-xs text-white/30 mt-0.5">
+            <p className="text-xs text-black/40 mt-0.5">
               {organization}
               {organization && dateRange ? " · " : ""}
               {dateRange}
@@ -282,7 +295,7 @@ function BulletItem({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="text-xs text-white/50 mt-1 overflow-hidden"
+                className="text-xs text-black/50 mt-1 overflow-hidden"
               >
                 {description}
               </motion.p>
@@ -295,7 +308,7 @@ function BulletItem({
           <Tooltip content="删除">
             <button
               onClick={onDelete}
-              className="p-1 rounded hover:bg-red-500/20 text-white/30 hover:text-red-400"
+              className="p-1 rounded hover:bg-red-500/10 text-black/30 hover:text-[#D02020]"
             >
               <Trash2 size={12} />
             </button>

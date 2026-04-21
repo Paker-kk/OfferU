@@ -56,8 +56,8 @@ export function PoolManager({ pools, activePoolId, onSelectPool, onMutate }: Poo
   }, [activePoolId, onSelectPool, onMutate]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-white/[0.03] border border-white/10">
-      <FolderOpen size={16} className="text-white/40 shrink-0" />
+    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-black/[0.03] border border-black/10">
+      <FolderOpen size={16} className="text-black/40 shrink-0" />
 
       {/* 全部 */}
       <Chip
@@ -149,7 +149,7 @@ export function PoolManager({ pools, activePoolId, onSelectPool, onMutate }: Poo
             placeholder="新Pool名称"
             classNames={{
               base: "w-32",
-              inputWrapper: "bg-white/5 border border-white/10",
+              inputWrapper: "bg-black/5 border border-black/10",
             }}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             autoFocus
@@ -175,7 +175,7 @@ export function PoolManager({ pools, activePoolId, onSelectPool, onMutate }: Poo
           variant="light"
           startContent={<Plus size={14} />}
           onPress={() => setIsCreating(true)}
-          className="text-white/50"
+          className="text-black/50"
         >
           新建池
         </Button>

@@ -90,6 +90,14 @@ interface SettingsConfigPayload {
   active_llm_config_id?: string;
   provider_presets?: ProviderPreset[];
 
+  active_llm_summary?: {
+    provider_id: string;
+    service_name: string;
+    model: string;
+    base_url: string;
+    source: "active_config" | "legacy_env" | "ollama";
+  };
+
   boss_cookie?: string;
   zhilian_cookie?: string;
 }
@@ -189,6 +197,24 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
     key_prefix: "",
   },
 ];
+
+const bauhausFieldClassNames = {
+  inputWrapper:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black hover:-translate-y-[1px]",
+  input: "font-medium text-black placeholder:text-black/45",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
+  description: "text-black/55",
+  errorMessage: "font-medium text-[#D02020]",
+};
+
+const bauhausModalContentClassName =
+  "max-h-[88vh] border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+
+const bauhausAutocompleteInputClassNames = {
+  ...bauhausFieldClassNames,
+  inputWrapper:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+};
 
 function normalizeProviderId(value: string): string {
   const normalized = value
@@ -824,33 +850,109 @@ export default function SettingsPage() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", damping: 15 }}
-      className="space-y-6 max-w-5xl"
+      className="space-y-6"
     >
-      <h1 className="text-3xl font-bold">设置</h1>
-
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Key size={20} className="text-blue-400" />
-            <h3 className="text-lg font-semibold">大模型API管理</h3>
+      <section className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 border-b-2 border-black p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-4">
+            <span className="bauhaus-chip bg-[#1040C0] text-white">System Controls</span>
+            <div>
+              <p className="bauhaus-label text-black/60">Search, Sources, Models</p>
+              <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-6xl">
+                Tune
+                <br />
+                Route
+                <br />
+                Save
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
+                在这里配置模型供应商、搜索规则、数据源和同步策略。所有模块延续同一套 Bauhaus 视觉规范，但保持原有配置逻辑不变。
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-white/50">请在此处配置您的 API 信息。新增、删除、编辑后需点击本模块的“保存 API 配置”。</p>
 
-          <div className="overflow-x-auto rounded-xl border border-white/10">
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
+              <p className="bauhaus-label text-white/70">API Configs</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">{apiConfigs.length}</p>
+              <p className="mt-2 text-sm font-medium text-white/80">当前已维护的模型供应商配置数量。</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
+              <p className="bauhaus-label text-black/60">Sources</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">{sourcesEnabled.length}</p>
+              <p className="mt-2 text-sm font-medium text-black/75">当前启用的数据抓取来源数。</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Unsaved</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+                {Number(apiDirty) + Number(settingsDirty)}
+              </p>
+              <p className="mt-2 text-sm font-medium text-white/80">需要提交到本地配置文件的待保存模块数。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-5 p-5 md:p-6">
+          <div className="flex items-center gap-3">
+            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#1040C0] text-white">
+              <Key size={18} />
+            </div>
+            <div>
+              <p className="bauhaus-label text-black/55">Model Providers</p>
+              <h3 className="text-2xl font-black uppercase tracking-[-0.06em] text-black">大模型 API 管理</h3>
+            </div>
+          </div>
+          <p className="text-sm font-medium leading-relaxed text-black/65">
+            请在此处配置您的 API 信息。新增、删除、编辑后，仍需点击本模块底部的“保存 API 配置”完成提交。
+          </p>
+
+          {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
+          {config?.active_llm_summary && (
+            <div className="bauhaus-panel-sm bg-[#1040C0] px-4 py-4 text-sm text-white">
+              <div className="mb-1 flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${
+                  config.active_llm_summary.source === "active_config" ? "bg-green-400" :
+                  config.active_llm_summary.source === "ollama" ? "bg-yellow-400" : "bg-orange-400"
+                }`} />
+                <span className="font-medium text-white/90">当前生效配置</span>
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className="border-2 border-black bg-white text-black"
+                  color={
+                  config.active_llm_summary.source === "active_config" ? "success" :
+                  config.active_llm_summary.source === "ollama" ? "warning" : "danger"
+                }
+                >
+                  {config.active_llm_summary.source === "active_config" ? "已激活配置" :
+                   config.active_llm_summary.source === "ollama" ? "本地 Ollama" : "旧配置回退"}
+                </Chip>
+              </div>
+              <div className="ml-4 grid grid-cols-1 gap-x-6 gap-y-1 text-white/70 sm:grid-cols-3">
+                <span>服务商: <span className="text-white">{config.active_llm_summary.service_name}</span></span>
+                <span>模型: <span className="text-white">{config.active_llm_summary.model}</span></span>
+                <span className="truncate">URL: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
+              </div>
+            </div>
+          )}
+
+          <div className="bauhaus-panel-sm overflow-x-auto bg-[#F0F0F0]">
             <table className="w-full min-w-[780px] text-sm">
-              <thead className="bg-white/[0.03] text-white/70">
+              <thead className="bg-[#121212] text-white">
                 <tr>
-                  <th className="px-3 py-3 text-left font-medium">服务商</th>
-                  <th className="px-3 py-3 text-left font-medium">模型名称</th>
-                  <th className="px-3 py-3 text-left font-medium">API URL</th>
-                  <th className="px-3 py-3 text-left font-medium">API密钥</th>
-                  <th className="px-3 py-3 text-center font-medium">是否激活</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">模型名称</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">API URL</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">API密钥</th>
+                  <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">是否激活</th>
                 </tr>
               </thead>
               <tbody>
                 {apiConfigs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-white/40">
+                    <td colSpan={5} className="px-3 py-8 text-center font-medium text-black/55">
                       暂无配置，请点击“新增”创建第一条配置
                     </td>
                   </tr>
@@ -860,18 +962,18 @@ export default function SettingsPage() {
                   return (
                     <tr
                       key={item.id}
-                      className={`border-t border-white/5 cursor-pointer transition-colors ${
-                        isSelected ? "bg-blue-500/10" : "hover:bg-white/[0.02]"
+                      className={`cursor-pointer border-t-2 border-black/10 transition-colors ${
+                        isSelected ? "bg-[#F0C020]" : "bg-white hover:bg-[#F0F0F0]"
                       }`}
                       onClick={() => handleRowClick(item.id)}
                     >
                       <td className="px-3 py-3">
-                        <div className="font-medium">{item.service_name}</div>
-                        <div className="text-[11px] text-white/40">{item.provider_id}</div>
+                        <div className="font-bold text-black">{item.service_name}</div>
+                        <div className="text-[11px] font-medium tracking-[0.04em] text-black/45">{item.provider_id}</div>
                       </td>
-                      <td className="px-3 py-3 text-white/80">{item.model}</td>
-                      <td className="px-3 py-3 text-white/70 break-all">{item.base_url}</td>
-                      <td className="px-3 py-3 text-white/70">{displayMaskedKey(item.api_key)}</td>
+                      <td className="px-3 py-3 text-black/80">{item.model}</td>
+                      <td className="px-3 py-3 break-all text-black/72">{item.base_url}</td>
+                      <td className="px-3 py-3 text-black/72">{displayMaskedKey(item.api_key)}</td>
                       <td className="px-3 py-3 text-center">
                         <input
                           type="radio"
@@ -894,30 +996,29 @@ export default function SettingsPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                color="primary"
-                variant="flat"
                 startContent={<Plus size={14} />}
                 onPress={openCreateEditor}
+                className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
               >
                 新增
               </Button>
               <Button
                 size="sm"
-                variant="flat"
                 startContent={<Trash2 size={14} />}
                 isDisabled={!selectedConfig}
                 onPress={onDeleteOpen}
+                className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
               >
                 删除
               </Button>
               <Button
                 size="sm"
-                variant="flat"
                 startContent={<SquarePen size={14} />}
                 isDisabled={!selectedConfig}
                 onPress={() => {
                   if (selectedConfig) openEditEditor(selectedConfig);
                 }}
+                className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
               >
                 编辑
               </Button>
@@ -927,16 +1028,22 @@ export default function SettingsPage() {
               <Chip
                 size="sm"
                 variant="flat"
-                className={apiDirty ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-white/60"}
+                className={
+                  apiDirty
+                    ? "border-2 border-black bg-[#F0C020] text-black"
+                    : "border-2 border-black bg-white text-black/60"
+                }
               >
                 {apiDirty ? "有未保存改动" : "已同步"}
               </Chip>
               <Button
                 size="sm"
-                color={apiSaved ? "success" : "primary"}
                 startContent={apiSaved ? <Check size={14} /> : <Save size={14} />}
                 isLoading={apiSaving}
                 onPress={handleSaveApiSettings}
+                className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
+                  apiSaved ? "bauhaus-button-yellow" : "bauhaus-button-red"
+                }`}
               >
                 {apiSaved ? "已保存" : "保存 API 配置"}
               </Button>
@@ -945,10 +1052,10 @@ export default function SettingsPage() {
 
           {listFeedback && (
             <div
-              className={`text-xs rounded-lg px-3 py-2 border ${
+              className={`bauhaus-panel-sm px-3 py-3 text-xs font-medium ${
                 listFeedback.type === "success"
-                  ? "text-green-300 border-green-500/30 bg-green-500/10"
-                  : "text-red-300 border-red-500/30 bg-red-500/10"
+                  ? "bg-[#F0C020] text-black"
+                  : "bg-[#D02020] text-white"
               }`}
             >
               {listFeedback.message}
@@ -956,7 +1063,7 @@ export default function SettingsPage() {
           )}
 
           {apiSaveError && (
-            <div className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2 flex items-center gap-2">
+            <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-3 py-3 text-xs font-medium text-white">
               <AlertCircle size={14} />
               <span>{apiSaveError}</span>
             </div>
@@ -964,15 +1071,19 @@ export default function SettingsPage() {
         </CardBody>
       </Card>
 
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-4">
-          <h3 className="text-lg font-semibold">搜索配置</h3>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Search Rules</p>
+            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">搜索配置</h3>
+          </div>
           <Textarea
             label="搜索关键词（每行一个）"
             variant="bordered"
             placeholder={"Data Scientist\nPython Developer\nBioinformatics"}
             value={searchKeywords}
             onValueChange={handleSearchKeywordsChange}
+            classNames={bauhausFieldClassNames}
           />
           <Textarea
             label="搜索地区（每行一个）"
@@ -980,6 +1091,7 @@ export default function SettingsPage() {
             placeholder={"北京\n上海\n深圳"}
             value={searchLocations}
             onValueChange={handleSearchLocationsChange}
+            classNames={bauhausFieldClassNames}
           />
           <Textarea
             label="过滤关键词（每行一个）"
@@ -987,6 +1099,7 @@ export default function SettingsPage() {
             placeholder={"实习\nstudent\n临时"}
             value={bannedKeywords}
             onValueChange={handleBannedKeywordsChange}
+            classNames={bauhausFieldClassNames}
           />
           <Input
             label="每日推送数量"
@@ -994,19 +1107,23 @@ export default function SettingsPage() {
             type="number"
             value={topN}
             onValueChange={handleTopNChange}
+            classNames={bauhausFieldClassNames}
           />
         </CardBody>
       </Card>
 
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-3">
-          <h3 className="text-lg font-semibold">数据源</h3>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Source Toggles</p>
+            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">数据源</h3>
+          </div>
           {dataSources.map((source) => (
-            <div key={source.name} className="flex items-center justify-between py-1">
+            <div key={source.name} className="bauhaus-panel-sm flex items-center justify-between gap-4 bg-[#F0F0F0] px-4 py-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm">{source.label}</span>
+                <span className="text-sm font-medium text-black">{source.label}</span>
                 {!source.available && (
-                  <Chip size="sm" variant="flat" className="text-[10px] bg-white/5 text-white/30">
+                  <Chip size="sm" variant="flat" className="border-2 border-black bg-white text-[10px] text-black/55">
                     COMING SOON
                   </Chip>
                 )}
@@ -1016,19 +1133,23 @@ export default function SettingsPage() {
                 isSelected={sourcesEnabled.includes(source.name)}
                 isDisabled={!source.available}
                 onValueChange={() => toggleSource(source.name)}
+                classNames={{ wrapper: "bg-black/10" }}
               />
             </div>
           ))}
         </CardBody>
       </Card>
 
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-4">
-          <h3 className="text-lg font-semibold">档案同步</h3>
-          <div className="flex items-start justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-3">
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Resume Sync</p>
+            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">档案同步</h3>
+          </div>
+          <div className="bauhaus-panel-sm flex items-start justify-between gap-4 bg-[#F0F0F0] px-4 py-4">
             <div className="space-y-1">
-              <p className="text-sm text-white/85">档案源数据更新时，同步更新简历中已导入的对应条目</p>
-              <p className="text-xs text-white/45">
+              <p className="text-sm font-medium text-black">档案源数据更新时，同步更新简历中已导入的对应条目</p>
+              <p className="text-xs font-medium leading-relaxed text-black/55">
                 默认关闭。开启后当档案条目被编辑时，简历编辑页会提示你手动确认是否同步；档案删除永不删除简历内容。
               </p>
             </div>
@@ -1036,31 +1157,41 @@ export default function SettingsPage() {
               size="sm"
               isSelected={profileSourceSyncEnabled}
               onValueChange={handleProfileSourceSyncChange}
+              classNames={{ wrapper: "bg-black/10" }}
             />
           </div>
         </CardBody>
       </Card>
 
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-4">
-          <h3 className="text-lg font-semibold">邮箱推送</h3>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Delivery</p>
+            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">邮箱推送</h3>
+          </div>
           <Input
             label="接收邮箱"
             variant="bordered"
             type="email"
             value={emailTo}
             onValueChange={handleEmailToChange}
+            classNames={bauhausFieldClassNames}
           />
         </CardBody>
       </Card>
 
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Cookie size={20} className="text-orange-400" />
-            <h3 className="text-lg font-semibold">爬虫认证配置</h3>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div className="flex items-center gap-3">
+            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#F0C020] text-black">
+              <Cookie size={18} />
+            </div>
+            <div>
+              <p className="bauhaus-label text-black/55">Crawler Access</p>
+              <h3 className="text-2xl font-black uppercase tracking-[-0.06em] text-black">爬虫认证配置</h3>
+            </div>
           </div>
-          <p className="text-xs text-white/40">
+          <p className="text-xs font-medium leading-relaxed text-black/55">
             部分招聘平台需要登录后的 Cookie 才能获取数据。在浏览器登录后，
             按 F12 - Network - 复制任意请求的 Cookie 字段粘贴到这里。Cookie 仅保存在本地。
           </p>
@@ -1088,14 +1219,14 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowBossCookie((prev) => !prev)}
-                className="text-white/30 hover:text-white/60"
+                className="text-black/35 hover:text-black/70"
+                aria-label={showBossCookie ? "隐藏 Cookie" : "显示 Cookie"}
+                aria-pressed={showBossCookie}
               >
                 {showBossCookie ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             }
-            classNames={{
-              inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-            }}
+            classNames={bauhausFieldClassNames}
           />
 
           <Input
@@ -1114,42 +1245,48 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowZhilianCookie((prev) => !prev)}
-                className="text-white/30 hover:text-white/60"
+                className="text-black/35 hover:text-black/70"
+                aria-label={showZhilianCookie ? "隐藏 Cookie" : "显示 Cookie"}
+                aria-pressed={showZhilianCookie}
               >
                 {showZhilianCookie ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             }
-            classNames={{
-              inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-            }}
+            classNames={bauhausFieldClassNames}
           />
         </CardBody>
       </Card>
 
       {settingsSaveError && (
-        <div className="text-sm text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2 flex items-center gap-2">
+        <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-3 py-3 text-sm font-medium text-white">
           <AlertCircle size={16} />
           <span>{settingsSaveError}</span>
         </div>
       )}
 
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-xs text-white/45">
+        <p className="text-xs font-medium text-black/55">
           此按钮仅保存搜索配置、数据源、邮箱推送与爬虫认证配置。
         </p>
         <div className="flex items-center gap-2 self-start md:self-auto">
           <Chip
             size="sm"
             variant="flat"
-            className={settingsDirty ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-white/60"}
+            className={
+              settingsDirty
+                ? "border-2 border-black bg-[#F0C020] text-black"
+                : "border-2 border-black bg-white text-black/60"
+            }
           >
             {settingsDirty ? "有未保存改动" : "已同步"}
           </Chip>
           <Button
             startContent={settingsSaved ? <Check size={16} /> : <Save size={16} />}
-            color={settingsSaved ? "success" : "primary"}
             isLoading={settingsSaving}
             onPress={handleSaveSettings}
+            className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
+              settingsSaved ? "bauhaus-button-yellow" : "bauhaus-button-blue"
+            }`}
           >
             {settingsSaved ? "已保存" : "保存其他设置"}
           </Button>
@@ -1157,9 +1294,11 @@ export default function SettingsPage() {
       </div>
 
       <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="3xl" placement="center" scrollBehavior="inside">
-        <ModalContent className="bg-[#1a1a2e] border border-white/10 max-h-[88vh]">
-          <ModalHeader>{editingConfigId ? "编辑 API 配置" : "新增 API 配置"}</ModalHeader>
-          <ModalBody className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            {editingConfigId ? "编辑 API 配置" : "新增 API 配置"}
+          </ModalHeader>
+          <ModalBody className="grid grid-cols-1 gap-4 overflow-y-auto px-6 py-6 md:grid-cols-2">
             <Autocomplete
               label="服务选择"
               variant="bordered"
@@ -1190,12 +1329,10 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-w-8 w-8 h-8 bg-white/10",
+                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
               }}
               inputProps={{
-                classNames: {
-                  inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-                },
+                classNames: bauhausAutocompleteInputClassNames,
               }}
               classNames={{
                 base: "w-full",
@@ -1208,8 +1345,8 @@ export default function SettingsPage() {
               {providerSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span>{item.label}</span>
-                    {item.description && <span className="text-xs text-white/40">{item.description}</span>}
+                    <span className="font-medium text-black">{item.label}</span>
+                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1246,12 +1383,10 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-w-8 w-8 h-8 bg-white/10",
+                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
               }}
               inputProps={{
-                classNames: {
-                  inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-                },
+                classNames: bauhausAutocompleteInputClassNames,
               }}
               classNames={{
                 base: "w-full",
@@ -1264,8 +1399,8 @@ export default function SettingsPage() {
               {modelSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span>{item.label}</span>
-                    {item.description && <span className="text-xs text-white/40">{item.description}</span>}
+                    <span className="font-medium text-black">{item.label}</span>
+                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1303,12 +1438,10 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-w-8 w-8 h-8 bg-white/10",
+                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
               }}
               inputProps={{
-                classNames: {
-                  inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-                },
+                classNames: bauhausAutocompleteInputClassNames,
               }}
               classNames={{
                 base: "w-full",
@@ -1321,8 +1454,8 @@ export default function SettingsPage() {
               {urlSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span>{item.label}</span>
-                    {item.description && <span className="text-xs text-white/40">{item.description}</span>}
+                    <span className="font-medium text-black">{item.label}</span>
+                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1338,14 +1471,14 @@ export default function SettingsPage() {
               isDisabled={resolvedFormProviderId === "ollama"}
               isInvalid={Boolean(formErrors.api_key)}
               errorMessage={formErrors.api_key}
-              classNames={{
-                inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15",
-              }}
+              classNames={bauhausFieldClassNames}
               endContent={
                 <button
                   type="button"
                   onClick={() => setShowFormApiKey((prev) => !prev)}
-                  className="text-white/30 hover:text-white/60"
+                  className="text-black/35 hover:text-black/70"
+                  aria-label={showFormApiKey ? "隐藏 API Key" : "显示 API Key"}
+                  aria-pressed={showFormApiKey}
                 >
                   {showFormApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -1356,29 +1489,53 @@ export default function SettingsPage() {
               设为当前激活配置
             </Checkbox>
 
-            <Divider className="my-1 border-white/10 md:col-span-2" />
-            <p className="text-xs text-white/40 md:col-span-2">
+            <Divider className="my-1 border-black/10 md:col-span-2" />
+            <p className="text-xs font-medium text-black/55 md:col-span-2">
               所有字段均必填。服务名称、模型名称、API URL 均支持预设选择和手动输入。
             </p>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={onEditorClose}>取消</Button>
-            <Button color="primary" onPress={handleSubmitEditor}>保存</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={onEditorClose}
+            >
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+              onPress={handleSubmitEditor}
+            >
+              保存
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} size="sm" placement="center">
-        <ModalContent className="bg-[#1a1a2e] border border-white/10">
-          <ModalHeader>确认删除</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-white/70">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            确认删除
+          </ModalHeader>
+          <ModalBody className="px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
               确定删除当前配置“{selectedConfig?.service_name || "未命名配置"}”吗？此操作不可撤销。
             </p>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={onDeleteClose}>取消</Button>
-            <Button color="danger" onPress={handleDeleteConfig}>删除</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={onDeleteClose}
+            >
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+              onPress={handleDeleteConfig}
+            >
+              删除
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
