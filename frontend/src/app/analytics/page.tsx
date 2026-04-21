@@ -1,153 +1,200 @@
-// =============================================
-// 周报分析页 — 数据统计可视化
-// =============================================
-// 展示本周 vs 上周对比、来源分布饼图、
-// 岗位采集趋势、热门关键词
-// =============================================
-
 "use client";
 
 import { motion } from "framer-motion";
 import { Card, CardBody, CardHeader, Chip } from "@nextui-org/react";
-import {
-  PieChart, Pie, Cell, ResponsiveContainer,
-} from "recharts";
-import { TrendingUp, TrendingDown, Minus, Hash } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { Hash, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { useWeeklyReport, useJobTrend } from "@/lib/hooks";
 import { TrendChart } from "@/components/charts/TrendChart";
 
-const COLORS = ["#3b82f6", "#8b5cf6", "#06b6d4", "#f59e0b", "#ef4444", "#10b981", "#ec4899"];
+const COLORS = ["#D02020", "#1040C0", "#F0C020", "#121212", "#2E6B4A", "#C84D16", "#7C3EBD"];
 
 const container = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
 };
+
 const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", damping: 15 } },
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: "easeOut" } },
 };
+
+function ChangeIcon({ value }: { value: number }) {
+  if (value > 0) return <TrendingUp size={15} className="text-white" />;
+  if (value < 0) return <TrendingDown size={15} className="text-white" />;
+  return <Minus size={15} className="text-black" />;
+}
 
 export default function AnalyticsPage() {
   const { data: report } = useWeeklyReport();
   const { data: trendData } = useJobTrend("week");
 
-  const tw = report?.this_week;
-  const lw = report?.last_week;
+  const thisWeek = report?.this_week;
+  const lastWeek = report?.last_week;
+  const totalChange =
+    thisWeek && lastWeek && lastWeek.total > 0
+      ? Math.round(((thisWeek.total - lastWeek.total) / lastWeek.total) * 100)
+      : 0;
 
-  /** 环比变化率 */
-  const totalChange = tw && lw && lw.total > 0
-    ? Math.round(((tw.total - lw.total) / lw.total) * 100)
-    : 0;
-
-  const ChangeIcon = ({ val }: { val: number }) =>
-    val > 0 ? <TrendingUp size={14} className="text-green-400" /> :
-    val < 0 ? <TrendingDown size={14} className="text-red-400" /> :
-    <Minus size={14} className="text-white/40" />;
+  const statCards = [
+    {
+      label: "This Week",
+      title: "本周新增",
+      value: `${thisWeek?.total ?? 0} 条`,
+      note: "最近 7 天采集到的新岗位总量。",
+      surface: "bg-[#D02020] text-white",
+      accent: "bg-white text-black",
+      change: totalChange,
+    },
+    {
+      label: "Last Week",
+      title: "上周新增",
+      value: `${lastWeek?.total ?? 0} 条`,
+      note: "上一时间窗口的对照数据。",
+      surface: "bg-[#1040C0] text-white",
+      accent: "bg-[#F0C020] text-black",
+      change: 0,
+    },
+    {
+      label: "Sources",
+      title: "来源数量",
+      value: `${report?.source_distribution?.length ?? 0} 个`,
+      note: "当前参与周报统计的数据源。",
+      surface: "bg-[#F0C020] text-black",
+      accent: "bg-white text-black",
+      change: 0,
+    },
+  ];
 
   return (
     <motion.div
       variants={container}
       initial="hidden"
       animate="show"
-      className="space-y-6"
+      className="space-y-8"
     >
-      <h1 className="text-3xl font-bold">周报分析</h1>
+      <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <span className="bauhaus-chip bg-[#F0C020]">Weekly Signal Report</span>
+            <div>
+              <p className="bauhaus-label text-black/55">Analytics Board</p>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
+                Measure
+                <br />
+                Track
+                <br />
+                Adjust
+              </h1>
+              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
+                把采集趋势、来源结构和关键词热度整理成一张几何海报，方便我们快速判断本周岗位池是否足够活跃，
+                以及接下来该把精力投入到哪些方向。
+              </p>
+            </div>
+          </div>
 
-      {/* 核心指标卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {[
-          { label: "本周新增", value: tw?.total ?? 0, change: totalChange, suffix: "条" },
-          { label: "上周新增", value: lw?.total ?? 0, change: 0, suffix: "条" },
-          { label: "数据源数量", value: (report?.source_distribution || []).length, change: 0, suffix: "个" },
-        ].map((stat) => (
-          <motion.div key={stat.label} variants={item}>
-            <Card className="bg-white/5 border border-white/10">
-              <CardBody className="p-4">
-                <p className="text-sm text-white/50">{stat.label}</p>
-                <div className="flex items-end gap-2 mt-1">
-                  <span className="text-2xl font-bold">{stat.value}{stat.suffix}</span>
-                  {stat.change !== 0 && (
-                    <span className={`flex items-center gap-1 text-xs ${stat.change > 0 ? "text-green-400" : "text-red-400"}`}>
-                      <ChangeIcon val={stat.change} />
-                      {Math.abs(stat.change)}%
-                    </span>
-                  )}
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            {statCards.map((stat) => (
+              <div key={stat.title} className={`bauhaus-panel-sm p-4 ${stat.surface}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className={`bauhaus-label ${stat.surface.includes("text-white") ? "text-white/70" : "text-black/55"}`}>
+                      {stat.label}
+                    </p>
+                    <p className="mt-3 text-3xl font-black uppercase tracking-[-0.08em]">{stat.value}</p>
+                  </div>
+                  <div className={`flex h-11 w-11 items-center justify-center border-2 border-black ${stat.accent}`}>
+                    <ChangeIcon value={stat.change} />
+                  </div>
                 </div>
-              </CardBody>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                <p className={`mt-3 text-sm font-medium ${stat.surface.includes("text-white") ? "text-white/80" : "text-black/70"}`}>
+                  {stat.note}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.section>
 
-      {/* 趋势图 + 来源分布 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <motion.div variants={item}>
-          <Card className="bg-white/5 border border-white/10">
-            <CardHeader className="pb-0">
-              <h3 className="text-lg font-semibold">采集趋势</h3>
-            </CardHeader>
-            <CardBody>
-              <TrendChart data={trendData} />
-            </CardBody>
-          </Card>
-        </motion.div>
-
-        <motion.div variants={item}>
-          <Card className="bg-white/5 border border-white/10">
-            <CardHeader className="pb-0">
-              <h3 className="text-lg font-semibold">来源分布</h3>
-            </CardHeader>
-            <CardBody>
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={report?.source_distribution || []}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={4}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {(report?.source_distribution || []).map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </CardBody>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* 热门关键词 */}
-      <motion.div variants={item}>
-        <Card className="bg-white/5 border border-white/10">
-          <CardHeader className="pb-0">
-            <h3 className="text-lg font-semibold">热门关键词 Top 20</h3>
+      <motion.section variants={item} className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+          <CardHeader className="border-b-2 border-black bg-[#1040C0] px-6 py-5 text-white">
+            <div>
+              <p className="bauhaus-label text-white/70">Trend Report</p>
+              <h2 className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">采集趋势</h2>
+            </div>
           </CardHeader>
-          <CardBody>
+          <CardBody className="p-5">
+            <TrendChart data={trendData} />
+          </CardBody>
+        </Card>
+
+        <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+          <CardHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-black">
+            <div>
+              <p className="bauhaus-label text-black/60">Source Mix</p>
+              <h2 className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">来源分布</h2>
+            </div>
+          </CardHeader>
+          <CardBody className="p-5">
+            <ResponsiveContainer width="100%" height={320}>
+              <PieChart>
+                <Pie
+                  data={report?.source_distribution || []}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={62}
+                  outerRadius={112}
+                  paddingAngle={4}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {(report?.source_distribution || []).map((_, index) => (
+                    <Cell key={index} fill={COLORS[index % COLORS.length]} stroke="#121212" strokeWidth={2} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      </motion.section>
+
+      <motion.section variants={item}>
+        <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+          <CardHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-white">
+            <div>
+              <p className="bauhaus-label text-white/70">Top Terms</p>
+              <h2 className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">热门关键词</h2>
+            </div>
+          </CardHeader>
+          <CardBody className="p-5">
             <div className="flex flex-wrap gap-2">
-              {(report?.top_keywords || []).map((kw, i) => (
+              {(report?.top_keywords || []).map((kw, index) => (
                 <Chip
                   key={kw.keyword}
                   variant="flat"
                   size="sm"
                   startContent={<Hash size={10} />}
-                  className="bg-white/5"
-                  style={{ opacity: 1 - i * 0.03 }}
+                  className={`border-2 border-black text-[11px] font-semibold ${
+                    index % 3 === 0
+                      ? "bg-[#1040C0] text-white"
+                      : index % 3 === 1
+                        ? "bg-[#F0C020] text-black"
+                        : "bg-white text-black"
+                  }`}
                 >
                   {kw.keyword} ({kw.count})
                 </Chip>
               ))}
               {(!report?.top_keywords || report.top_keywords.length === 0) && (
-                <p className="text-white/40 text-sm">暂无数据</p>
+                <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4 text-sm font-medium text-black/60">
+                  暂无数据，等周报聚合后这里会出现关键词热度。
+                </div>
               )}
             </div>
           </CardBody>
         </Card>
-      </motion.div>
+      </motion.section>
     </motion.div>
   );
 }

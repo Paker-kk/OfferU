@@ -44,7 +44,12 @@ class Settings(BaseSettings):
 
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001"
+    )
 
     # ---- Gmail OAuth ----
     gmail_client_id: str = ""

@@ -85,10 +85,11 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     """
     根据当前配置的 LLM Provider 创建对应客户端
     ─────────────────────────────────────────────
-    所有提供商统一走 OpenAI 兼容协议。
-    配置路由（routes/config.py）已将激活的 provider 信息
-    同步到 active_llm_base_url / active_llm_api_key，
-    因此这里只需读取这两个字段即可，无需硬编码 provider 分支。
+    配置优先级（PRD §8.1 LLM Configuration Transparency）:
+      1. 若存在激活配置 (active_llm_config_id / active_llm_base_url / active_llm_api_key)
+         → 仅使用 active 配置，缺少必需项则报错
+      2. 完全没有 active 配置 → 允许 fallback 到 legacy per-provider key
+      3. Ollama 特殊路径：不需要 API Key
 
     返回: (client, model_name)
     """
@@ -97,6 +98,7 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     model = settings.llm_model
     active_base_url = (settings.active_llm_base_url or "").strip().rstrip("/")
     active_api_key = (settings.active_llm_api_key or "").strip()
+    active_config_id = (settings.active_llm_config_id or "").strip()
     http_client = _make_http_client()
 
     # Ollama 特殊处理：确保 /v1 后缀，使用占位 key
@@ -107,16 +109,36 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
             base_url=_ensure_ollama_v1(base_url),
             http_client=http_client,
         )
+        _logger.info("[LLM Config] source=ollama, base_url=%s, model=%s", base_url, model)
         return client, model
 
-    # 通用路径：所有 OpenAI 兼容提供商（DeepSeek / Qwen / OpenAI / Gemini / 智谱 / SiliconFlow / 任意第三方）
-    # 1) 优先使用 active_llm_* 字段（由设置页同步）
-    # 2) 回退到 per-provider 专属 key + 默认 base_url（兼容旧配置 / 环境变量启动）
-    api_key = active_api_key
-    base_url = active_base_url
+    # 判断是否存在激活配置
+    has_active_selection = bool(active_config_id or active_base_url or active_api_key)
 
-    if not api_key:
-        # 兼容旧版：从 per-provider key 字段读取
+    if has_active_selection:
+        # ── 路径 A：存在激活配置，严格使用 active 字段，不做隐式 fallback ──
+        api_key = active_api_key
+        base_url = active_base_url
+
+        if not api_key:
+            raise ValueError(
+                f"当前激活的 LLM 配置缺少 API Key（provider={provider}）。"
+                f"请在设置页面填写，或切换到其他配置。"
+            )
+
+        if not base_url:
+            # active 配置允许从 preset 补充默认 base_url
+            base_url = DEFAULT_BASE_URLS.get(provider, "")
+
+        if not base_url:
+            raise ValueError(
+                f"当前激活的 LLM 配置缺少 Base URL（provider={provider}）。"
+                f"请在设置页面填写完整信息。"
+            )
+
+        _logger.info("[LLM Config] source=active_config, provider=%s, model=%s", provider, model)
+    else:
+        # ── 路径 B：完全没有 active 配置，回退到 legacy per-provider key ──
         legacy_keys = {
             "deepseek": settings.deepseek_api_key,
             "openai": settings.openai_api_key,
@@ -126,15 +148,15 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
             "zhipu": settings.zhipu_api_key,
         }
         api_key = legacy_keys.get(provider, "")
-
-    if not api_key:
-        raise ValueError(f"LLM API Key 未配置（provider={provider}），请在设置页面填写")
-
-    if not base_url:
         base_url = DEFAULT_BASE_URLS.get(provider, "")
 
-    if not base_url:
-        raise ValueError(f"LLM Base URL 未配置（provider={provider}），请在设置页面填写")
+        if not api_key:
+            raise ValueError(f"LLM API Key 未配置（provider={provider}），请在设置页面填写")
+
+        if not base_url:
+            raise ValueError(f"LLM Base URL 未配置（provider={provider}），请在设置页面填写")
+
+        _logger.info("[LLM Config] source=legacy_fallback, provider=%s, model=%s", provider, model)
 
     client = AsyncOpenAI(
         api_key=api_key,

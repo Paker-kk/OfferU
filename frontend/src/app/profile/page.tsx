@@ -143,6 +143,24 @@ function isLowConfidence(value: number): boolean {
   return Number(value || 0) < LOW_CONFIDENCE_THRESHOLD;
 }
 
+const bauhausFieldClassNames = {
+  inputWrapper:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+  input: "font-medium text-black placeholder:text-black/45",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
+  description: "text-black/55",
+  errorMessage: "font-medium text-[#D02020]",
+};
+
+const bauhausNativeSelectClassName =
+  "h-11 w-full appearance-none border-2 border-black bg-white px-4 text-sm font-medium text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] outline-none transition-transform hover:-translate-y-[1px]";
+
+const bauhausModalContentClassName =
+  "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+
+const bauhausIconButtonClassName =
+  "min-h-11 min-w-11 border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]";
+
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
   const { data: categoryList } = useProfileCategories();
@@ -202,7 +220,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 2500);
+    const timer = setTimeout(() => setNotice(""), 5500);
     return () => clearTimeout(timer);
   }, [notice]);
 
@@ -549,7 +567,7 @@ export default function ProfilePage() {
     setField: (field: string, value: string) => void
   ) => {
     const key = normalizeProfileCategoryKey(categoryKey);
-    const inputCls = { inputWrapper: "bg-white/[0.02] border-white/[0.08]" };
+    const inputCls = bauhausFieldClassNames;
 
     if (key === "education") {
       return (
@@ -637,6 +655,17 @@ export default function ProfilePage() {
 
   if (isLoading && !profile) {
     return (
+      <div className="grid h-[70vh] place-items-center">
+        <div className="bauhaus-panel flex items-center gap-3 bg-white px-6 py-5 text-sm font-medium text-black/70">
+          <Spinner color="warning" />
+          <span>正在加载档案...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (false && isLoading && !profile) {
+    return (
       <div className="h-[70vh] grid place-items-center">
         <Spinner label="正在加载档案..." color="primary" />
       </div>
@@ -648,15 +677,28 @@ export default function ProfilePage() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", damping: 18 }}
-      className="max-w-6xl mx-auto space-y-5"
+      className="space-y-6"
     >
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="bauhaus-panel flex flex-wrap items-end justify-between gap-4 bg-white p-6 md:p-8">
+        <div className="hidden">
+          <p className="bauhaus-label text-black/60">Profile Source Of Truth</p>
           <h1 className="text-3xl font-bold">档案管理</h1>
           <p className="text-sm text-white/45 mt-1">档案库是唯一事实源，简历页只读取和同步，不会反向覆盖档案数据。</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div>
+          <p className="bauhaus-label text-black/60">Profile Source Of Truth</p>
+          <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-5xl">
+            Profile
+            <br />
+            Archive
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
+            档案库是唯一事实源。这里维护结构化经历、技能与证书，简历页只读取和同步这些内容，不反向覆盖原始档案。
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
           <label>
             <input
               type="file"
@@ -671,38 +713,74 @@ export default function ProfilePage() {
               }}
               disabled={importing || importingToDb}
             />
-            <Button as="span" variant="flat" startContent={<Upload size={14} />} isLoading={importing} className="bg-white/10 text-white/80">
+            <Button
+              as="span"
+              variant="light"
+              startContent={<Upload size={14} />}
+              isLoading={importing}
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+            >
               AI 导入
             </Button>
           </label>
 
-          <Button color="primary" startContent={<Save size={14} />} isLoading={saving} onPress={saveProfile} data-testid="profile-save-button">
+          <Button
+            startContent={<Save size={14} />}
+            isLoading={saving}
+            onPress={saveProfile}
+            data-testid="profile-save-button"
+            className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+          >
             保存
           </Button>
         </div>
       </div>
 
-      {error && <div className="rounded-xl border border-danger-400/40 bg-danger-500/10 px-4 py-3 text-sm text-danger-200" data-testid="profile-error-banner">{error}</div>}
-      {notice && <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" data-testid="profile-notice-banner">{notice}</div>}
+      {error && (
+        <div
+          className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white"
+          data-testid="profile-error-banner"
+        >
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div
+          className="bauhaus-panel-sm bg-[#F0C020] px-4 py-3 text-sm font-medium text-black"
+          data-testid="profile-notice-banner"
+        >
+          {notice}
+        </div>
+      )}
 
-      <Card className="bg-white/[0.03] border border-white/[0.08]">
-        <CardBody className="p-4 space-y-3">
-          <div className="text-sm font-semibold text-white/85">基础信息</div>
-          <Input label="姓名" variant="bordered" value={name} onValueChange={setName} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <Input label="手机号" variant="bordered" value={phone} onValueChange={setPhone} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
-            <Input label="邮箱" variant="bordered" value={email} onValueChange={setEmail} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
-            <Input label="领英" variant="bordered" value={linkedin} onValueChange={setLinkedin} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
-            <Input label="GitHub" variant="bordered" value={github} onValueChange={setGithub} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Base Identity</p>
+            <div className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">
+              基础信息
+            </div>
           </div>
-          <Input label="个人网站" variant="bordered" value={website} onValueChange={setWebsite} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
-          <Textarea label="个人简介" variant="bordered" minRows={3} value={summary} onValueChange={setSummary} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
+          <Input label="姓名" variant="bordered" value={name} onValueChange={setName} classNames={bauhausFieldClassNames} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <Input label="手机号" variant="bordered" value={phone} onValueChange={setPhone} classNames={bauhausFieldClassNames} />
+            <Input label="邮箱" variant="bordered" value={email} onValueChange={setEmail} classNames={bauhausFieldClassNames} />
+            <Input label="领英" variant="bordered" value={linkedin} onValueChange={setLinkedin} classNames={bauhausFieldClassNames} />
+            <Input label="GitHub" variant="bordered" value={github} onValueChange={setGithub} classNames={bauhausFieldClassNames} />
+          </div>
+          <Input label="个人网站" variant="bordered" value={website} onValueChange={setWebsite} classNames={bauhausFieldClassNames} />
+          <Textarea label="个人简介" variant="bordered" minRows={3} value={summary} onValueChange={setSummary} classNames={bauhausFieldClassNames} />
         </CardBody>
       </Card>
 
-      <Card className="bg-white/[0.03] border border-white/[0.08]">
-        <CardBody className="p-4 space-y-4">
-          <div className="text-sm font-semibold text-white/85">档案经历库</div>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+        <CardBody className="space-y-5 p-5 md:p-6">
+          <div>
+            <p className="bauhaus-label text-black/55">Structured Entries</p>
+            <div className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">
+              档案经历库
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-[220px_1fr_auto] gap-2">
             <select
@@ -716,7 +794,7 @@ export default function ProfilePage() {
                 }
                 setActiveCategory(value);
               }}
-              className="h-10 rounded-md bg-white/[0.03] border border-white/[0.1] px-3 text-sm text-white/85"
+              className={bauhausNativeSelectClassName}
             >
               <option value={FILTER_ALL} className="text-black">全部</option>
               {categoryOptions.map((item) => (
@@ -733,41 +811,69 @@ export default function ProfilePage() {
               value={entryTitle}
               onValueChange={setEntryTitle}
               isDisabled={activeCategory === FILTER_ALL}
-              classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }}
+              classNames={bauhausFieldClassNames}
             />
 
-            <Button color="warning" size="sm" startContent={<Plus size={14} />} isLoading={adding} isDisabled={activeCategory === FILTER_ALL} onPress={addEntry} data-testid="profile-add-entry-button">
+            <Button
+              size="sm"
+              startContent={<Plus size={14} />}
+              isLoading={adding}
+              isDisabled={activeCategory === FILTER_ALL}
+              onPress={addEntry}
+              data-testid="profile-add-entry-button"
+              className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
+            >
               新增条目
             </Button>
           </div>
 
           {activeCategory !== FILTER_ALL ? (
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
-              <div className="text-xs text-white/45">当前新增分类：{resolveProfileCategoryLabel(activeCategory, localCustomCategories[activeCategory])}</div>
+            <div className="bauhaus-panel-sm space-y-3 bg-[#F0F0F0] p-4">
+              <div className="text-xs font-semibold tracking-[0.04em] text-black/55">
+                当前新增分类：{resolveProfileCategoryLabel(activeCategory, localCustomCategories[activeCategory])}
+              </div>
               {renderDraftFields(activeCategory, getDraft(activeCategory), (field, value) => updateDraftField(activeCategory, field, value))}
               <div className="flex justify-end">
-                <Button size="sm" variant="flat" onPress={() => resetDraft(activeCategory)}>重置当前草稿</Button>
+                <Button
+                  size="sm"
+                  variant="light"
+                  className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+                  onPress={() => resetDraft(activeCategory)}
+                >
+                  重置当前草稿
+                </Button>
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-sm text-white/45">
+            <div className="bauhaus-panel-sm bg-white px-4 py-3 text-sm font-medium text-black/60">
               当前为全部视图，选择具体分类后可新增结构化条目。
             </div>
           )}
 
           <div className="space-y-4">
             {groupedKeys.length === 0 && (
-              <div className="text-sm text-white/35 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2">当前分类暂无条目</div>
+              <div className="bauhaus-panel-sm bg-white px-4 py-3 text-sm font-medium text-black/60">
+                当前分类暂无条目
+              </div>
             )}
 
             {groupedKeys.map((groupKey) => {
               const sections = groupedSections[groupKey] || [];
               const groupLabel = categoryOptions.find((item) => item.key === groupKey)?.label || resolveProfileCategoryLabel(groupKey);
               return (
-                <div key={groupKey} className="space-y-2">
+                <div key={groupKey} className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Chip size="sm" variant="flat" className="bg-white/10 text-white/80" data-testid={`profile-group-chip-${groupKey}`}>{groupLabel}</Chip>
-                    <span className="text-xs text-white/40">{sections.length} 条</span>
+                    <Chip
+                      size="sm"
+                      variant="flat"
+                      className="border-2 border-black bg-[#1040C0] px-2 text-white"
+                      data-testid={`profile-group-chip-${groupKey}`}
+                    >
+                      {groupLabel}
+                    </Chip>
+                    <span className="text-xs font-semibold tracking-[0.04em] text-black/45">
+                      {sections.length} 条
+                    </span>
                   </div>
 
                   <div className="space-y-2">
@@ -776,34 +882,84 @@ export default function ProfilePage() {
                       const isEditing = editingSectionId === section.id;
 
                       return (
-                        <div key={section.id} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 space-y-2" data-testid={`profile-section-card-${section.id}`}>
+                        <div
+                          key={section.id}
+                          className="bauhaus-panel-sm space-y-3 bg-white p-4"
+                          data-testid={`profile-section-card-${section.id}`}
+                        >
                           {isEditing ? (
                             <>
-                              <Input size="sm" variant="bordered" label="条目标题" value={editingTitle} onValueChange={setEditingTitle} classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }} />
+                              <Input
+                                size="sm"
+                                variant="bordered"
+                                label="条目标题"
+                                value={editingTitle}
+                                onValueChange={setEditingTitle}
+                                classNames={bauhausFieldClassNames}
+                              />
                               {renderDraftFields(sectionKey, editingDraft, (field, value) => setEditingDraft((prev) => ({ ...prev, [field]: value })))}
                               <div className="flex justify-end gap-2">
-                                <Button size="sm" variant="flat" onPress={cancelEdit}>取消</Button>
-                                <Button size="sm" color="primary" isLoading={savingSection} onPress={() => void saveEditSection(section)}>保存</Button>
+                                <Button
+                                  size="sm"
+                                  variant="light"
+                                  className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+                                  onPress={cancelEdit}
+                                >
+                                  取消
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  isLoading={savingSection}
+                                  className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+                                  onPress={() => void saveEditSection(section)}
+                                >
+                                  保存
+                                </Button>
                               </div>
                             </>
                           ) : (
                             <>
                               <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="text-sm text-white/85 font-medium">{section.title || resolveProfileCategoryLabel(sectionKey, section.category_label)}</div>
-                                  <div className="text-xs text-white/35 mt-1">来源 {section.source} · 置信度 {Math.round(section.confidence * 100)}%</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-base font-bold text-black truncate">
+                                    {section.title || resolveProfileCategoryLabel(sectionKey, section.category_label)}
+                                  </div>
+                                  <div className="mt-1 text-xs font-medium tracking-[0.04em] text-black/45">
+                                    来源 {section.source} · 置信度 {Math.round(section.confidence * 100)}%
+                                  </div>
                                   {isLowConfidence(section.confidence) && (
-                                    <div className="mt-1 text-[11px] text-amber-300/90" data-testid={`profile-low-confidence-${section.id}`}>
+                                    <div
+                                      className="mt-2 inline-flex border-2 border-black bg-[#F0C020] px-2 py-1 text-[11px] font-semibold tracking-[0.06em] text-black"
+                                      data-testid={`profile-low-confidence-${section.id}`}
+                                    >
                                       低置信度条目，请优先核实
                                     </div>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Button isIconOnly size="sm" variant="light" aria-label="编辑条目" onPress={() => beginEditSection(section)}><PencilLine size={14} /></Button>
-                                  <Button isIconOnly size="sm" variant="light" aria-label="删除条目" className="text-red-400" onPress={() => setDeleteTarget(section)}><Trash2 size={14} /></Button>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    className={bauhausIconButtonClassName}
+                                    aria-label="编辑条目"
+                                    onPress={() => beginEditSection(section)}
+                                  >
+                                    <PencilLine size={14} />
+                                  </Button>
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    className={`${bauhausIconButtonClassName} bg-[#D02020] text-white`}
+                                    aria-label="删除条目"
+                                    onPress={() => setDeleteTarget(section)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </Button>
                                 </div>
                               </div>
-                              <p className="text-sm text-white/70 leading-relaxed break-words">{getProfileBulletText(section as any)}</p>
+                              <p className="text-sm leading-relaxed break-words text-black/72">
+                                {getProfileBulletText(section as any)}
+                              </p>
                             </>
                           )}
                         </div>
@@ -818,46 +974,90 @@ export default function ProfilePage() {
       </Card>
 
       <Modal isOpen={customCategoryModalOpen} onClose={() => setCustomCategoryModalOpen(false)} data-testid="profile-custom-category-modal">
-        <ModalContent>
-          <ModalHeader>新建自定义分类</ModalHeader>
-          <ModalBody>
-            <Input autoFocus label="分类名称" variant="bordered" placeholder="例如：校园实践、出版作品" value={newCustomCategoryName} onValueChange={setNewCustomCategoryName} data-testid="profile-custom-category-input" />
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            新建自定义分类
+          </ModalHeader>
+          <ModalBody className="px-6 py-6">
+            <Input
+              autoFocus
+              label="分类名称"
+              variant="bordered"
+              placeholder="例如：校园实践、出版作品"
+              value={newCustomCategoryName}
+              onValueChange={setNewCustomCategoryName}
+              data-testid="profile-custom-category-input"
+              classNames={bauhausFieldClassNames}
+            />
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={() => setCustomCategoryModalOpen(false)}>取消</Button>
-            <Button color="primary" onPress={handleCreateCustomCategory} data-testid="profile-custom-category-confirm">确认创建</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={() => setCustomCategoryModalOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+              onPress={handleCreateCustomCategory}
+              data-testid="profile-custom-category-confirm"
+            >
+              确认创建
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
       <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-        <ModalContent>
-          <ModalHeader>确认删除条目</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-white/70">删除后该条目将从档案库永久移除，但不会直接删除已有简历中的已导入内容。</p>
-            <p className="text-xs text-white/45">条目：{deleteTarget?.title || "未命名条目"}</p>
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            确认删除条目
+          </ModalHeader>
+          <ModalBody className="space-y-3 px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
+              删除后该条目将从档案库永久移除，但不会直接删除已有简历中的已导入内容。
+            </p>
+            <p className="text-xs font-semibold tracking-[0.06em] text-black/55">
+              条目：{deleteTarget?.title || "未命名条目"}
+            </p>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={() => setDeleteTarget(null)}>取消</Button>
-            <Button color="danger" onPress={() => void confirmDelete()}>确认删除</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={() => setDeleteTarget(null)}
+            >
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+              onPress={() => void confirmDelete()}
+            >
+              确认删除
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="4xl" scrollBehavior="inside" data-testid="profile-import-review-modal">
-        <ModalContent>
-          <ModalHeader>AI 导入审核</ModalHeader>
-          <ModalBody className="space-y-3">
+      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="3xl" scrollBehavior="inside" data-testid="profile-import-review-modal">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            AI 导入审核
+          </ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
             {importCandidates.length === 0 ? (
-              <div className="text-sm text-white/45">暂无候选条目。</div>
+              <div className="bauhaus-panel-sm bg-white px-4 py-3 text-sm font-medium text-black/60">
+                暂无候选条目。
+              </div>
             ) : (
               importCandidates.map((candidate) => (
                 <div
                   key={candidate.localId}
-                  className={`rounded-lg border p-3 space-y-2 ${
+                  className={`bauhaus-panel-sm space-y-3 p-4 ${
                     isLowConfidence(candidate.confidence)
-                      ? "border-amber-400/35 bg-amber-500/10"
-                      : "border-white/[0.08] bg-white/[0.02]"
+                      ? "bg-[#F0C020]"
+                      : "bg-white"
                   }`}
                   data-testid={`profile-import-candidate-${candidate.localId}`}
                 >
@@ -875,14 +1075,18 @@ export default function ProfilePage() {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className={isLowConfidence(candidate.confidence) ? "bg-amber-500/20 text-amber-100" : "bg-white/10 text-white/70"}
+                      className={
+                        isLowConfidence(candidate.confidence)
+                          ? "border-2 border-black bg-white text-black"
+                          : "border-2 border-black bg-[#1040C0] text-white"
+                      }
                     >
                       置信度 {Math.round(candidate.confidence * 100)}%
                     </Chip>
                   </div>
 
                   {isLowConfidence(candidate.confidence) && (
-                    <div className="text-[11px] text-amber-200/95">
+                    <div className="text-[11px] font-semibold tracking-[0.06em] text-black/75">
                       该候选条目置信度偏低，建议逐项核对后再导入。
                     </div>
                   )}
@@ -900,7 +1104,7 @@ export default function ProfilePage() {
                           )
                         );
                       }}
-                      className="h-10 rounded-md bg-white/[0.03] border border-white/[0.1] px-3 text-sm text-white/85"
+                      className={bauhausNativeSelectClassName}
                     >
                       {categoryOptions.map((item) => (
                         <option key={item.key} value={item.key} className="text-black">{item.label}</option>
@@ -916,7 +1120,7 @@ export default function ProfilePage() {
                           prev.map((item) => (item.localId === candidate.localId ? { ...item, title: nextTitle } : item))
                         );
                       }}
-                      classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }}
+                      classNames={bauhausFieldClassNames}
                     />
                   </div>
 
@@ -934,15 +1138,27 @@ export default function ProfilePage() {
                         )
                       );
                     }}
-                    classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }}
+                    classNames={bauhausFieldClassNames}
                   />
                 </div>
               ))
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={() => setImportModalOpen(false)}>取消</Button>
-            <Button color="primary" startContent={<CheckCircle2 size={14} />} isLoading={importingToDb} isDisabled={selectedImportCount === 0} onPress={() => void confirmImportCandidates()}>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={() => setImportModalOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              startContent={<CheckCircle2 size={14} />}
+              isLoading={importingToDb}
+              isDisabled={selectedImportCount === 0}
+              onPress={() => void confirmImportCandidates()}
+              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+            >
               导入 {selectedImportCount} 条
             </Button>
           </ModalFooter>
