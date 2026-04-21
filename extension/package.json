@@ -2,13 +2,20 @@
   "name": "offeru-job-collector",
   "version": "0.1.0",
   "private": true,
-  "description": "OfferU 岗位采集插件 — 从 Boss直聘等招聘平台一键采集岗位到 OfferU",
+  "description": "OfferU 岗位采集插件（WXT）- 五平台手动采集 + 购物车同步",
   "scripts": {
-    "build": "tsc && node scripts/copy-static.mjs",
-    "watch": "tsc --watch"
+    "dev": "wxt",
+    "build": "wxt build && node scripts/sync-root-build.mjs",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:legacy": "tsc && node scripts/copy-static.mjs",
+    "watch:legacy": "tsc --watch"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.270",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4",
+    "wxt": "^0.20.22"
   }
 }
