@@ -694,5 +694,106 @@ POST /api/interview/generate-answer               — 生成推荐回答
 
 ---
 
-*此文档为 Dario Round 6 审查版。核心变更：去认证 → 纯本地、扩展 → Side Panel 购物车、新增面经模块、定位扩大到所有求职者。*
+---
+
+## Phase 5：简历模板 ATS 重构 + 矢量 PDF（2026-04-18 Dario R7 新增）
+
+> **目标：从"截图 PDF + ATS 黑洞双栏"升级为"矢量 PDF + ATS-first 单栏专业模板"**
+> **参考项目：[open-resume](https://github.com/xitanggg/open-resume) (8.6k⭐) + [Reactive Resume v5](https://rxresu.me/) (12+ 模板)**
+
+### 调研结论（2026-04-18 多轮联网调研）
+
+**竞品分析：**
+| 产品 | 特点 | PDF 技术 | 模板数 | ATS |
+|------|------|---------|--------|-----|
+| open-resume (8.6k⭐) | 单栏极致打磨 | @react-pdf/renderer 矢量 | 1 | ✅ |
+| Reactive Resume v5 | 12+ 模板 + 自定义 CSS | Chromium headless 渲染 | 12 | ✅ |
+| Zety (商业) | 4 个 ATS 模板 + ATS 评分器 | 服务端渲染 | 20+ | ✅ |
+| **OfferU (当前)** | **双栏侧边栏** | **html2canvas 截图** | **1** | **❌ 致命** |
+
+**ATS 最佳实践（Zety + 业界共识）：**
+1. **单栏倒序时间线** — chronological format ATS 最友好
+2. **字体**：Arial / Calibri / Noto Sans SC，10-12pt
+3. **标准段落标题**：工作经历 / 教育经历 / 专业技能 / 项目经历
+4. **禁止**：表格、图形、文本框、双栏布局
+5. **Bullet point** 格式展示经历
+6. **矢量 PDF**：文字可选中 + 可搜索 + ATS 可解析
+7. **99% Fortune 500 使用 ATS**（BOSS直聘等国内平台同理）
+
+### 当前系统致命问题
+
+| 问题 | 严重度 | 影响 |
+|------|--------|------|
+| 双栏布局 (32% 侧边栏 + 68% 主区) | 🔴 致命 | ATS 交叉混读技能与经历，解析失败 |
+| html2canvas → jsPDF (截图 PDF) | 🔴 致命 | 产出图片非文字，ATS 完全无法提取，打印模糊 |
+| 无字体族控制 | 🟡 中 | 缺乏专业字体选项 |
+| 单一模板无切换 | 🟡 中 | 不同行业/场景需不同风格 |
+
+### 技术方案
+
+**PDF 引擎升级路径：**
+```
+html2canvas + jsPDF (截图, ATS 不可读)
+        ↓
+@react-pdf/renderer (矢量, ATS 可解析)
+```
+
+**模板设计（ATS-first 单栏）：**
+```
+┌─────────────────────────────────┐
+│          姓名 (18pt Bold)        │
+│  📞 电话 | ✉️ 邮箱 | 🔗 LinkedIn │  ← 联系方式一行式
+├─────────────────────────────────┤
+│  ▍职业概述                       │  ← 主色调左边框
+│  2-3 句话概括核心竞争力            │
+├─────────────────────────────────┤
+│  ▍工作经历                       │
+│  公司名 — 职位          时间范围   │
+│  • STAR Bullet 1                │
+│  • STAR Bullet 2                │
+├─────────────────────────────────┤
+│  ▍教育经历                       │
+│  学校 — 专业 — 学位     时间范围   │
+│  GPA: x.xx                     │
+├─────────────────────────────────┤
+│  ▍专业技能                       │
+│  分类: 技能1, 技能2, 技能3       │
+├─────────────────────────────────┤
+│  ▍项目经历                       │
+│  项目名 — 角色          时间范围   │
+│  • 项目描述 Bullet              │
+└─────────────────────────────────┘
+```
+
+**字体注册（react-pdf）：**
+- Noto Sans SC Regular + Bold（中文）
+- Inter / Roboto Regular + Bold（英文）
+- 通过 `Font.register()` 加载 TTF，不支持 Variable Font
+
+### 实施计划
+
+| 编号 | 任务 | 改动文件 | 验收标准 |
+|------|------|---------|---------|
+| P5-1 | 新建 ATS 标准单栏模板 | `ResumePreview.tsx` 重写 | 单栏布局, 联系方式一行式, 段落标题+下划线, Bullet 格式 |
+| P5-2 | 安装 @react-pdf/renderer | `package.json` | 依赖安装成功，build 无报错 |
+| P5-3 | 注册中文字体 Noto Sans SC | 新建 `lib/fonts.ts` | TTF 字体 Normal/Bold 注册成功 |
+| P5-4 | 创建 ResumePDF 矢量渲染层 | 新建 `resume/components/ResumePDF/` | react-pdf 渲染, 文字可选中可搜索 |
+| P5-5 | 替换 html2canvas 导出逻辑 | `resume/[id]/page.tsx` | 导出真矢量 PDF，文件 < 200KB |
+| P5-6 | StyleToolbar 增加字体选择 | `StyleToolbar.tsx` | 3 种字体可切换（思源黑体/Inter/Times） |
+| P5-7 | 保留旧双栏模板为可选 | `ResumePreviewClassic.tsx` | 重命名旧模板，默认切换为 ATS 单栏 |
+| P5-8 | 回归测试 | E2E | 编辑→预览→导出全链路通过 |
+
+### 决策记录
+
+| # | 决策 | 理由 | 审查人 |
+|---|------|------|--------|
+| 34 | 默认 ATS 单栏模板 | 99% 大厂/国企走 ATS，双栏是毒药 | Dario R7 |
+| 35 | @react-pdf/renderer 矢量 PDF | html2canvas 截图不可被 ATS 解析 | Dario R7 |
+| 36 | 1 套模板打磨到极致 | 参考 open-resume 策略，不贪多 | 用户选择 |
+| 37 | 保留旧双栏为 Classic 模板 | 中小企业 HR 人工筛选仍需视觉吸引力 | Dario R7 |
+| 38 | Noto Sans SC 作为默认中文字体 | Google 开源, TTF 可用, react-pdf 兼容 | 技术约束 |
+
+---
+
+*此文档为 Dario Round 7 审查版。R7 变更：新增 Phase 5 简历模板 ATS 重构 + 矢量 PDF 计划。*
 *所有 Phase 执行前需逐项确认。*

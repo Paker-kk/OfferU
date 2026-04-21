@@ -208,9 +208,17 @@ async def generate_answer(body: GenerateAnswerBody, db: AsyncSession = Depends(g
         select(ProfileSection).where(ProfileSection.profile_id == profile.id)
     )).scalars().all()
 
-    bullets = "\n".join(
-        f"- [{s.section_type}] {s.content}" for s in sections if s.content
-    )
+    # 从 content_json 提取文本（PRD §8.4: 优先 bullet → description → title）
+    bullet_lines = []
+    for s in sections:
+        cj = s.content_json or {}
+        text = cj.get("bullet") or cj.get("description") or s.title or ""
+        if isinstance(text, str):
+            text = text.strip()
+        if text:
+            bullet_lines.append(f"- [{s.section_type}] {text}")
+
+    bullets = "\n".join(bullet_lines)
 
     if not bullets:
         raise HTTPException(400, "Profile 内容为空，请先填写个人经历")

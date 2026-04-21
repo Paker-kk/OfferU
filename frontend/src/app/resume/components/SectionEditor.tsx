@@ -20,9 +20,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 
-/** 统一的 Input classNames — 与编辑器主面板保持一致的深色透明风格 */
+/** 统一的 Input classNames — Bauhaus 浅色硬边风格 */
 const inputStyle = {
-  inputWrapper: "bg-white/[0.03] border-white/[0.08] hover:border-white/15 group-data-[focus=true]:border-blue-500/50",
+  inputWrapper:
+    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+  input: "font-medium text-black placeholder:text-black/45",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
+  description: "text-black/55",
+  errorMessage: "font-medium text-[#D02020]",
 };
 
 interface SectionEditorProps {
@@ -110,19 +115,25 @@ export default function SectionEditor({
   return (
     <div className="space-y-2.5">
       {contentJson.map((item, i) => (
-        <div key={i} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-2.5" data-testid={`resume-item-${sectionType}-${i}`}>
+        <div
+          key={i}
+          className="bauhaus-panel-sm space-y-2.5 bg-[#F0F0F0] p-3"
+          data-testid={`resume-item-${sectionType}-${i}`}
+        >
           {/* 条目头部：序号 + 删除 */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <GripVertical size={12} className="text-white/20 cursor-grab" />
-              <span className="text-[10px] text-white/30 font-mono">#{i + 1}</span>
-              <span className="text-[11px] text-white/55 truncate max-w-[160px]">{getItemTitle(item, i)}</span>
+              <GripVertical size={12} className="cursor-grab text-black/30" />
+              <span className="font-mono text-[10px] text-black/35">#{i + 1}</span>
+              <span className="max-w-[160px] truncate text-[11px] font-semibold tracking-[0.04em] text-black/60">
+                {getItemTitle(item, i)}
+              </span>
             </div>
             <div className="flex items-center gap-1">
               <Button
                 size="sm"
                 variant="light"
-                className="h-6 px-2 text-[10px] text-white/45"
+                className="bauhaus-button bauhaus-button-outline !h-8 !px-3 !py-2 !text-[10px]"
                 onPress={() => toggleItem(i)}
                 data-testid={`resume-item-toggle-${sectionType}-${i}`}
               >
@@ -139,7 +150,7 @@ export default function SectionEditor({
                 onPress={() => removeItem(i)}
                 aria-label="删除条目"
                 data-testid={`resume-item-delete-${sectionType}-${i}`}
-                className="w-6 h-6 min-w-6 text-red-400/50 hover:text-red-400"
+                className="bauhaus-button bauhaus-button-red !h-8 !min-w-8 !w-8 !px-0 !py-0"
               >
                 <Trash2 size={12} />
               </Button>
@@ -170,7 +181,7 @@ export default function SectionEditor({
                       <Input label="GPA" variant="bordered" size="sm" value={item.gpa || ""} onValueChange={(v) => updateItem(i, "gpa", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} minHeight={80} placeholder="补充说明（可选）" />
                     </div>
                   </>
@@ -187,7 +198,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">工作描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">工作描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述你的工作职责和成就..." />
                     </div>
                   </>
@@ -221,7 +232,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">项目描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">项目描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述项目亮点和你的贡献..." />
                     </div>
                   </>
@@ -244,7 +255,7 @@ export default function SectionEditor({
                   <>
                     <Input label="副标题" variant="bordered" size="sm" value={item.subtitle || ""} onValueChange={(v) => updateItem(i, "subtitle", v)} classNames={inputStyle} />
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">内容</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">内容</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="输入自定义内容..." />
                     </div>
                   </>
@@ -258,14 +269,13 @@ export default function SectionEditor({
       {/* 添加条目按钮 */}
       <Button
         size="sm"
-        variant="flat"
         startContent={<Plus size={12} />}
         onPress={addItem}
         data-testid={`resume-item-add-${sectionType}`}
-        className="w-full border border-dashed border-white/[0.08] bg-transparent hover:bg-white/[0.03] text-white/35 hover:text-white/50 h-8 text-xs"
+        className="bauhaus-button bauhaus-button-outline !w-full !justify-center !border-dashed !px-4 !py-3 !text-[11px]"
       >
         添加{sectionType === "education" ? "教育经历" : sectionType === "experience" ? "工作经历" : sectionType === "skill" ? "技能分组" : sectionType === "project" ? "项目" : sectionType === "certificate" ? "证书" : "条目"}
-        <span className="ml-2 text-[10px] text-white/25">({itemCount})</span>
+        <span className="ml-2 text-[10px] text-black/35">({itemCount})</span>
       </Button>
     </div>
   );

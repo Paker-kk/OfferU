@@ -1,27 +1,50 @@
-// =============================================
-// 岗位卡片组件 — 单个岗位展示
-// =============================================
-// 展示：标题、公司、来源标签、关键词 Chips
-// hover 提升动画
-// 支持批量选择模式（checkbox）
-// =============================================
-
 "use client";
 
-import { useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardBody, Chip, Avatar, Checkbox } from "@nextui-org/react";
-import { MapPin, Briefcase, GraduationCap, DollarSign, Building2 } from "lucide-react";
+import {
+  Briefcase,
+  Building2,
+  Check,
+  DollarSign,
+  GraduationCap,
+  MapPin,
+} from "lucide-react";
 import type { Job } from "@/lib/hooks";
 
-// 来源平台颜色映射
-const sourceColorMap: Record<string, "primary" | "success" | "warning" | "danger" | "secondary"> = {
-  boss: "warning",
-  zhilian: "primary",
-  linkedin: "secondary",
-  shixiseng: "success",
-  maimai: "danger",
-  corporate: "primary",
+const sourceAccentMap: Record<
+  string,
+  { badge: string; marker: string; meta: string }
+> = {
+  boss: {
+    badge: "bg-[#D02020] text-white",
+    marker: "rounded-full bg-[#F0C020]",
+    meta: "Boss",
+  },
+  zhilian: {
+    badge: "bg-[#1040C0] text-white",
+    marker: "bg-[#D02020]",
+    meta: "Zhilian",
+  },
+  linkedin: {
+    badge: "bg-[#F0C020] text-black",
+    marker: "bauhaus-triangle bg-[#1040C0]",
+    meta: "LinkedIn",
+  },
+  shixiseng: {
+    badge: "bg-[#121212] text-white",
+    marker: "rounded-full bg-[#D02020]",
+    meta: "Shixi",
+  },
+  maimai: {
+    badge: "bg-[#D02020] text-white",
+    marker: "bg-[#1040C0]",
+    meta: "Maimai",
+  },
+  corporate: {
+    badge: "bg-[#1040C0] text-white",
+    marker: "bauhaus-triangle bg-[#F0C020]",
+    meta: "Career",
+  },
 };
 
 interface JobCardProps {
@@ -42,143 +65,158 @@ export function JobCard({
   onSelectPointerEnter,
 }: JobCardProps) {
   const router = useRouter();
-  const sourceColor = sourceColorMap[job.source] || "primary";
-  const shiftKeyRef = useRef(false);
+  const accent = sourceAccentMap[job.source] || {
+    badge: "bg-white text-black",
+    marker: "rounded-full bg-[#D02020]",
+    meta: "Source",
+  };
+
   const openDetail = () => {
     router.push(`/jobs/${job.id}`);
   };
 
   return (
-    <Card
-      className={`relative w-full max-w-full bg-white/5 border transition-colors cursor-pointer h-[248px] min-h-[248px] max-h-[248px] ${
+    <article
+      className={`group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border-2 border-black/80 bg-white transition-all duration-200 ease-out ${
         selected
-          ? "border-blue-500 ring-2 ring-blue-500/30"
-          : "border-white/10 hover:border-white/20"
+          ? "bg-[#F0C020] shadow-[3px_3px_0_0_rgba(18,18,18,0.5)]"
+          : "shadow-[2px_2px_0_0_rgba(18,18,18,0.35)] hover:-translate-y-1 hover:shadow-[3px_3px_0_0_rgba(18,18,18,0.45)]"
       }`}
       onMouseEnter={() => onSelectPointerEnter?.(job.id)}
     >
       <button
         type="button"
-        aria-label={`查看岗位详情-${job.title}`}
+        aria-label={`查看岗位详情 ${job.title}`}
         className="absolute inset-0 z-10"
         onClick={openDetail}
       />
 
-      <CardBody className="p-5 flex flex-col gap-2.5 overflow-hidden">
-        {/* 头部：公司Logo + 标题 + 来源 */}
-        <div className="flex items-start gap-3 shrink-0">
-          <Avatar
-            src={job.company_logo || undefined}
-            name={job.company?.[0] || "?"}
-            size="sm"
-            className="shrink-0 bg-white/10"
-          />
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-bold text-blue-300 leading-tight break-words line-clamp-2 min-h-[2.5rem]">
+      <span
+        className={`absolute right-4 top-4 z-[1] h-3 w-3 border border-black/50 ${accent.marker}`}
+      />
+
+      <div className="relative z-[1] flex h-full flex-col gap-4 p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#F0F0F0]">
+            {job.company_logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={job.company_logo}
+                alt={`${job.company} logo`}
+                className="h-full w-full object-cover grayscale"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="text-lg font-black uppercase tracking-[-0.08em]">
+                {(job.company || "?").slice(0, 1)}
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="bauhaus-label text-black/55">{accent.meta}</p>
+            <h3 className="mt-1 line-clamp-2 text-xl font-black uppercase leading-tight tracking-[-0.05em] text-black">
               {job.title}
             </h3>
-            <div className="flex items-center gap-2 text-sm text-white/50 mt-0.5">
-              <span className="truncate">{job.company}</span>
-              {job.company_industry && (
-                <>
-                  <span>·</span>
-                  <span className="truncate">{job.company_industry}</span>
-                </>
-              )}
-            </div>
+            <p className="mt-2 line-clamp-1 text-sm font-semibold tracking-[0.04em] text-black/65">
+              {job.company}
+            </p>
           </div>
-          <Chip size="sm" variant="dot" color={sourceColor} className="text-xs shrink-0">
-            {job.source}
-          </Chip>
+
+          <span className={`bauhaus-chip ${accent.badge}`}>{job.source}</span>
         </div>
 
-        {/* 薪资 + 标签行 */}
-        <div className="flex items-center gap-2 text-xs text-white/50 shrink-0 overflow-hidden whitespace-nowrap">
+        <div className="flex flex-wrap gap-1.5 text-xs font-medium text-black/70">
           {job.salary_text && (
-            <span className="flex items-center gap-0.5 text-green-400 font-semibold text-sm truncate max-w-[8.5rem]">
-              <DollarSign size={14} />{job.salary_text}
+            <span className="bauhaus-chip bg-[#F0C020]">
+              <DollarSign size={12} strokeWidth={2.4} />
+              {job.salary_text}
             </span>
           )}
           {job.location && (
-            <span className="flex items-center gap-0.5 truncate max-w-[7rem]">
-              <MapPin size={12} />{job.location}
+            <span className="bauhaus-chip">
+              <MapPin size={12} strokeWidth={2.4} />
+              {job.location}
             </span>
           )}
           {job.education && (
-            <span className="flex items-center gap-0.5 truncate max-w-[5rem]">
-              <GraduationCap size={12} />{job.education}
+            <span className="bauhaus-chip">
+              <GraduationCap size={12} strokeWidth={2.4} />
+              {job.education}
             </span>
           )}
           {job.experience && (
-            <span className="flex items-center gap-0.5 truncate max-w-[6rem]">
-              <Briefcase size={12} />{job.experience}
+            <span className="bauhaus-chip">
+              <Briefcase size={12} strokeWidth={2.4} />
+              {job.experience}
             </span>
           )}
           {job.company_size && (
-            <span className="flex items-center gap-0.5 truncate max-w-[6rem]">
-              <Building2 size={12} />{job.company_size}
+            <span className="bauhaus-chip">
+              <Building2 size={12} strokeWidth={2.4} />
+              {job.company_size}
             </span>
           )}
         </div>
 
-        {/* 摘要 — 固定空间，不足留白 */}
-        <p className="text-sm text-white/60 line-clamp-2 flex-1 min-h-0">
-          {job.summary || "\u00A0"}
+        <p className="line-clamp-3 flex-1 text-sm font-medium leading-relaxed text-black/72">
+          {job.summary || "这条岗位暂时还没有摘要，点击卡片可查看完整详情。"}
         </p>
 
-        {/* 关键词 + 岗位类型/校招标签 — 始终在底部 */}
-        <div className="flex flex-wrap gap-1.5 shrink-0 max-h-[28px] overflow-hidden">
+        <div className="flex flex-wrap gap-2">
           {job.is_campus && (
-            <Chip size="sm" variant="flat" color="success" className="text-xs">
-              校招
-            </Chip>
+            <span className="bauhaus-chip bg-[#1040C0] text-white">校招</span>
           )}
           {job.job_type && (
-            <Chip size="sm" variant="flat" color="warning" className="text-xs">
+            <span className="bauhaus-chip bg-[#D02020] text-white">
               {job.job_type}
-            </Chip>
+            </span>
           )}
-          {job.keywords?.slice(0, 3).map((kw) => (
-            <Chip
-              key={kw}
-              size="sm"
-              variant="flat"
-              className="bg-white/5 text-white/60 text-xs"
+          {job.keywords?.slice(0, 2).map((keyword, index) => (
+            <span
+              key={`${keyword}-${index}`}
+              className={`bauhaus-chip ${
+                index % 3 === 0
+                  ? "bg-white text-black"
+                  : index % 3 === 1
+                    ? "bg-[#F0C020] text-black"
+                    : "bg-[#1040C0] text-white"
+              }`}
             >
-              {kw}
-            </Chip>
+              {keyword}
+            </span>
           ))}
         </div>
-      </CardBody>
+      </div>
 
       {showCheckbox && (
-        <div
-          data-role="selection-control"
-          className="absolute right-3 bottom-3 z-30 rounded-md bg-black/35 p-0.5 backdrop-blur-sm"
-          onClick={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
+        <button
+          type="button"
+          aria-label={selected ? "取消选择岗位" : "选择岗位"}
+          aria-pressed={selected}
+          className={`absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center border-2 border-black transition-all duration-200 ease-out ${
+            selected
+              ? "bg-[#1040C0] text-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]"
+              : "bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] hover:bg-[#F0C020]"
+          }`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle?.(job.id, { shiftKey: event.shiftKey });
+          }}
+          onMouseDown={(event) => {
+            if (event.button !== 0) return;
+            event.stopPropagation();
+            onSelectPointerDown?.(job.id, { shiftKey: event.shiftKey });
+          }}
         >
-          <Checkbox
-            isSelected={selected}
-            onClick={(event) => {
-              event.stopPropagation();
-              shiftKeyRef.current = event.shiftKey;
-            }}
-            onMouseDown={(event) => {
-              if (event.button !== 0) return;
-              event.stopPropagation();
-              shiftKeyRef.current = event.shiftKey;
-              onSelectPointerDown?.(job.id, { shiftKey: event.shiftKey });
-            }}
-            onValueChange={() => {
-              onToggle?.(job.id, { shiftKey: shiftKeyRef.current });
-              shiftKeyRef.current = false;
-            }}
-            size="sm"
-            color="primary"
+          <Check
+            size={18}
+            strokeWidth={2.8}
+            className={selected ? "opacity-100" : "opacity-0"}
           />
-        </div>
+        </button>
       )}
-    </Card>
+    </article>
   );
 }

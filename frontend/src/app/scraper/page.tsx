@@ -1,58 +1,61 @@
-// =============================================
-// 爬虫控制台 — 数据源管理 + 任务监控
-// =============================================
-// 功能：数据源卡片、关键词/城市配置、一键爬取、任务历史
-// =============================================
-
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  Button,
   Card,
   CardBody,
   CardHeader,
-  Button,
-  Input,
   Chip,
-  Spinner,
-  Divider,
+  Input,
   Modal,
-  ModalContent,
-  ModalHeader,
   ModalBody,
+  ModalContent,
   ModalFooter,
+  ModalHeader,
+  Spinner,
   Textarea,
   useDisclosure,
 } from "@nextui-org/react";
 import {
-  Globe,
-  Play,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Search,
-  MapPin,
-  Loader2,
-  Key,
   AlertTriangle,
-  Info,
+  CheckCircle,
+  Clock,
   ExternalLink,
+  Globe,
+  Info,
+  Key,
+  Loader2,
+  MapPin,
+  Play,
+  Search,
+  XCircle,
 } from "lucide-react";
 import {
+  runScraper,
+  saveBossCookie,
+  useBossStatus,
   useScraperSources,
   useScraperTasks,
-  runScraper,
-  useBossStatus,
-  saveBossCookie,
 } from "@/lib/hooks";
+import {
+  bauhausFieldClassNames,
+  bauhausModalContentClassName,
+} from "@/lib/bauhaus";
 
-const statusConfig: Record<string, { color: "success" | "warning" | "default" | "danger"; label: string }> = {
-  ready: { color: "success", label: "就绪" },
-  skeleton: { color: "warning", label: "骨架" },
-  planned: { color: "default", label: "计划中" },
-  unsupported: { color: "danger", label: "不支持" },
+const statusConfig: Record<
+  string,
+  {
+    label: string;
+    chipClass: string;
+  }
+> = {
+  ready: { label: "就绪", chipClass: "border-2 border-black bg-[#1040C0] text-white font-semibold" },
+  skeleton: { label: "开发中", chipClass: "border-2 border-black bg-[#F0C020] text-black font-semibold" },
+  planned: { label: "计划中", chipClass: "border-2 border-black bg-white text-black font-semibold" },
+  unsupported: { label: "不支持", chipClass: "border-2 border-black bg-[#D02020] text-white font-semibold" },
 };
 
 export default function ScraperPage() {
@@ -70,7 +73,6 @@ export default function ScraperPage() {
   const [bossError, setBossError] = useState<string | null>(null);
 
   const handleRun = async (sourceKey: string) => {
-    // BOSS直聘需要先配置 Cookie
     if (sourceKey === "boss" && !bossStatus?.configured) {
       onBossOpen();
       return;
@@ -78,27 +80,25 @@ export default function ScraperPage() {
     setError(null);
     setRunningSource(sourceKey);
     try {
-      const kws = keywords
+      const parsedKeywords = keywords
         .split(/[,，\s]+/)
-        .map((s) => s.trim())
+        .map((item) => item.trim())
         .filter(Boolean);
-      const runResult = await runScraper(sourceKey, kws, location);
+      const result = await runScraper(sourceKey, parsedKeywords, location);
       refreshTasks();
-      if (runResult?.pool_id) {
-        const qs = new URLSearchParams({
+      if (result?.pool_id) {
+        const query = new URLSearchParams({
           tab: "inbox",
-          pool_id: String(runResult.pool_id),
+          pool_id: String(result.pool_id),
           from_scraper: "1",
         });
-        if (runResult?.task_id) {
-          qs.set("task_id", String(runResult.task_id));
-        }
-        router.push(`/jobs?${qs.toString()}`);
+        if (result?.task_id) query.set("task_id", String(result.task_id));
+        router.push(`/jobs?${query.toString()}`);
       } else {
         router.push("/jobs?tab=inbox");
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setRunningSource(null);
     }
@@ -118,38 +118,62 @@ export default function ScraperPage() {
       refreshBoss();
       setBossCookie("");
       onBossClose();
-    } catch (e: any) {
-      setBossError(e.message || "保存失败");
+    } catch (err: any) {
+      setBossError(err.message || "保存失败");
     } finally {
       setBossSaving(false);
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="space-y-8"
-    >
-      <div>
-        <h1 className="text-3xl font-bold">爬虫控制台</h1>
-        <p className="text-white/50 mt-1">管理数据源、配置关键词、监控爬取任务</p>
-      </div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+      <section className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-4">
+            <span className="bauhaus-chip bg-[#F0C020]">Scraper Console</span>
+            <div>
+              <p className="bauhaus-label text-black/55">Source Control</p>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
+                Search
+                <br />
+                Capture
+                <br />
+                Queue
+              </h1>
+              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
+                在这里统一配置关键词、城市和数据源，把抓取任务压成清晰的几何工作流，
+                方便我们快速判断当前岗位入口是否足够丰富。
+              </p>
+            </div>
+          </div>
 
-      {/* 免责声明 */}
-      <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20 text-orange-300/80 text-xs leading-relaxed">
-        <Info size={14} className="shrink-0 mt-0.5" />
-        <span>
-          本功能仅供个人学习和求职使用，请勿用于商业抓取或批量数据采集。使用前请确认已阅读各平台服务条款和 robots.txt 规定，因使用本工具产生的任何法律风险由用户自行承担。
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Sources</p>
+              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{sources?.length ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
+              <p className="bauhaus-label text-black/60">Tasks</p>
+              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{tasks?.length ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
+              <p className="bauhaus-label text-white/70">BOSS Cookie</p>
+              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">{bossStatus?.configured ? "Ready" : "Required"}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="bauhaus-panel-sm flex items-start gap-3 bg-[#F0C020] p-4 text-black">
+        <Info size={16} className="mt-0.5 shrink-0" />
+        <span className="text-sm font-medium leading-relaxed text-black/78">
+          本功能仅供个人学习和求职使用，请勿用于商业抓取或批量数据采集。使用前请确认已阅读平台服务条款和 robots.txt 规定。
         </span>
       </div>
 
-      {/* 全局配置 */}
-      <Card className="bg-white/5 border border-white/10">
-        <CardBody className="p-5 space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Search size={18} /> 爬取配置
-          </h2>
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+        <CardBody className="space-y-4 p-5">
+          <h2 className="text-2xl font-black uppercase tracking-[-0.05em] text-black">爬取配置</h2>
           <div className="flex flex-wrap gap-4">
             <Input
               label="搜索关键词"
@@ -157,8 +181,8 @@ export default function ScraperPage() {
               value={keywords}
               onValueChange={setKeywords}
               classNames={{
-                base: "max-w-sm",
-                inputWrapper: "bg-white/5 border border-white/10",
+                ...bauhausFieldClassNames,
+                base: "max-w-md",
               }}
               size="sm"
             />
@@ -167,91 +191,87 @@ export default function ScraperPage() {
               placeholder="如：北京、上海、全国"
               value={location}
               onValueChange={setLocation}
-              startContent={<MapPin size={14} className="text-white/40" />}
+              startContent={<MapPin size={14} className="text-black/45" />}
               classNames={{
+                ...bauhausFieldClassNames,
                 base: "max-w-xs",
-                inputWrapper: "bg-white/5 border border-white/10",
               }}
               size="sm"
             />
           </div>
           {error && (
-            <div className="text-red-400 text-sm flex items-center gap-1">
+            <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
               <XCircle size={14} /> {error}
             </div>
           )}
         </CardBody>
       </Card>
 
-      {/* 数据源卡片 */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">数据源</h2>
+      <section>
+        <h2 className="mb-4 text-2xl font-black uppercase tracking-[-0.05em] text-black">数据源</h2>
         {sourcesLoading ? (
           <div className="flex justify-center py-10">
-            <Spinner size="lg" />
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-5 py-4">
+              <Spinner size="sm" color="warning" />
+              <span className="text-sm font-semibold tracking-[0.04em] text-black/70">正在载入数据源...</span>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {sources?.map((src) => {
-              const cfg = statusConfig[src.status] || statusConfig.planned;
-              const isRunning = runningSource === src.key;
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {sources?.map((source) => {
+              const status = statusConfig[source.status] || statusConfig.planned;
+              const isRunning = runningSource === source.key;
               return (
-                <motion.div
-                  key={src.key}
-                  whileHover={{ y: -2 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <Card className="bg-white/5 border border-white/10">
-                    <CardHeader className="flex items-center justify-between px-5 pt-4 pb-0">
+                <motion.div key={source.key} whileHover={{ y: -2 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+                  <Card className="bauhaus-panel h-full rounded-none bg-white shadow-none">
+                    <CardHeader className="flex items-center justify-between gap-3 border-b-2 border-black px-5 py-4">
                       <div className="flex items-center gap-2">
-                        <Globe size={18} className="text-blue-400" />
-                        <span className="font-semibold">{src.name}</span>
+                        <div className="bauhaus-panel-sm flex h-10 w-10 items-center justify-center bg-[#1040C0] text-white">
+                          <Globe size={18} />
+                        </div>
+                        <span className="text-lg font-black tracking-[-0.04em] text-black">{source.name}</span>
                       </div>
-                      <Chip size="sm" variant="flat" color={cfg.color}>
-                        {cfg.label}
+                      <Chip size="sm" variant="flat" className={status.chipClass}>
+                        {status.label}
                       </Chip>
                     </CardHeader>
-                    <CardBody className="px-5 pb-4 space-y-3">
-                      <p className="text-sm text-white/50">{src.description}</p>
-                      {/* BOSS直聘数据源显示 Cookie 配置状态 */}
-                      {src.key === "boss" && (
-                        <div className="flex items-center gap-2">
-                          {bossStatus?.configured ? (
-                            <Chip size="sm" variant="flat" color="success" startContent={<Key size={10} />}>
-                              Cookie 已配置
-                            </Chip>
-                          ) : (
-                            <Chip size="sm" variant="flat" color="warning" startContent={<AlertTriangle size={10} />}>
-                              需配置 Cookie
-                            </Chip>
-                          )}
-                          <Button
+                    <CardBody className="space-y-4 p-5">
+                      <p className="text-sm font-medium leading-relaxed text-black/68">{source.description}</p>
+
+                      {source.key === "boss" && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Chip
                             size="sm"
-                            variant="light"
-                            color="primary"
-                            onPress={onBossOpen}
-                            className="text-xs h-6 min-w-0 px-2"
+                            variant="flat"
+                            className={`border-2 border-black font-semibold ${
+                              bossStatus?.configured ? "bg-[#F0C020] text-black" : "bg-white text-black"
+                            }`}
                           >
+                            <Key size={10} className="mr-1" />
+                            {bossStatus?.configured ? "Cookie 已配置" : "需配置 Cookie"}
+                          </Chip>
+                          <Button onPress={onBossOpen} className="bauhaus-button bauhaus-button-outline !min-h-8 !px-3 !py-2 !text-[11px]">
                             {bossStatus?.configured ? "更新 Cookie" : "配置 Cookie"}
                           </Button>
                         </div>
                       )}
+
                       <Button
-                        size="sm"
-                        color="primary"
-                        variant={src.status === "ready" ? "solid" : "flat"}
-                        isDisabled={src.status !== "ready" || isRunning}
+                        isDisabled={source.status !== "ready" || isRunning}
                         isLoading={isRunning}
                         startContent={!isRunning && <Play size={14} />}
-                        onPress={() => handleRun(src.key)}
+                        onPress={() => handleRun(source.key)}
+                        className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
+                          source.status === "ready" ? "bauhaus-button-red" : "bauhaus-button-outline opacity-60"
+                        }`}
                       >
-                        {src.status === "ready"
+                        {source.status === "ready"
                           ? "开始爬取"
-                          : src.status === "unsupported"
-                          ? "不支持"
-                          : src.status === "skeleton"
-                          ? "开发中"
-                          : "待开发"}
+                          : source.status === "unsupported"
+                            ? "不支持"
+                            : source.status === "skeleton"
+                              ? "开发中"
+                              : "待开发"}
                       </Button>
                     </CardBody>
                   </Card>
@@ -260,178 +280,142 @@ export default function ScraperPage() {
             })}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 任务历史 */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">任务记录</h2>
+      <section>
+        <h2 className="mb-4 text-2xl font-black uppercase tracking-[-0.05em] text-black">任务记录</h2>
         {!tasks || tasks.length === 0 ? (
-          <Card className="bg-white/5 border border-white/10">
-            <CardBody className="p-6 text-center text-white/40">
-              暂无爬取记录，选择一个数据源开始爬取
+          <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+            <CardBody className="p-8 text-center">
+              <Search size={48} className="mx-auto" />
+              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Tasks Yet</p>
+              <p className="mt-3 text-sm font-medium text-white/80">选择一个数据源并点击开始爬取，任务记录会出现在这里。</p>
             </CardBody>
           </Card>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {tasks.map((task) => (
-              <Card key={task.id} className="bg-white/5 border border-white/10">
-                <CardBody className="p-4 flex flex-row items-center gap-4">
-                  {/* 状态图标 */}
-                  {task.status === "running" ? (
-                    <Loader2 size={18} className="text-blue-400 animate-spin" />
-                  ) : task.status === "completed" ? (
-                    <CheckCircle size={18} className="text-green-400" />
-                  ) : (
-                    <XCircle size={18} className="text-red-400" />
-                  )}
-
-                  {/* 任务信息 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{task.source}</span>
-                      <span className="text-xs text-white/40">
-                        {task.keywords.join(", ")}
-                      </span>
-                      {task.location && (
-                        <span className="text-xs text-white/40">
-                          · {task.location}
-                        </span>
+              <Card key={task.id} className="bauhaus-panel rounded-none bg-white shadow-none">
+                <CardBody className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#F0F0F0] text-black">
+                      {task.status === "running" ? (
+                        <Loader2 size={18} className="animate-spin text-[#1040C0]" />
+                      ) : task.status === "completed" ? (
+                        <CheckCircle size={18} className="text-[#1040C0]" />
+                      ) : (
+                        <XCircle size={18} className="text-[#D02020]" />
                       )}
                     </div>
-                    {task.result && (
-                      <p className="text-xs text-white/50 mt-0.5">
-                        {task.result.error
-                          ? `错误: ${task.result.error}`
-                          : (task.result as Record<string, unknown>).warning
-                          ? `⚠️ ${(task.result as Record<string, unknown>).warning}`
-                          : `新增 ${task.result.created} 个 / 跳过 ${task.result.skipped} 个 / 共 ${task.result.total} 个`}
-                      </p>
-                    )}
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-lg font-black tracking-[-0.04em] text-black">{task.source}</span>
+                        <span className="text-xs font-medium text-black/45">{task.keywords.join(", ")}</span>
+                        {task.location && <span className="text-xs font-medium text-black/45">· {task.location}</span>}
+                      </div>
+                      {task.result && (
+                        <p className="mt-2 text-sm font-medium text-black/65">
+                          {task.result.error
+                            ? `错误: ${task.result.error}`
+                            : (task.result as Record<string, unknown>).warning
+                              ? `提示: ${(task.result as Record<string, unknown>).warning}`
+                              : `新增 ${task.result.created} 个 / 跳过 ${task.result.skipped} 个 / 共 ${task.result.total} 个`}
+                        </p>
+                      )}
+                    </div>
                   </div>
-
-                  {/* 时间 */}
-                  <div className="flex items-center gap-1 text-xs text-white/40 shrink-0">
-                    <Clock size={12} />
-                    {new Date(task.created_at).toLocaleString("zh-CN")}
+                  <div className="text-xs font-medium text-black/45">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={12} />
+                      {new Date(task.created_at).toLocaleString("zh-CN")}
+                    </span>
                   </div>
                 </CardBody>
               </Card>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* ===== BOSS直聘 Cookie 配置引导弹窗 ===== */}
-      <Modal
-        isOpen={isBossOpen}
-        onClose={onBossClose}
-        size="2xl"
-        scrollBehavior="inside"
-        classNames={{
-          base: "bg-[#1a1a2e] border border-white/10",
-          header: "border-b border-white/10",
-          footer: "border-t border-white/10",
-        }}
-      >
-        <ModalContent>
-          <ModalHeader className="flex items-center gap-2">
-            <Key size={18} className="text-blue-400" />
-            配置 BOSS直聘 Cookie
+      <Modal isOpen={isBossOpen} onClose={onBossClose} size="2xl" scrollBehavior="inside">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="flex items-center gap-2 border-b-2 border-black bg-[#1040C0] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+            <Key size={18} />
+            配置 BOSS 直聘 Cookie
           </ModalHeader>
-          <ModalBody className="space-y-4 py-4">
-            {/* 免责声明 */}
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+          <ModalBody className="space-y-4 px-6 py-6">
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4">
               <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
-                <div className="text-sm text-yellow-200/80">
-                  <p className="font-semibold mb-1">免责声明</p>
-                  <p>此功能通过您提供的 Cookie 访问 BOSS直聘 API，可能违反其用户协议。
-                  Cookie 仅存储在本地，不会上传至任何第三方。使用此功能即表示您自行承担相关风险。</p>
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-black" />
+                <div className="text-sm font-medium leading-relaxed text-black/78">
+                  <p className="mb-1 font-black tracking-[0.04em]">免责声明</p>
+                  <p>此功能通过你提供的 Cookie 访问 BOSS直聘接口，可能违反其用户协议。Cookie 仅存储在本地，请自行承担相关风险。</p>
                 </div>
               </div>
             </div>
 
-            {/* 分步引导 */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-white/80 flex items-center gap-1">
-                <Info size={14} className="text-blue-400" /> 获取 Cookie 步骤
-              </h3>
-              <div className="space-y-2 text-sm text-white/60">
-                <div className="flex gap-3 items-start">
-                  <span className="bg-blue-500/20 text-blue-300 rounded-full w-5 h-5 flex items-center justify-center text-xs shrink-0">1</span>
-                  <span>
-                    在浏览器中打开{" "}
-                    <a href="https://www.zhipin.com" target="_blank" rel="noopener noreferrer"
-                       className="text-blue-400 hover:underline inline-flex items-center gap-0.5">
-                      zhipin.com <ExternalLink size={10} />
-                    </a>
-                    ，确保已登录账号
-                  </span>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <span className="bg-blue-500/20 text-blue-300 rounded-full w-5 h-5 flex items-center justify-center text-xs shrink-0">2</span>
-                  <span>按 <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-xs">F12</kbd> 打开开发者工具，切换到 <strong>Network（网络）</strong> 标签页</span>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <span className="bg-blue-500/20 text-blue-300 rounded-full w-5 h-5 flex items-center justify-center text-xs shrink-0">3</span>
-                  <span>在 BOSS直聘页面随意搜索一个职位，Network 中会出现请求</span>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <span className="bg-blue-500/20 text-blue-300 rounded-full w-5 h-5 flex items-center justify-center text-xs shrink-0">4</span>
-                  <span>点击任意一个请求 → <strong>Headers（标头）</strong> → 找到 <strong>Cookie</strong> 字段 → 右键复制完整值</span>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <span className="bg-blue-500/20 text-blue-300 rounded-full w-5 h-5 flex items-center justify-center text-xs shrink-0">5</span>
-                  <span>粘贴到下方文本框中</span>
-                </div>
+              <h3 className="text-sm font-black tracking-[0.04em] text-black">获取 Cookie 步骤</h3>
+              <div className="space-y-2 text-sm font-medium leading-relaxed text-black/72">
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">1</span><span>打开 <a href="https://www.zhipin.com" target="_blank" rel="noopener noreferrer" className="underline">zhipin.com</a> 并确保已登录。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">2</span><span>按 F12 打开开发者工具，切到 Network 标签页。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">3</span><span>在页面任意搜索一个职位，让请求列表刷新出来。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">4</span><span>点开任一请求，在 Headers 中找到 Cookie 并复制完整值。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">5</span><span>把复制结果粘贴到下面文本框并保存。</span></div>
               </div>
-
-              {/* 提示：Firefox 兼容 */}
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-xs text-blue-200/70">
-                💡 提示：Chrome/Edge 打开 DevTools 后 BOSS直聘页面可能闪退，建议使用 <strong>Firefox</strong> 浏览器操作。
+              <div className="bauhaus-panel-sm bg-white px-4 py-3 text-xs font-medium text-black/60">
+                提示：如果 Chrome / Edge 的 DevTools 导致页面闪退，可以改用 Firefox 操作。
               </div>
             </div>
 
-            {/* Cookie 输入 */}
             <Textarea
-              label="BOSS直聘 Cookie"
-              placeholder="粘贴完整的 Cookie 字符串（应包含 wt2=... 和 zp_token=... 等字段）"
+              label="BOSS 直聘 Cookie"
+              placeholder="粘贴完整 Cookie 字符串（应包含 wt2=... 和 zp_token=... 等字段）"
               value={bossCookie}
               onValueChange={setBossCookie}
               minRows={4}
               maxRows={8}
-              classNames={{
-                inputWrapper: "bg-white/5 border border-white/10",
-              }}
+              classNames={bauhausFieldClassNames}
             />
 
-            {/* Cookie 校验提示 */}
             {bossCookie && (
               <div className="flex flex-wrap gap-2 text-xs">
-                <Chip size="sm" variant="flat"
-                  color={bossCookie.includes("wt2") ? "success" : "danger"}>
-                  wt2: {bossCookie.includes("wt2") ? "✓ 找到" : "✗ 缺失"}
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className={`border-2 border-black font-semibold ${
+                    bossCookie.includes("wt2") ? "bg-[#F0C020] text-black" : "bg-[#D02020] text-white"
+                  }`}
+                >
+                  wt2: {bossCookie.includes("wt2") ? "找到" : "缺失"}
                 </Chip>
-                <Chip size="sm" variant="flat"
-                  color={bossCookie.includes("zp_token") ? "success" : "warning"}>
-                  zp_token: {bossCookie.includes("zp_token") ? "✓ 找到" : "⚠ 缺失"}
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className={`border-2 border-black font-semibold ${
+                    bossCookie.includes("zp_token") ? "bg-[#1040C0] text-white" : "bg-white text-black"
+                  }`}
+                >
+                  zp_token: {bossCookie.includes("zp_token") ? "找到" : "缺失"}
                 </Chip>
               </div>
             )}
 
             {bossError && (
-              <div className="text-red-400 text-sm flex items-center gap-1">
+              <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
                 <XCircle size={14} /> {bossError}
               </div>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={onBossClose}>取消</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" onPress={onBossClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
+              取消
+            </Button>
             <Button
-              color="primary"
               onPress={handleSaveBossCookie}
               isLoading={bossSaving}
               isDisabled={!bossCookie.trim()}
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
             >
               保存 Cookie
             </Button>

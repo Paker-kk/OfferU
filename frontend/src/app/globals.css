@@ -1,107 +1,300 @@
-/* =============================================
-   OfferU - 全局样式
-   暗色主题为主，配合 NextUI + TailwindCSS
-   ============================================= */
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #0a0a0f;
-  --foreground: #e6e7eb;
+  --background: #f4f1eb;
+  --foreground: #121212;
+  --surface: #ffffff;
+  --surface-muted: #ece6dc;
+  --primary-red: #cf3e34;
+  --primary-blue: #596a60;
+  --primary-yellow: #efc94c;
+  --border: #121212;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+html {
+  background: var(--background);
 }
 
 body {
-  background: var(--background);
+  min-height: 100vh;
+  background-color: var(--background);
+  background-image: radial-gradient(rgba(18, 18, 18, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-display), "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.5;
 }
 
-/* 自定义滚动条（暗色风格） */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--primary-yellow);
+  color: var(--foreground);
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  width: 10px;
+  height: 10px;
 }
 
-/* 编辑面板自定义滚动条 — 更细腻 */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+::-webkit-scrollbar-track {
+  background: rgba(18, 18, 18, 0.08);
 }
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-red);
+  border: 2px solid var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-blue);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--primary-blue);
+  border: 2px solid var(--border);
 }
 
-/* FullCalendar 暗色主题覆写 */
+@layer components {
+  .bauhaus-panel {
+    border: 2px solid var(--border);
+    background: var(--surface);
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
+  }
+
+  .bauhaus-panel-sm {
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.45);
+  }
+}
+
+.bauhaus-lift {
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out,
+    background-color 200ms ease-out,
+    color 200ms ease-out;
+}
+
+.bauhaus-lift:hover {
+  transform: translateY(-2px);
+}
+
+.bauhaus-button {
+  display: inline-flex;
+  min-height: 44px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  border: 2px solid var(--border);
+  padding: 0.625rem 1.125rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out,
+    background-color 200ms ease-out,
+    color 200ms ease-out;
+  box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
+}
+
+.bauhaus-button:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: 4px;
+}
+
+.bauhaus-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.bauhaus-button-red {
+  background: var(--primary-red);
+  color: #ffffff;
+}
+
+.bauhaus-button-blue {
+  background: rgba(89, 106, 96, 0.18);
+  color: var(--foreground);
+}
+
+.bauhaus-button-yellow {
+  background: var(--primary-yellow);
+  color: var(--foreground);
+}
+
+.bauhaus-button-outline {
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.bauhaus-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+@layer components {
+  .bauhaus-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: none;
+  }
+}
+
+.bauhaus-dot-pattern {
+  background-image: radial-gradient(rgba(18, 18, 18, 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+.bauhaus-stripe-pattern {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(18, 18, 18, 0.04) 0,
+    rgba(18, 18, 18, 0.04) 6px,
+    transparent 6px,
+    transparent 28px
+  );
+}
+
+.bauhaus-triangle {
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
 .fullcalendar-dark .fc {
-  --fc-border-color: rgba(255, 255, 255, 0.1);
-  --fc-button-bg-color: rgba(255, 255, 255, 0.1);
-  --fc-button-border-color: rgba(255, 255, 255, 0.15);
-  --fc-button-text-color: #e6e7eb;
-  --fc-button-hover-bg-color: rgba(255, 255, 255, 0.2);
-  --fc-button-hover-border-color: rgba(255, 255, 255, 0.25);
-  --fc-button-active-bg-color: #3b82f6;
-  --fc-button-active-border-color: #3b82f6;
-  --fc-today-bg-color: rgba(59, 130, 246, 0.1);
+  --fc-border-color: #121212;
+  --fc-button-bg-color: #f0c020;
+  --fc-button-border-color: #121212;
+  --fc-button-text-color: #121212;
+  --fc-button-hover-bg-color: #d02020;
+  --fc-button-hover-border-color: #121212;
+  --fc-button-hover-text-color: #ffffff;
+  --fc-button-active-bg-color: #1040c0;
+  --fc-button-active-border-color: #121212;
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: rgba(255, 255, 255, 0.03);
-  --fc-event-text-color: #fff;
-  color: #e6e7eb;
+  --fc-neutral-bg-color: rgba(18, 18, 18, 0.04);
+  --fc-today-bg-color: rgba(240, 192, 32, 0.3);
+  --fc-event-text-color: #121212;
+  color: var(--foreground);
 }
 
 .fullcalendar-dark .fc .fc-col-header-cell-cushion,
-.fullcalendar-dark .fc .fc-daygrid-day-number {
-  color: #e6e7eb;
+.fullcalendar-dark .fc .fc-daygrid-day-number,
+.fullcalendar-dark .fc .fc-toolbar-title {
+  color: var(--foreground);
 }
 
 .fullcalendar-dark .fc .fc-toolbar-title {
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-/* ========== @chatscope/chat-ui-kit 暗色覆写 ========== */
+.fullcalendar-dark .fc .fc-button {
+  border-width: 2px;
+  box-shadow: 3px 3px 0 0 var(--border);
+  text-transform: uppercase;
+}
+
 .cs-main-container,
 .cs-chat-container,
 .cs-message-list {
   background: transparent !important;
   border: none !important;
 }
+
 .cs-message__content {
-  background: rgba(255, 255, 255, 0.06) !important;
-  color: #e6e7eb !important;
-  border-radius: 12px !important;
+  border: 2px solid var(--border) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--foreground) !important;
+  box-shadow: 4px 4px 0 0 var(--border) !important;
 }
+
 .cs-message--outgoing .cs-message__content {
-  background: rgba(59, 130, 246, 0.25) !important;
+  background: var(--primary-yellow) !important;
 }
+
 .cs-message-input {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 3px solid var(--border) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
 }
+
 .cs-message-input__content-editor-wrapper,
 .cs-message-input__content-editor {
   background: transparent !important;
-  color: #e6e7eb !important;
+  color: var(--foreground) !important;
 }
+
 .cs-button--send {
-  color: #3b82f6 !important;
+  color: var(--primary-red) !important;
 }
+
 .cs-typing-indicator__dot {
-  background-color: #a5b4fc !important;
+  background-color: var(--primary-blue) !important;
+}
+
+@media (min-width: 768px) {
+  .bauhaus-panel {
+    border-width: 2px;
+    box-shadow: 3px 3px 0 0 rgba(18, 18, 18, 0.55);
+  }
+
+  .bauhaus-panel-sm {
+    border-width: 2px;
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.45);
+  }
+
+  .bauhaus-button {
+    border-width: 2px;
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
