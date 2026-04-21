@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OfferU 浏览器助手</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="popup-shell">
+      <aside class="side-nav" aria-label="功能切换">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <button class="tab-btn" data-tab="resumes" type="button" aria-label="我的简历">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 3H16L20 7V21H8Z" />
+            <path d="M16 3V7H20" />
+            <path d="M11 12H17" />
+            <path d="M11 16H17" />
+          </svg>
+        </button>
+        <button class="tab-btn active" data-tab="cart" type="button" aria-label="简历购物车">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 4H5L7.2 14H18.8L20.5 8H8.2" />
+            <circle cx="9.7" cy="18.3" r="1.5" />
+            <circle cx="17.1" cy="18.3" r="1.5" />
+          </svg>
+        </button>
+        <button class="tab-btn" data-tab="settings" type="button" aria-label="设置">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5A3.5 3.5 0 1 0 12 15.5Z" />
+            <path d="M19.4 12A7.4 7.4 0 0 0 19.33 11L21.35 9.42L19.35 5.96L16.93 6.94A7.63 7.63 0 0 0 15.2 5.94L14.75 3H10.75L10.3 5.94A7.63 7.63 0 0 0 8.57 6.94L6.15 5.96L4.15 9.42L6.17 11C6.12 11.33 6.09 11.66 6.09 12S6.12 12.67 6.17 13L4.15 14.58L6.15 18.04L8.57 17.06C9.1 17.51 9.69 17.84 10.3 18.06L10.75 21H14.75L15.2 18.06C15.81 17.84 16.4 17.51 16.93 17.06L19.35 18.04L21.35 14.58L19.33 13C19.38 12.67 19.4 12.34 19.4 12Z" />
+          </svg>
+        </button>
+      </aside>
+
+      <section class="main-shell">
+        <header class="topbar">
+          <h1 class="top-title">OfferU</h1>
+          <button class="open-button" id="openServerBtn" type="button" aria-label="打开服务">↗</button>
+        </header>
+
+        <div class="message" id="message"></div>
+
+        <section class="tab-panel" id="panel-resumes" data-panel="resumes">
+          <div class="panel-head">
+            <div class="panel-title">我的简历 <span class="round-badge" id="resumeTotalBadge">0</span></div>
+            <div class="panel-tools">
+              <button class="text-action" id="resumeSearchToggleBtn" type="button">搜索</button>
+              <span class="splitter">|</span>
+              <button class="text-action" id="resumeSortBtn" type="button">筛选</button>
+            </div>
+          </div>
+
+          <div class="search-row hidden" id="resumeSearchRow">
+            <input id="resumeSearchInput" type="text" placeholder="搜索简历名称" spellcheck="false" />
+            <button class="icon-small-btn" id="resumeSearchClearBtn" type="button" aria-label="清空搜索">×</button>
+          </div>
+
+          <div class="filters-wrap hidden" id="resumeFilterWrap">
+            <div class="filter-field">
+              <label for="resumeTimeFilter">创建时间</label>
+              <select id="resumeTimeFilter">
+                <option value="all">全部</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="90d">近3个月</option>
+                <option value="custom">自定义时间</option>
+              </select>
+            </div>
+            <div class="filter-range hidden" id="resumeCustomRange">
+              <input id="resumeDateStart" type="date" />
+              <span>至</span>
+              <input id="resumeDateEnd" type="date" />
+            </div>
+            <button class="mini-tag" id="resumeResetFilterBtn" type="button">重置筛选</button>
+          </div>
+
+          <div class="list-wrap" id="resumeList"></div>
+
+          <div class="footer-actions footer-actions-3">
+            <button class="btn btn-outline" id="previewResumeBtn" type="button">跳转投递</button>
+            <button class="btn btn-primary" id="copySelectedResumeBtn" type="button">复制发送</button>
+            <button class="btn btn-secondary" id="openDesktopResumeBtn" type="button">打开桌面端</button>
+          </div>
+        </section>
+
+        <section class="tab-panel active" id="panel-cart" data-panel="cart">
+          <div class="panel-head">
+            <div class="panel-title">我的购物车 <span class="round-badge" id="cartTotalBadge">0</span></div>
+            <div class="panel-tools">
+              <button class="text-action" id="cartFilterBtn" type="button">展开筛选</button>
+              <span class="splitter">|</span>
+              <button class="text-action" id="clearBtn" type="button">清空</button>
+            </div>
+          </div>
+
+          <div class="sub-stat">
+            可同步 <span id="readyCountInline">0</span>
+            <span class="sub-divider">|</span>
+            草稿 <span id="draftCountInline">0</span>
+          </div>
+
+          <div class="filters-wrap hidden" id="jobFilterWrap">
+            <div class="filter-field">
+              <label for="jobTimeFilter">添加时间</label>
+              <select id="jobTimeFilter">
+                <option value="all">全部</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="90d">近3个月</option>
+                <option value="custom">自定义时间</option>
+              </select>
+            </div>
+
+            <div class="filter-range hidden" id="jobCustomRange">
+              <input id="jobDateStart" type="date" />
+              <span>至</span>
+              <input id="jobDateEnd" type="date" />
+            </div>
+
+            <div class="filter-field">
+              <label for="jobPlatformFilter">招聘平台</label>
+              <select id="jobPlatformFilter">
+                <option value="all">全部</option>
+                <option value="boss">Boss直聘</option>
+                <option value="liepin">猎聘</option>
+                <option value="zhaopin">智联招聘</option>
+                <option value="shixiseng">实习僧</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+
+            <div class="filter-field">
+              <label for="jobSalaryFilter">薪资范围</label>
+              <select id="jobSalaryFilter">
+                <option value="all">全部</option>
+              </select>
+            </div>
+
+            <div class="filter-field">
+              <label for="jobCityFilter">工作城市</label>
+              <input id="jobCityFilter" type="text" placeholder="输入城市（如 北京）" spellcheck="false" />
+            </div>
+
+            <div class="quick-city-row" id="jobHotCityRow">
+              <button class="city-chip" type="button" data-city="北京">北京</button>
+              <button class="city-chip" type="button" data-city="上海">上海</button>
+              <button class="city-chip" type="button" data-city="广州">广州</button>
+              <button class="city-chip" type="button" data-city="深圳">深圳</button>
+              <button class="city-chip" type="button" data-city="杭州">杭州</button>
+              <button class="city-chip" type="button" data-city="成都">成都</button>
+            </div>
+
+            <button class="mini-tag" id="jobResetFilterBtn" type="button">重置筛选</button>
+          </div>
+
+          <div class="list-wrap" id="jobList"></div>
+
+          <div class="footer-actions">
+            <button class="btn btn-outline" id="addCurrentBtn" type="button">+ 加入购物车</button>
+            <button class="btn btn-primary" id="syncBtn" type="button">一键同步 (0)</button>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="panel-settings" data-panel="settings">
+          <h2 class="settings-title">应用设置</h2>
+
+          <section class="settings-card">
+            <div class="settings-row">
+              <span class="settings-label">自动同步</span>
+              <label class="switch" for="autoSyncToggle">
+                <input id="autoSyncToggle" type="checkbox" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">复制并直接下载图片</span>
+              <label class="switch" for="copyAndDownloadPngToggle">
+                <input id="copyAndDownloadPngToggle" type="checkbox">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-row">
+              <span class="settings-label">快捷键设置</span>
+              <span class="settings-value">支持自定义</span>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <label>快捷键映射</label>
+            <div class="shortcut-list">
+              <div class="shortcut-row">
+                <span>加入购物车</span>
+                <button class="shortcut-btn" type="button" data-shortcut-action="collect">Alt+J</button>
+              </div>
+              <div class="shortcut-row">
+                <span>同步购物车</span>
+                <button class="shortcut-btn" type="button" data-shortcut-action="sync">Alt+S</button>
+              </div>
+              <div class="shortcut-row">
+                <span>打开设置页</span>
+                <button class="shortcut-btn" type="button" data-shortcut-action="settings">Alt+O</button>
+              </div>
+            </div>
+            <p class="shortcut-tip">点击右侧按钮后按下组合键，按 Esc 清空。</p>
+          </section>
+
+          <section class="settings-card stack" id="themeSettingsCard">
+            <div class="settings-row">
+              <span class="settings-label">外观</span>
+              <span class="settings-value">浅色 / 深色 / 系统</span>
+            </div>
+            <div class="segment-group" id="themeSegment">
+              <button class="segment-btn" data-theme="light" type="button">浅色</button>
+              <button class="segment-btn" data-theme="dark" type="button">深色</button>
+              <button class="segment-btn" data-theme="system" type="button">系统默认</button>
+            </div>
+          </section>
+
+          <section class="settings-card stack" aria-label="后端连接状态">
+            <label for="serverUrl">后端地址</label>
+            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8000" spellcheck="false" />
+            <div class="inline-actions">
+              <button class="mini-tag active" id="saveSettingsBtn" type="button">保存</button>
+              <button class="mini-tag" id="checkServerBtn" type="button">检查连接</button>
+            </div>
+            <div class="service-line">
+              <span class="service-dot" id="serviceStatusDot"></span>
+              <span id="serviceStatus">未检测</span>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-row">
+              <span class="settings-label">已适配平台</span>
+              <button class="settings-value-btn" id="supportedPlatformsBtn" type="button">查看</button>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-row">
+              <span class="settings-label">意见反馈</span>
+              <button class="mini-tag" id="feedbackBtn" type="button">反馈</button>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">检查更新</span>
+              <button class="mini-tag" id="checkUpdateBtn" type="button">检查</button>
+            </div>
+            <p class="settings-hint" id="updateStatusText">当前版本：检测中...</p>
+          </section>
+
+          <section class="settings-card stack" aria-label="桌面端打开方式设置">
+            <div class="settings-row">
+              <span class="settings-label">打开OfferU桌面端</span>
+              <span class="settings-value">打开方式</span>
+            </div>
+
+            <label class="desktop-launcher-option" for="desktopModeDocker">
+              <input
+                class="desktop-launcher-radio"
+                id="desktopModeDocker"
+                name="desktopOpenMode"
+                type="radio"
+                value="docker"
+                checked
+              />
+              <span>Docker本地服务打开</span>
+            </label>
+
+            <div class="desktop-launcher-config" id="desktopDockerConfig">
+              <div class="desktop-launcher-row">
+                <input id="desktopDockerPort" type="number" min="1" max="65535" step="1" placeholder="3000" />
+                <button class="mini-tag active" id="saveDesktopDockerPortBtn" type="button">保存</button>
+                <button class="mini-tag" id="checkDesktopDockerBtn" type="button">检查连接</button>
+              </div>
+              <p class="desktop-launcher-hint">请输入本地前端服务运行端口，默认3000</p>
+              <p class="desktop-launcher-status" id="desktopDockerStatus">未检测</p>
+            </div>
+
+            <label class="desktop-launcher-option" for="desktopModeApp">
+              <input
+                class="desktop-launcher-radio"
+                id="desktopModeApp"
+                name="desktopOpenMode"
+                type="radio"
+                value="app"
+              />
+              <span>应用程序打开</span>
+            </label>
+
+            <div class="desktop-launcher-config hidden" id="desktopAppConfig">
+              <div class="desktop-launcher-row">
+                <input
+                  id="desktopAppPath"
+                  type="text"
+                  placeholder="例如 C:\\OfferU\\DesktopApp"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="desktop-launcher-row desktop-launcher-actions">
+                <button class="mini-tag" id="browseDesktopAppPathBtn" type="button">选择文件夹</button>
+                <button class="mini-tag active" id="saveDesktopAppPathBtn" type="button">保存路径</button>
+              </div>
+              <p class="desktop-launcher-hint">请选择OfferU桌面应用所在的文件夹路径，暂未开发桌面应用时可留空</p>
+              <input id="desktopAppPathPicker" type="file" webkitdirectory directory hidden />
+            </div>
+          </section>
+        </section>
+
+        <footer class="panel-footer">
+          <button class="footer-link" id="openDesktopFooterBtn" type="button">打开OfferU桌面端</button>
+        </footer>
+      </section>
+    </div>
+
+    <div class="modal hidden" id="resumePreviewModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="resumeModalTitle">
+        <header class="modal-header">
+          <h3 id="resumeModalTitle">简历预览</h3>
+          <button class="icon-btn" id="closeResumePreviewBtn" type="button">×</button>
+        </header>
+        <p class="modal-meta" id="resumeModalMeta"></p>
+        <div class="modal-body" id="resumeModalBody"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="copyResumeModalBtn" type="button">复制简历图片</button>
+          <button class="btn btn-secondary" id="closeResumePreviewBtn2" type="button">关闭预览</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="feedbackModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-feedback="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle">
+        <header class="modal-header">
+          <h3 id="feedbackModalTitle">意见反馈</h3>
+          <button class="icon-btn" id="closeFeedbackBtn" type="button">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="modal-section">
+            <div class="modal-section-title">反馈内容</div>
+            <textarea id="feedbackContent" class="feedback-textarea" maxlength="1000" placeholder="请描述你遇到的问题或建议"></textarea>
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">联系方式（可选）</div>
+            <input id="feedbackContact" class="feedback-input" type="text" maxlength="120" placeholder="邮箱 / 微信 / 手机号" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="cancelFeedbackBtn" type="button">取消</button>
+          <button class="btn btn-primary" id="submitFeedbackBtn" type="button">提交反馈</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="supportedPlatformsModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-platforms="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="supportedPlatformsTitle">
+        <header class="modal-header">
+          <h3 id="supportedPlatformsTitle">已适配平台</h3>
+          <button class="icon-btn" id="closeSupportedPlatformsBtn" type="button">×</button>
+        </header>
+        <div class="modal-body">
+          <ul class="supported-platform-list" id="supportedPlatformsList">
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">Boss 直聘</span>
+              <span class="supported-platform-domain">zhipin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">猎聘</span>
+              <span class="supported-platform-domain">liepin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">智联招聘</span>
+              <span class="supported-platform-domain">zhaopin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">实习僧</span>
+              <span class="supported-platform-domain">shixiseng.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">LinkedIn</span>
+              <span class="supported-platform-domain">linkedin.com</span>
+            </li>
+          </ul>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="closeSupportedPlatformsBtn2" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

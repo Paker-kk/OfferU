@@ -26,6 +26,7 @@
 - [17. Phase A UX 修复 + Onboarding P0](#17-phase-a-ux-修复--onboarding-p0)
 - [20. UI Tone-Down 视觉降噪精炼](#20-ui-tone-down-视觉降噪精炼-session-20)
 - [21. 需求实现审计（按项目需求表）](#21-需求实现审计按项目需求表-session-21)
+- [22. 插件 PR 合并审计](#22-插件-pr-合并审计-session-22)
 
 ---
 
@@ -1420,3 +1421,79 @@ keyboard-only navigation 未做完整测试，建议 Q3 做专项无障碍测试
 | P1 | 10. 简历 AI 解析统一口径 | 现在 Profile 导入是 AI 提取，但 Resume parse 仍是纯文本路径 |
 | P1 | 11. 字节 / 阿里 / 腾讯爬虫 | 这是岗位供给侧的核心差异化缺口 |
 | P2 | 5 / 6. 宣传与品牌体系 | 技术功能已堆起来后，才值得系统做外部传播 |
+
+---
+
+## 22. 插件 PR 合并审计（Session 22）
+
+> 目标：判断远端是否存在“插件 PR”，并给出是否能干净合并到当前 `main` 的结论。
+
+### 22.1 审计结果
+
+1. 远端 GitHub PR 引用共有 3 个：`pull/1`、`pull/2`、`pull/3`。
+2. 其中真正的“插件大改 PR”是：`pr-3` / 提交 `631d6fb`。
+3. 标题为：`feat: overhaul extension workflow and fix zhaopin extraction`。
+4. 该 PR **技术上可以无冲突合并** 到当前 `main`。
+5. 但该 PR **范围不干净**，不是纯插件提交，而是混合了 4 类改动：
+    - 浏览器插件源代码重构
+    - 插件构建体系迁移（现有 `tsc` → `WXT`）
+    - 大量生成产物（`.wxt/`、`dist/`、编译后的 JS/CSS）
+    - 额外后端改动（`backend/app/routes/resume.py`、`backend/app/routes/jobs.py`、`database.py` 等）
+
+### 22.2 范围判断
+
+`pr-3` 修改文件包括但不限于：
+
+- 插件源码：`extension/src/**`
+- 插件新入口：`extension/entrypoints/**`
+- 插件配置与测试：`extension/package.json`、`extension/wxt.config.ts`、`extension/tests/**`
+- 生成文件：`extension/.wxt/**`、`extension/dist/**`、`extension/assets/popup-*.css`
+- 后端联动：`backend/app/routes/jobs.py`、`backend/app/routes/resume.py` 等
+
+因此，**它虽然能 merge cleanly，但不能算 scope cleanly**。
+
+### 22.3 建议的干净合并策略
+
+#### 方案 A：最快路径（不推荐作为长期做法）
+
+- 直接整包合并 `pr-3`
+- 优点：最快
+- 缺点：会把构建产物、WXT 迁移和后端杂项一起带进 `main`
+
+#### 方案 B：干净合并（推荐）
+
+1. 从当前 `main` 新开集成分支，例如：`integrate/plugin-pr3-clean`
+2. 只选择以下“源码真源”进入集成分支：
+    - `extension/src/**`
+    - `extension/entrypoints/**`
+    - `extension/static/**`
+    - `extension/offscreen/**`（若最终确认是源码而非构建输出）
+    - `extension/package.json`
+    - `extension/package-lock.json`
+    - `extension/wxt.config.ts`
+    - `extension/scripts/sync-root-build.mjs`
+    - `extension/tests/**`
+3. 明确排除以下生成层：
+    - `extension/.wxt/**`
+    - `extension/dist/**`
+    - `extension/assets/popup-*.css`
+    - 编译产出的根级 JS/HTML（若可由 WXT 或构建脚本重新生成）
+4. 后端改动单独审查，不与插件改动捆绑合并：
+    - `backend/app/routes/jobs.py`
+    - `backend/app/routes/resume.py`
+    - `backend/app/database.py`
+    - `backend/app/main.py`
+    - `backend/requirements.txt`
+5. 在集成分支完成以下验证后，再决定是否 merge 回 `main`：
+    - 插件构建通过
+    - 插件核心采集链路可用（至少 Boss / 智联）
+    - 与现有 OfferU 后端同步契约没有破坏
+    - 不把构建垃圾文件带进仓库
+
+### 22.4 结论
+
+**结论一句话：**
+
+> `pr-3` 是“可以直接合”的 PR，但不是“应该直接合”的 PR。
+
+如果目标是**干净合并**，应该走“源码层选择性集成 + 后端改动拆审 + 构建产物剔除”的路径，而不是直接把整个 `pr-3` merge 到 `main`。

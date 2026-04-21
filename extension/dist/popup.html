@@ -1,59 +1,141 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OfferU 岗位采集器</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <div class="container">
-    <header class="header">
-      <div class="logo">
-        <span class="logo-icon">📥</span>
-        <h1>OfferU</h1>
-      </div>
-      <p class="subtitle">Boss直聘岗位采集器</p>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OfferU 浏览器助手</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="logo">
+          <h1>OfferU</h1>
+        </div>
+        <button class="header-action" type="button" aria-label="扩展操作">↗</button>
+      </header>
 
-    <div class="status-card" id="statusCard">
-      <div class="stat">
-        <span class="stat-number" id="jobCount">0</span>
-        <span class="stat-label">待同步岗位</span>
+      <nav class="tabs" aria-label="功能切换">
+        <button class="tab-btn active" data-tab="cart" type="button">简历购物车</button>
+        <button class="tab-btn" data-tab="resumes" type="button">我的简历</button>
+        <button class="tab-btn" data-tab="settings" type="button">设置</button>
+      </nav>
+
+      <div class="message" id="message"></div>
+
+      <section class="tab-panel active" id="panel-cart" data-panel="cart">
+        <div class="status-card" id="statusCard">
+          <div class="status-main">
+            <div class="status-left">
+              <span class="status-title">我的购物车</span>
+              <span class="status-badge" id="totalCount">0</span>
+            </div>
+            <div class="status-right">
+              <span class="status-mini">可同步 <span class="status-mini-num" id="readyCount">0</span></span>
+              <span class="status-divider">|</span>
+              <span class="status-mini">草稿 <span class="status-mini-num" id="draftCount">0</span></span>
+            </div>
+          </div>
+        </div>
+
+        <section class="job-list-section">
+          <div class="job-list-header">
+            <label class="select-all-wrap" for="selectAllJobs">
+              <input id="selectAllJobs" type="checkbox" />
+              <span>全选</span>
+            </label>
+            <span class="job-list-tip">列表页草稿需到详情页补全 JD</span>
+          </div>
+          <div class="batch-actions">
+            <button class="btn btn-sm btn-ghost" id="removeSelectedBtn" type="button">移除选中</button>
+          </div>
+          <div class="job-list" id="jobList"></div>
+        </section>
+
+        <div class="actions">
+          <button class="btn btn-secondary" id="clearBtn" type="button">
+            <span class="btn-icon">×</span>
+            清空购物车
+          </button>
+          <button class="btn btn-primary" id="syncBtn" type="button">
+            <span class="btn-icon">→</span>
+            一键同步到 OfferU
+          </button>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="panel-resumes" data-panel="resumes">
+        <section class="resume-toolbar">
+          <input
+            id="resumeSearchInput"
+            type="text"
+            placeholder="搜索简历名称"
+            spellcheck="false"
+          />
+          <button class="btn btn-sm" id="refreshResumeBtn" type="button">刷新</button>
+        </section>
+
+        <section class="resume-list-section">
+          <div class="job-list-header">
+            <span>我的简历（按更新时间）</span>
+            <span class="job-list-tip">点击可预览与复制</span>
+          </div>
+          <div class="resume-list" id="resumeList"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" id="panel-settings" data-panel="settings">
+        <section class="settings-card">
+          <h2 class="section-title">服务连接设置</h2>
+          <div class="settings-body">
+            <label for="serverUrl">OfferU 后端地址</label>
+            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8000" spellcheck="false" />
+            <div class="row-actions">
+              <button class="btn btn-sm" id="saveSettingsBtn" type="button">保存</button>
+              <button class="btn btn-sm btn-ghost" id="checkServerBtn" type="button">检查连接</button>
+            </div>
+            <p class="service-status" id="serviceStatus">未检测</p>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <h2 class="section-title">平台适配说明</h2>
+          <ul class="platform-list">
+            <li>Boss 直聘（zhipin.com）</li>
+            <li>猎聘（liepin.com）</li>
+            <li>智联招聘（zhaopin.com）</li>
+            <li>实习僧（shixiseng.com）</li>
+            <li>LinkedIn（linkedin.com）</li>
+          </ul>
+        </section>
+
+        <section class="settings-card">
+          <h2 class="section-title">关于与帮助</h2>
+          <p class="help-text">插件版本：0.2.0（MV3）</p>
+          <p class="help-text">仅支持用户手动触发采集，仅读 DOM，不执行自动化操作。</p>
+          <p class="help-text">如同步失败，请先确认 OfferU 桌面端后端服务已在本机启动。</p>
+        </section>
+      </section>
+
+      <footer class="footer">列表页可先加草稿，详情页补全 JD 后再同步</footer>
+    </div>
+
+    <div class="modal hidden" id="resumePreviewModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="resumeModalTitle">
+        <header class="modal-header">
+          <h3 id="resumeModalTitle">简历预览</h3>
+          <button class="icon-btn" id="closeResumePreviewBtn" type="button">×</button>
+        </header>
+        <p class="modal-meta" id="resumeModalMeta"></p>
+        <div class="modal-body" id="resumeModalBody"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="copyResumeBtn" type="button">复制简历图片</button>
+          <button class="btn btn-secondary" id="closeResumePreviewBtn2" type="button">关闭预览</button>
+        </div>
       </div>
     </div>
 
-    <div class="actions">
-      <button class="btn btn-primary" id="syncBtn">
-        <span class="btn-icon">🚀</span>
-        一键同步到 OfferU
-      </button>
-      <button class="btn btn-secondary" id="clearBtn">
-        <span class="btn-icon">🗑️</span>
-        清空已采集
-      </button>
-    </div>
-
-    <div class="message" id="message"></div>
-
-    <details class="settings">
-      <summary>⚙️ 服务器设置</summary>
-      <div class="settings-body">
-        <label for="serverUrl">OfferU 后端地址</label>
-        <input
-          type="url"
-          id="serverUrl"
-          placeholder="http://localhost:8000"
-          spellcheck="false"
-        >
-        <button class="btn btn-sm" id="saveSettingsBtn">保存</button>
-      </div>
-    </details>
-
-    <footer class="footer">
-      在 Boss直聘 页面点击 "采集" 按钮收集岗位
-    </footer>
-  </div>
-  <script src="popup.js"></script>
-</body>
+    <script src="popup.js"></script>
+  </body>
 </html>
