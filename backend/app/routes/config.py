@@ -718,6 +718,28 @@ def _response_payload() -> dict[str, Any]:
     data["zhilian_cookie_set"] = bool(_current_config.zhilian_cookie)
     data["zhilian_cookie"] = "***已配置***" if _current_config.zhilian_cookie else ""
 
+    # ── active_llm_summary: 让前端明确知道当前生效的配置来源 ──
+    active_cfg = next((item for item in _current_config.llm_api_configs if item.is_active), None)
+    active_config_id = _current_config.active_llm_config_id
+    active_base_url = (_current_config.active_llm_base_url or "").strip()
+    active_api_key = (_current_config.active_llm_api_key or "").strip()
+    has_active = bool(active_config_id or active_base_url or active_api_key)
+
+    if _current_config.llm_provider == "ollama":
+        source = "ollama"
+    elif has_active and active_cfg:
+        source = "active_config"
+    else:
+        source = "legacy_env"
+
+    data["active_llm_summary"] = {
+        "provider_id": active_cfg.provider_id if active_cfg else _current_config.llm_provider,
+        "service_name": active_cfg.service_name if active_cfg else _provider_name(_current_config.llm_provider),
+        "model": active_cfg.model if active_cfg else _current_config.llm_model,
+        "base_url": active_cfg.base_url if active_cfg else _provider_default_url(_current_config.llm_provider),
+        "source": source,
+    }
+
     data["provider_presets"] = PROVIDER_PRESETS
     data["available_providers"] = AVAILABLE_PROVIDERS
     return data
