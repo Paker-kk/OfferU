@@ -1,4 +1,4 @@
-// =============================================
+﻿// =============================================
 // 岗位列表页 — 卡片式展示 + 多维度筛选 + 批量选择
 // =============================================
 // 筛选：关键词搜索 / 数据源 / 时间范围 / 岗位类型 / 学历 / 校招
@@ -22,8 +22,6 @@ import {
   Switch,
   Button,
   Checkbox,
-  Card,
-  CardBody,
   Modal,
   ModalBody,
   ModalContent,
@@ -83,13 +81,42 @@ const EDUCATION_OPTIONS = [
   { value: "博士", label: "博士" },
 ];
 
-function resolveTriageTab(raw: string | null): "inbox" | "picked" | "ignored" {
-  if (!raw) return "inbox";
+const bauhausInputClassNames = {
+  inputWrapper:
+    "border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-all hover:-translate-y-[1px] hover:bg-[#F0F0F0]",
+  input: "font-medium text-black placeholder:text-black/45",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/60",
+};
+
+const bauhausSelectClassNames = {
+  trigger:
+    "border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] hover:-translate-y-[1px]",
+  value: "font-medium text-black",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-black/60",
+};
+
+const bauhausPaginationClassNames = {
+  base: "gap-1",
+  item: "border-2 border-black/80 bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
+  cursor: "border-2 border-black bg-[#D02020] text-white shadow-[2px_2px_0_0_rgba(18,18,18,0.4)]",
+  next: "border-2 border-black/80 bg-[#F0C020] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
+  prev: "border-2 border-black/80 bg-[#F0C020] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
+};
+
+const bauhausModalContentClassName =
+  "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+
+const bauhausIconButtonClassName =
+  "min-h-11 min-w-11 border-2 border-black/80 bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]";
+
+function resolveTriageTab(raw: string | null): "all" | "inbox" | "picked" | "ignored" {
+  if (!raw) return "all";
   const value = raw.toLowerCase();
+  if (value === "all") return "all";
   if (value === "inbox" || value === "unscreened") return "inbox";
   if (value === "picked" || value === "screened") return "picked";
   if (value === "ignored") return "ignored";
-  return "inbox";
+  return "all";
 }
 
 export default function JobsPage() {
@@ -109,8 +136,14 @@ export default function JobsPage() {
     onClose: closeMoveToTrashModal,
   } = useDisclosure();
   const [trashActionSource, setTrashActionSource] = useState<"inbox" | "picked">("inbox");
+  const {
+    isOpen: confirmDeleteOpen,
+    onOpen: openConfirmDelete,
+    onClose: closeConfirmDelete,
+  } = useDisclosure();
+  const [confirmDeleteContext, setConfirmDeleteContext] = useState<{ type: "batch"; count: number } | { type: "pool"; pool: Pool } | null>(null);
 
-  const [triageStatus, setTriageStatus] = useState<"inbox" | "picked" | "ignored">(() =>
+  const [triageStatus, setTriageStatus] = useState<"all" | "inbox" | "picked" | "ignored">(() =>
     resolveTriageTab(searchParams.get("tab"))
   );
   const [period, setPeriod] = useState<string>("week");
@@ -144,6 +177,14 @@ export default function JobsPage() {
   const [pointerSelectionActive, setPointerSelectionActive] = useState(false);
   const [pointerSelectionMode, setPointerSelectionMode] = useState<"select" | "deselect">("select");
   const [isScraperSyncing, setIsScraperSyncing] = useState(fromScraper && !!scraperTaskId);
+  const [actionError, setActionError] = useState("");
+
+  // 错误横幅 5.5s 自动消失
+  useEffect(() => {
+    if (!actionError) return;
+    const t = setTimeout(() => setActionError(""), 5500);
+    return () => clearTimeout(t);
+  }, [actionError]);
 
   // 搜索关键词 debounce（300ms）
   useEffect(() => {
@@ -155,9 +196,10 @@ export default function JobsPage() {
   }, [keyword]);
 
   const scopedPoolFilter =
-    (triageStatus === "inbox" || triageStatus === "picked") && selectedPoolFilter !== "all"
+    (triageStatus === "all" || triageStatus === "inbox" || triageStatus === "picked") && selectedPoolFilter !== "all"
       ? (selectedPoolFilter === "ungrouped" ? "ungrouped" : Number(selectedPoolFilter))
       : undefined;
+  const poolScope = triageStatus === "all" ? undefined : triageStatus;
 
   const { data, isLoading, isValidating, mutate: mutateJobs } = useJobs({
     page,
@@ -168,11 +210,11 @@ export default function JobsPage() {
     job_type: jobType || undefined,
     education: education || undefined,
     is_campus: isCampus || undefined,
-    triage_status: triageStatus,
+    triage_status: triageStatus === "all" ? undefined : triageStatus,
     pool_id: scopedPoolFilter,
   });
 
-  const { data: pools, mutate: mutatePools } = usePools(triageStatus);
+  const { data: pools, mutate: mutatePools } = usePools(poolScope);
   const { data: pickedPools, mutate: mutatePickedPools } = usePools("picked");
   const { data: scraperTasks } = useScraperTasks();
   const jobs = useMemo(() => data?.items ?? [], [data?.items]);
@@ -196,6 +238,34 @@ export default function JobsPage() {
   );
   const totalPages = Math.ceil((data?.total ?? 0) / (data?.page_size ?? 20));
   const isAllSelected = totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs;
+  const activeFilterCount = [keyword, source, jobType, education].filter(Boolean).length + (isCampus ? 1 : 0);
+  const hasFilters = activeFilterCount > 0;
+  const triageMeta = {
+    all: {
+      label: "全部岗位",
+      tone: "bg-[#F0C020] text-black",
+      accent: "bg-[#D02020]",
+      description: "查看所有已同步职位，并通过筛选器把注意力拉回到目标范围。",
+    },
+    inbox: {
+      label: "未筛选池",
+      tone: "bg-[#1040C0] text-white",
+      accent: "bg-[#F0C020]",
+      description: "这里承接刚抓取回来的职位，用来做第一轮判断与归档。",
+    },
+    picked: {
+      label: "已筛选池",
+      tone: "bg-[#D02020] text-white",
+      accent: "bg-[#F0C020]",
+      description: "只保留你真正要追的岗位，再继续做简历定制和投递动作。",
+    },
+    ignored: {
+      label: "回收站",
+      tone: "bg-white text-black",
+      accent: "bg-[#1040C0]",
+      description: "回收站保留恢复入口，也支持彻底删除，避免主列表持续膨胀。",
+    },
+  }[triageStatus];
 
   const visibleJobOrder = useMemo(() => jobs, [jobs]);
 
@@ -272,7 +342,7 @@ export default function JobsPage() {
         job_type: jobType || undefined,
         education: education || undefined,
         is_campus: isCampus || undefined,
-        triage_status: triageStatus,
+        triage_status: triageStatus === "all" ? undefined : triageStatus,
         pool_id: scopedPoolFilter,
       });
 
@@ -314,7 +384,7 @@ export default function JobsPage() {
       setSelectedIds(new Set(allIds));
       setLastSelectedAnchorId(allIds.length > 0 ? allIds[allIds.length - 1] : null);
     } catch (err: any) {
-      alert(err?.message || "全选失败，请重试");
+      setActionError(err?.message || "全选失败，请重试");
     } finally {
       setSelectAllLoading(false);
     }
@@ -343,7 +413,7 @@ export default function JobsPage() {
         setSelectedIds(new Set());
         await refreshAfterMutation();
       } catch (err: any) {
-        alert(err.message || "批量操作失败");
+        setActionError(err.message || "批量操作失败");
       } finally {
         setActionLoading(false);
       }
@@ -351,23 +421,42 @@ export default function JobsPage() {
     [refreshAfterMutation, selectedIds]
   );
 
-  const runPermanentDelete = useCallback(async () => {
+  const runPermanentDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    const ok = confirm(`确认彻底删除选中的 ${selectedIds.size} 个岗位吗？该操作会从本地数据库永久移除，无法恢复。`);
-    if (!ok) return;
+    setConfirmDeleteContext({ type: "batch", count: selectedIds.size });
+    openConfirmDelete();
+  }, [selectedIds, openConfirmDelete]);
 
-    setActionLoading(true);
-    try {
-      await deleteJobsBatch({ job_ids: Array.from(selectedIds) });
-      setSelectedIds(new Set());
-      setLastSelectedAnchorId(null);
-      await refreshAfterMutation();
-    } catch (err: any) {
-      alert(err.message || "彻底删除失败");
-    } finally {
-      setActionLoading(false);
+  const executeConfirmDelete = useCallback(async () => {
+    closeConfirmDelete();
+    if (!confirmDeleteContext) return;
+
+    if (confirmDeleteContext.type === "batch") {
+      setActionLoading(true);
+      try {
+        await deleteJobsBatch({ job_ids: Array.from(selectedIds) });
+        setSelectedIds(new Set());
+        setLastSelectedAnchorId(null);
+        await refreshAfterMutation();
+      } catch (err: any) {
+        setActionError(err.message || "彻底删除失败");
+      } finally {
+        setActionLoading(false);
+      }
+    } else if (confirmDeleteContext.type === "pool") {
+      setPoolBusy(true);
+      setPoolError("");
+      try {
+        await deletePoolById(confirmDeleteContext.pool.id, poolScope);
+        await refreshAfterMutation();
+      } catch (err: any) {
+        setPoolError(err.message || "删除池失败");
+      } finally {
+        setPoolBusy(false);
+      }
     }
-  }, [refreshAfterMutation, selectedIds]);
+    setConfirmDeleteContext(null);
+  }, [confirmDeleteContext, selectedIds, refreshAfterMutation, closeConfirmDelete, poolScope]);
 
   const handleCreatePool = useCallback(async () => {
     if (!newPoolName.trim()) return;
@@ -394,7 +483,7 @@ export default function JobsPage() {
       setPoolBusy(true);
       setPoolError("");
       try {
-        await updatePoolName(poolId, editingPoolName.trim(), triageStatus);
+        await updatePoolName(poolId, editingPoolName.trim(), poolScope);
         setEditingPoolId(null);
         setEditingPoolName("");
         await refreshAfterMutation();
@@ -404,25 +493,15 @@ export default function JobsPage() {
         setPoolBusy(false);
       }
     },
-    [editingPoolName, refreshAfterMutation]
+    [editingPoolName, poolScope, refreshAfterMutation]
   );
 
   const handleDeletePool = useCallback(
-    async (pool: Pool) => {
-      const ok = confirm(`确认删除池“${pool.name}”吗？池内岗位将变为未分组。`);
-      if (!ok) return;
-      setPoolBusy(true);
-      setPoolError("");
-      try {
-        await deletePoolById(pool.id, triageStatus);
-        await refreshAfterMutation();
-      } catch (err: any) {
-        setPoolError(err.message || "删除池失败");
-      } finally {
-        setPoolBusy(false);
-      }
+    (pool: Pool) => {
+      setConfirmDeleteContext({ type: "pool", pool });
+      openConfirmDelete();
     },
-    [refreshAfterMutation, triageStatus]
+    [openConfirmDelete]
   );
 
   useEffect(() => {
@@ -469,13 +548,62 @@ export default function JobsPage() {
     setSelectedPoolFilter("all");
   }, []);
 
+  const selectionStatusText = selectAllLoading
+    ? "正在汇总当前筛选下的全部岗位..."
+    : selectedIds.size > 0
+      ? `已选 ${selectedIds.size} / 共 ${totalMatchingJobs} 个岗位`
+      : `点击卡片或勾选框选择岗位，当前筛选共 ${totalMatchingJobs} 个`;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="space-y-6"
     >
-      <div className="flex items-center justify-between">
+      <section className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 border-b-2 border-black p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-4">
+            <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>
+            <div>
+              <p className="bauhaus-label text-black/60">Job Command Board</p>
+              <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-6xl">
+                Match
+                <br />
+                Select
+                <br />
+                Route
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
+                {triageMeta.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div className={`bauhaus-panel-sm p-4 ${triageMeta.tone}`}>
+              <p className="bauhaus-label opacity-70">Current Pool</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+                {data?.total ?? 0}
+              </p>
+              <p className="mt-2 text-sm font-medium opacity-80">当前视图下的岗位总数。</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Selected</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+                {selectedIds.size}
+              </p>
+              <p className="mt-2 text-sm font-medium text-white/80">批量操作始终作用于已选岗位。</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
+              <p className="bauhaus-label text-black/65">Filters</p>
+              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+                {activeFilterCount}
+              </p>
+              <p className="mt-2 text-sm font-medium text-black/75">当前启用的筛选条件数量。</p>
+            </div>
+          </div>
+        </div>
+        <div className="hidden">
         <h1 className="text-3xl font-bold">岗位</h1>
         <div className="flex items-center gap-3">
           {data && (
@@ -498,23 +626,239 @@ export default function JobsPage() {
           </Button>
         </div>
       </div>
+      </section>
 
-      {isScraperSyncing && (
+      {false && isScraperSyncing && (
         <div className="rounded-lg border border-primary-400/30 bg-primary-500/10 px-3 py-2 text-xs text-primary-200">
           正在同步最新爬取结果，岗位数据会自动刷新，无需手动操作。
         </div>
       )}
 
+      <div className="space-y-4">
+        {isScraperSyncing && (
+          <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+            <p className="bauhaus-label text-white/70">Sync In Progress</p>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-white/85">
+              正在同步最新抓取结果，岗位列表会自动刷新，无需重复操作。
+            </p>
+          </div>
+        )}
+
+        <div className="bauhaus-panel overflow-hidden bg-[#F0F0F0]">
+          <div className="space-y-4 p-4 md:p-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0 flex-1">
+                <Tabs
+                  selectedKey={triageStatus}
+                  onSelectionChange={(key) => {
+                    const nextStatus = key as "all" | "inbox" | "picked" | "ignored";
+                    setTriageStatus(nextStatus);
+                    setPage(1);
+
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("tab", nextStatus);
+                    if (nextStatus === "ignored" || nextStatus === "all") {
+                      params.delete("pool_id");
+                    } else if (selectedPoolFilter !== "all") {
+                      params.set("pool_id", selectedPoolFilter);
+                    } else {
+                      params.delete("pool_id");
+                    }
+                    router.push(`/jobs?${params.toString()}`);
+                  }}
+                  color="primary"
+                  variant="solid"
+                  classNames={{
+                    base: "w-full",
+                    tabList: "gap-2 rounded-none border-0 bg-transparent p-0",
+                    cursor: "rounded-none border-2 border-black bg-[#121212] shadow-[2px_2px_0_0_rgba(18,18,18,0.4)]",
+                    tab: "h-auto rounded-none border-2 border-black/80 bg-white px-4 py-3 shadow-[2px_2px_0_0_rgba(18,18,18,0.25)] data-[hover=true]:-translate-y-[1px]",
+                    tabContent: "font-semibold tracking-[0.04em] text-[11px] text-black group-data-[selected=true]:text-white",
+                  }}
+                >
+                  <Tab key="all" title="全部" />
+                  <Tab key="inbox" title="未筛选" />
+                  <Tab key="picked" title="已筛选" />
+                  <Tab key="ignored" title="回收站" />
+                </Tabs>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  size="sm"
+                  startContent={<CheckSquare size={14} />}
+                  onPress={() => {
+                    void toggleSelectAll();
+                  }}
+                  isLoading={selectAllLoading}
+                  isDisabled={totalMatchingJobs === 0}
+                  className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
+                    isAllSelected ? "bauhaus-button-red" : "bauhaus-button-outline"
+                  }`}
+                >
+                  {isAllSelected ? "取消全选" : "全选岗位"}
+                </Button>
+
+                {triageStatus !== "ignored" && (
+                  <Button
+                    size="sm"
+                    startContent={<FolderPlus size={14} />}
+                    onPress={openPoolModal}
+                    className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
+                  >
+                    管理池
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <Input
+                  placeholder="搜索岗位或公司"
+                  value={keyword}
+                  onValueChange={setKeyword}
+                  startContent={<Search size={16} className="text-black/55" />}
+                  classNames={bauhausInputClassNames}
+                  size="sm"
+                />
+                <Select
+                  aria-label="时间范围"
+                  size="sm"
+                  selectedKeys={[period]}
+                  onSelectionChange={(keys) => {
+                    setPeriod(Array.from(keys)[0] as string);
+                    setPage(1);
+                  }}
+                  classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+                >
+                  <SelectItem key="today">今日</SelectItem>
+                  <SelectItem key="week">本周</SelectItem>
+                  <SelectItem key="month">本月</SelectItem>
+                </Select>
+
+                {triageStatus !== "ignored" && (
+                  <Select
+                    aria-label="岗位池"
+                    size="sm"
+                    selectedKeys={[selectedPoolFilter]}
+                    onSelectionChange={(keys) => {
+                      const value = Array.from(keys)[0] as string;
+                      setSelectedPoolFilter(value);
+                      setPage(1);
+                      const params = new URLSearchParams(searchParams.toString());
+                      params.set("tab", triageStatus);
+                      if (value === "all") {
+                        params.delete("pool_id");
+                      } else {
+                        params.set("pool_id", value);
+                      }
+                      router.push(`/jobs?${params.toString()}`);
+                    }}
+                    classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+                    items={poolFilterOptions}
+                  >
+                    {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
+                  </Select>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <Select
+                  aria-label="数据来源"
+                  size="sm"
+                  selectedKeys={source ? [source] : [""]}
+                  onSelectionChange={(keys) => {
+                    const val = Array.from(keys)[0] as string;
+                    setSource(val);
+                    setPage(1);
+                  }}
+                  classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+                >
+                  {SOURCE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value}>{option.label}</SelectItem>
+                  ))}
+                </Select>
+
+                <Select
+                  aria-label="岗位类型"
+                  size="sm"
+                  selectedKeys={jobType ? [jobType] : [""]}
+                  onSelectionChange={(keys) => {
+                    const val = Array.from(keys)[0] as string;
+                    setJobType(val);
+                    setPage(1);
+                  }}
+                  classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+                >
+                  {JOB_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value}>{option.label}</SelectItem>
+                  ))}
+                </Select>
+
+                <Select
+                  aria-label="学历要求"
+                  size="sm"
+                  selectedKeys={education ? [education] : [""]}
+                  onSelectionChange={(keys) => {
+                    const val = Array.from(keys)[0] as string;
+                    setEducation(val);
+                    setPage(1);
+                  }}
+                  classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+                >
+                  {EDUCATION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value}>{option.label}</SelectItem>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-4 py-3 text-black">
+                <Switch
+                  size="sm"
+                  isSelected={isCampus}
+                  onValueChange={(val) => {
+                    setIsCampus(val);
+                    setPage(1);
+                  }}
+                  classNames={{ wrapper: "bg-black/10" }}
+                />
+                <div>
+                  <p className="bauhaus-label text-black/55">Campus Only</p>
+                  <p className="text-sm font-medium text-black/75">仅看校招岗位</p>
+                </div>
+              </div>
+
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+                >
+                  清空筛选
+                </button>
+              )}
+
+              <div className="bauhaus-panel-sm ml-auto bg-white px-4 py-3 text-black">
+                <p className="bauhaus-label text-black/55">Selection Status</p>
+                <p className="mt-1 text-sm font-medium text-black/75">{selectionStatusText}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="hidden">
       <Tabs
         selectedKey={triageStatus}
         onSelectionChange={(key) => {
-          const nextStatus = key as "inbox" | "picked" | "ignored";
+          const nextStatus = key as "all" | "inbox" | "picked" | "ignored";
           setTriageStatus(nextStatus);
           setPage(1);
 
           const params = new URLSearchParams(searchParams.toString());
           params.set("tab", nextStatus);
-          if (nextStatus === "ignored") {
+          if (nextStatus === "ignored" || nextStatus === "all") {
             params.delete("pool_id");
           } else if (selectedPoolFilter !== "all") {
             params.set("pool_id", selectedPoolFilter);
@@ -529,6 +873,7 @@ export default function JobsPage() {
           tabList: "bg-white/5",
         }}
       >
+        <Tab key="all" title="全部" />
         <Tab key="inbox" title="未筛选" />
         <Tab key="picked" title="已筛选" />
         <Tab key="ignored" title="回收站" />
@@ -684,10 +1029,12 @@ export default function JobsPage() {
       </div>
 
       {/* 岗位列表 */}
+        </div>
+      </div>
       {isLoading || (isValidating && jobs.length === 0) ? (
-        <div className="flex justify-center py-20">
-          <div className="flex items-center gap-2 text-sm text-white/60">
-            <Spinner size="lg" />
+        <div className="bauhaus-panel flex justify-center bg-white py-20">
+          <div className="flex items-center gap-3 text-sm font-medium text-black/70">
+            <Spinner size="lg" color="warning" />
             <span>岗位数据加载中...</span>
           </div>
         </div>
@@ -695,7 +1042,7 @@ export default function JobsPage() {
         <>
           {/* 批量模式：全选栏 */}
           {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[#F0C020] p-4 text-black">
               <Checkbox
                 isSelected={totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs}
                 isIndeterminate={selectedIds.size > 0 && totalMatchingJobs > 0 && selectedIds.size < totalMatchingJobs}
@@ -706,7 +1053,7 @@ export default function JobsPage() {
                 size="sm"
                 color="primary"
               />
-              <span className="text-sm text-white/60">
+              <span className="text-sm font-medium text-black/75">
                 {selectAllLoading
                   ? "正在汇总当前筛选下全部岗位..."
                   : selectedIds.size > 0
@@ -747,9 +1094,7 @@ export default function JobsPage() {
                 page={page}
                 onChange={setPage}
                 showControls
-                classNames={{
-                  cursor: "bg-blue-500",
-                }}
+                classNames={bauhausPaginationClassNames}
               />
             </div>
           )}
@@ -762,19 +1107,25 @@ export default function JobsPage() {
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 80, opacity: 0 }}
                 transition={{ type: "spring", damping: 20 }}
-                className="fixed bottom-6 left-0 right-0 md:left-64 md:right-auto md:w-[calc(100vw-16rem)] z-50 flex justify-center pointer-events-none"
+                className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]"
               >
-                <div className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-zinc-800/95 border border-white/15 shadow-xl backdrop-blur-sm pointer-events-auto">
-                  <span className="text-sm text-white/70">
-                    已选 <span className="text-blue-400 font-bold">{selectedIds.size}</span> 个岗位
+                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border-2 border-black bg-white px-4 py-4 shadow-[4px_4px_0_0_rgba(18,18,18,0.4)]">
+                  <span className="text-sm font-semibold tracking-[0.04em] text-black/75">
+                    已选 <span className="font-black text-[#D02020]">{selectedIds.size}</span> 个岗位
                   </span>
+
+                  {actionError && (
+                    <span className="border-2 border-[#D02020] bg-[#D02020]/10 px-3 py-1 text-xs font-bold text-[#D02020]" role="alert">
+                      {actionError}
+                    </span>
+                  )}
 
                   {triageStatus === "inbox" && (
                     <>
                       <Button
-                        color="primary"
                         size="sm"
                         isDisabled={actionLoading}
+                        className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
                         onPress={() => {
                           setTargetPoolForInbox("ungrouped");
                           openMoveToPickedModal();
@@ -783,10 +1134,10 @@ export default function JobsPage() {
                         加入已筛选
                       </Button>
                       <Button
-                        color="warning"
                         size="sm"
                         isLoading={actionLoading}
                         isDisabled={actionLoading}
+                        className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
                         onPress={() => {
                           setTrashActionSource("inbox");
                           openMoveToTrashModal();
@@ -800,17 +1151,17 @@ export default function JobsPage() {
                   {triageStatus === "ignored" && (
                     <>
                       <Button
-                        color="primary"
                         size="sm"
                         isLoading={actionLoading}
+                        className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
                         onPress={() => runBatchAction({ triage_status: "inbox" })}
                       >
                         恢复到未筛选
                       </Button>
                       <Button
-                        color="danger"
                         size="sm"
                         isLoading={actionLoading}
+                        className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
                         onPress={runPermanentDelete}
                       >
                         彻底删除
@@ -825,15 +1176,15 @@ export default function JobsPage() {
                         size="sm"
                         selectedKeys={[targetPoolForBatch]}
                         onSelectionChange={(keys) => setTargetPoolForBatch(Array.from(keys)[0] as string)}
-                        classNames={{ base: "w-44", trigger: "bg-white/5 border border-white/10" }}
+                        classNames={{ ...bauhausSelectClassNames, base: "w-44 min-w-[11rem]" }}
                         items={poolAssignOptions}
                       >
                         {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
                       </Select>
                       <Button
-                        color="primary"
                         size="sm"
                         isLoading={actionLoading}
+                        className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
                         onPress={() =>
                           targetPoolForBatch === "ungrouped"
                             ? runBatchAction({ triage_status: "picked", clear_pool: true })
@@ -843,18 +1194,18 @@ export default function JobsPage() {
                         应用分组
                       </Button>
                       <Button
-                        color="secondary"
                         size="sm"
                         startContent={<Sparkles size={14} />}
+                        className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
                         onPress={goOptimizeWithSelection}
                       >
                         去 AI 简历定制
                       </Button>
                       <Button
-                        color="warning"
                         size="sm"
                         isLoading={actionLoading}
                         isDisabled={actionLoading}
+                        className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
                         onPress={() => {
                           setTrashActionSource("picked");
                           openMoveToTrashModal();
@@ -868,8 +1219,9 @@ export default function JobsPage() {
                   <Button
                     isIconOnly
                     size="sm"
-                    variant="flat"
-                    onPress={() => setSelectedIds(new Set())}
+                    aria-label="取消选择"
+                    className={bauhausIconButtonClassName}
+                    onPress={() => { setSelectedIds(new Set()); setActionError(""); }}
                   >
                     <X size={14} />
                   </Button>
@@ -879,19 +1231,47 @@ export default function JobsPage() {
           </AnimatePresence>
         </>
       ) : (
-        <Card className="bg-white/5 border border-white/10">
-          <CardBody className="p-8 text-center text-white/40">
-            <p className="text-lg mb-2">暂无岗位数据</p>
-            <p className="text-sm">尝试调整筛选条件，或前往爬虫控制台抓取岗位</p>
-          </CardBody>
-        </Card>
+        <section className="bauhaus-panel overflow-hidden bg-white">
+          <div className="grid gap-6 p-6 md:grid-cols-[1.1fr_0.9fr] md:p-8">
+            <div className="space-y-3">
+              <span className="bauhaus-chip bg-[#F0C020] text-black">No Active Jobs</span>
+              <h2 className="text-3xl font-black uppercase tracking-[-0.08em] md:text-5xl">
+                Empty
+                <br />
+                Board
+              </h2>
+              <p className="max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
+                暂无符合当前筛选条件的岗位。可以调整筛选条件，或者前往爬虫控制台继续抓取并同步最新机会。
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="bauhaus-panel-sm bg-[#1040C0] p-5 text-white">
+                <p className="bauhaus-label text-white/70">Try This</p>
+                <p className="mt-2 text-lg font-semibold tracking-[-0.04em]">Relax Filters</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-white/80">
+                  清空关键词、来源与岗位类型，先看更大的岗位池。
+                </p>
+              </div>
+              <div className="bauhaus-panel-sm bg-[#D02020] p-5 text-white">
+                <p className="bauhaus-label text-white/70">Next Move</p>
+                <p className="mt-2 text-lg font-semibold tracking-[-0.04em]">Fetch More</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-white/80">
+                  如果列表本身为空，回到爬虫控制台触发一次新抓取会更直接。
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       <Modal isOpen={moveToPickedOpen} onClose={closeMoveToPickedModal} size="md">
-        <ModalContent>
-          <ModalHeader>加入已筛选池</ModalHeader>
-          <ModalBody className="space-y-3">
-            <p className="text-sm text-white/60">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            加入已筛选池
+          </ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
               选择目标已筛选池，确认后将从当前未筛选池中移除并流转到对应已筛选池。
             </p>
             <Select
@@ -900,16 +1280,22 @@ export default function JobsPage() {
               selectedKeys={[targetPoolForInbox]}
               onSelectionChange={(keys) => setTargetPoolForInbox(Array.from(keys)[0] as string)}
               items={poolAssignOptions}
-              classNames={{ trigger: "bg-white/5 border border-white/10" }}
+              classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
             >
               {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
             </Select>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={closeMoveToPickedModal}>取消</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
             <Button
-              color="primary"
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={closeMoveToPickedModal}
+            >
+              取消
+            </Button>
+            <Button
               isLoading={actionLoading}
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
               onPress={async () => {
                 await runBatchAction(
                   targetPoolForInbox === "ungrouped"
@@ -926,18 +1312,26 @@ export default function JobsPage() {
       </Modal>
 
       <Modal isOpen={moveToTrashOpen} onClose={closeMoveToTrashModal} size="md">
-        <ModalContent>
-          <ModalHeader>移入回收站</ModalHeader>
-          <ModalBody className="space-y-2">
-            <p className="text-sm text-white/70">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            移入回收站
+          </ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <p className="text-sm font-medium leading-relaxed text-black/72">
               确认将选中的 {selectedIds.size} 个岗位移入回收站吗？移入后可在回收站页面恢复或永久删除。
             </p>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={closeMoveToTrashModal}>取消</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
             <Button
-              color="warning"
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={closeMoveToTrashModal}
+            >
+              取消
+            </Button>
+            <Button
               isLoading={actionLoading}
+              className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
               onPress={async () => {
                 await runBatchAction({ triage_status: "ignored" });
                 closeMoveToTrashModal();
@@ -950,58 +1344,72 @@ export default function JobsPage() {
       </Modal>
 
       <Modal isOpen={poolOpen} onClose={closePoolModal} size="lg">
-        <ModalContent>
-          <ModalHeader>岗位池管理</ModalHeader>
-          <ModalBody className="space-y-4">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            岗位池管理
+          </ModalHeader>
+          <ModalBody className="space-y-5 px-6 py-6">
             {triageStatus === "picked" ? (
-              <div className="flex items-center gap-2">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <Input
                   size="sm"
                   placeholder="输入新池名称"
                   value={newPoolName}
                   onValueChange={setNewPoolName}
+                  classNames={bauhausInputClassNames}
                 />
                 <Button
                   size="sm"
-                  color="primary"
                   isLoading={poolBusy}
+                  className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
                   onPress={handleCreatePool}
                 >
                   创建
                 </Button>
               </div>
             ) : (
-              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
+              <div className="bauhaus-panel-sm bg-[#1040C0] px-4 py-3 text-sm font-medium leading-relaxed text-white">
                 未筛选池仅由爬虫任务自动生成，当前仅支持重命名与删除管理。
               </div>
             )}
 
-            {poolError && <p className="text-sm text-red-400">{poolError}</p>}
+            {poolError && (
+              <p className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+                {poolError}
+              </p>
+            )}
 
             <div className="space-y-2 max-h-72 overflow-auto pr-1">
               {poolList.length === 0 ? (
-                <p className="text-sm text-white/40">
+                <p className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium text-black/60">
                   {triageStatus === "picked" ? "暂无岗位池，先创建一个文件夹。" : "暂无自动生成的爬取池。"}
                 </p>
               ) : (
                 poolList.map((pool) => (
                   <div
                     key={pool.id}
-                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
+                    className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-white p-3"
                   >
                     {editingPoolId === pool.id ? (
-                      <div className="flex flex-1 items-center gap-2">
+                      <div className="grid flex-1 gap-3 md:grid-cols-[1fr_auto_auto]">
                         <Input
                           size="sm"
                           value={editingPoolName}
                           onValueChange={setEditingPoolName}
+                          classNames={bauhausInputClassNames}
                         />
-                        <Button size="sm" color="primary" isLoading={poolBusy} onPress={() => handleRenamePool(pool.id)}>
+                        <Button
+                          size="sm"
+                          isLoading={poolBusy}
+                          className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+                          onPress={() => handleRenamePool(pool.id)}
+                        >
                           保存
                         </Button>
                         <Button
                           size="sm"
-                          variant="flat"
+                          variant="light"
+                          className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
                           onPress={() => {
                             setEditingPoolId(null);
                             setEditingPoolName("");
@@ -1013,14 +1421,19 @@ export default function JobsPage() {
                     ) : (
                       <>
                         <div>
-                          <p className="text-sm font-medium">{pool.name}</p>
-                          <p className="text-xs text-white/40">岗位数 {pool.job_count}</p>
+                          <p className="text-base font-semibold tracking-[-0.04em] text-black">
+                            {pool.name}
+                          </p>
+                          <p className="text-xs font-medium tracking-[0.06em] text-black/55">
+                            Jobs {pool.job_count}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
                           <Button
                             isIconOnly
                             size="sm"
-                            variant="light"
+                            aria-label="编辑池名称"
+                            className={bauhausIconButtonClassName}
                             onPress={() => {
                               setEditingPoolId(pool.id);
                               setEditingPoolName(pool.name);
@@ -1031,8 +1444,8 @@ export default function JobsPage() {
                           <Button
                             isIconOnly
                             size="sm"
-                            variant="light"
-                            className="text-red-400"
+                            aria-label="删除池"
+                            className={`${bauhausIconButtonClassName} bg-[#D02020] text-white`}
                             onPress={() => handleDeletePool(pool)}
                           >
                             <Trash2 size={14} />
@@ -1045,9 +1458,46 @@ export default function JobsPage() {
               )}
             </div>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={closePoolModal}>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={closePoolModal}
+            >
               关闭
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 删除确认弹窗 */}
+      <Modal isOpen={confirmDeleteOpen} onClose={closeConfirmDelete} placement="center">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+            确认删除
+          </ModalHeader>
+          <ModalBody className="px-6 py-6">
+            <p className="text-base font-medium text-black/80">
+              {confirmDeleteContext?.type === "batch"
+                ? `确认彻底删除选中的 ${confirmDeleteContext.count} 个岗位吗？该操作会从本地数据库永久移除，无法恢复。`
+                : confirmDeleteContext?.type === "pool"
+                  ? `确认删除池"${confirmDeleteContext.pool.name}"吗？池内岗位将变为未分组。`
+                  : ""}
+            </p>
+          </ModalBody>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button
+              variant="light"
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              onPress={closeConfirmDelete}
+            >
+              取消
+            </Button>
+            <Button
+              onPress={executeConfirmDelete}
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+            >
+              确认删除
             </Button>
           </ModalFooter>
         </ModalContent>

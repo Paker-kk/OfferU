@@ -14,6 +14,13 @@ export function canonicalUrl(rawUrl, baseUrl) {
 }
 export function parseSalary(text) {
     const value = text.replace(/,/g, "");
+    const yuanMatch = value.match(/(\d+(?:\.\d+)?)\s*[-~]\s*(\d+(?:\.\d+)?)\s*(?:元|人民币|RMB)/i);
+    if (yuanMatch) {
+        return {
+            min: Math.round(parseFloat(yuanMatch[1])),
+            max: Math.round(parseFloat(yuanMatch[2])),
+        };
+    }
     const kMatch = value.match(/(\d+(?:\.\d+)?)\s*[-~]\s*(\d+(?:\.\d+)?)\s*(k|K|千)/);
     if (kMatch) {
         return {

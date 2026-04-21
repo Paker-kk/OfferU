@@ -5,7 +5,9 @@
   "description": "在招聘站列表页/详情页手动采集岗位并同步到 OfferU",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
@@ -27,6 +29,18 @@
       "js": ["content.js"],
       "css": [],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "popup.html",
+        "assets/*",
+        "chunks/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "browser_specific_settings": {

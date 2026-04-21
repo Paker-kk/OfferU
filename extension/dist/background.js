@@ -3,11 +3,88 @@
 // =============================================
 // 管理岗位购物车存储、状态分层与后端同步
 // =============================================
+import { JOBS_SCHEMA_VERSION, JOBS_STORAGE_KEY, sanitizeVersionedJobsStore, } from "./background/storage.js";
+import { buildSyncPlan, isJobReadyToSync, retainUnsyncedJobs, } from "./background/sync-contract.js";
 const DEFAULT_SETTINGS = {
     serverUrl: "http://127.0.0.1:8000",
 };
-const JOBS_KEY = "collectedJobs";
 const SETTINGS_KEY = "settings";
+const OFFSCREEN_CLIPBOARD_DOCUMENT = "offscreen/clipboard.html";
+const OFFSCREEN_WRITE_TIMEOUT_MS = 12000;
+let creatingOffscreenDocument = null;
+const pendingClipboardRequests = new Map();
+function buildOffscreenRequestId() {
+    return `copy-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+function getOffscreenApi() {
+    return chrome.offscreen || null;
+}
+async function hasOffscreenDocument(documentUrl) {
+    const runtimeWithContexts = chrome.runtime;
+    if (!runtimeWithContexts.getContexts) {
+        return false;
+    }
+    const contexts = await runtimeWithContexts.getContexts({
+        contextTypes: ["OFFSCREEN_DOCUMENT"],
+        documentUrls: [documentUrl],
+    });
+    return contexts.length > 0;
+}
+async function ensureOffscreenClipboardDocument() {
+    const offscreenApi = getOffscreenApi();
+    if (!offscreenApi) {
+        throw new Error("当前浏览器不支持 offscreen 剪贴板能力");
+    }
+    const documentUrl = chrome.runtime.getURL(OFFSCREEN_CLIPBOARD_DOCUMENT);
+    if (await hasOffscreenDocument(documentUrl)) {
+        return;
+    }
+    if (!creatingOffscreenDocument) {
+        creatingOffscreenDocument = offscreenApi
+            .createDocument({
+            url: OFFSCREEN_CLIPBOARD_DOCUMENT,
+            reasons: ["CLIPBOARD"],
+            justification: "Write exported resume image to clipboard from extension context",
+        })
+            .finally(() => {
+            creatingOffscreenDocument = null;
+        });
+    }
+    await creatingOffscreenDocument;
+}
+function waitForOffscreenResult(requestId) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            pendingClipboardRequests.delete(requestId);
+            resolve({ ok: false, error: "离屏复制超时" });
+        }, OFFSCREEN_WRITE_TIMEOUT_MS);
+        pendingClipboardRequests.set(requestId, (result) => {
+            clearTimeout(timer);
+            pendingClipboardRequests.delete(requestId);
+            resolve(result);
+        });
+    });
+}
+async function copyImageToClipboardViaOffscreen(imageUrl) {
+    if (!imageUrl) {
+        return { ok: false, error: "缺少图片地址" };
+    }
+    try {
+        await ensureOffscreenClipboardDocument();
+        const requestId = buildOffscreenRequestId();
+        const waitResult = waitForOffscreenResult(requestId);
+        chrome.runtime.sendMessage({
+            type: "OFFSCREEN_WRITE_IMAGE",
+            requestId,
+            imageUrl,
+        });
+        return await waitResult;
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { ok: false, error: message || "离屏复制失败" };
+    }
+}
 function normalizeUrl(url) {
     if (!url)
         return "";
@@ -18,8 +95,9 @@ function normalizeUrl(url) {
         return url;
     }
 }
-function isReadyToSync(job) {
-    return Boolean(job.title?.trim() && job.company?.trim() && job.raw_description?.trim());
+function normalizePostedAt(value) {
+    const text = (value || "").trim();
+    return text || null;
 }
 function sanitizeJob(job) {
     const url = normalizeUrl(job.url || "");
@@ -32,6 +110,7 @@ function sanitizeJob(job) {
         location: (job.location || "").trim(),
         salary_text: (job.salary_text || "").trim(),
         raw_description: rawDescription,
+        posted_at: normalizePostedAt(job.posted_at),
         url,
         apply_url: applyUrl,
         source_page_meta: job.source_page_meta || "",
@@ -55,6 +134,7 @@ function mergeJob(existing, incoming) {
         salary_min: incoming.salary_min ?? existing.salary_min,
         salary_max: incoming.salary_max ?? existing.salary_max,
         raw_description: incoming.raw_description || existing.raw_description,
+        posted_at: incoming.posted_at || existing.posted_at,
         url: incoming.url || existing.url,
         apply_url: incoming.apply_url || existing.apply_url || incoming.url || existing.url,
         source_page_meta: incoming.source_page_meta || existing.source_page_meta,
@@ -79,6 +159,7 @@ function toIngestJobPayload(job) {
         apply_url: job.apply_url || job.url,
         source: job.source,
         raw_description: job.raw_description,
+        posted_at: job.posted_at || undefined,
         hash_key: job.hash_key,
         salary_min: job.salary_min,
         salary_max: job.salary_max,
@@ -98,11 +179,26 @@ async function updateBadge(total) {
 }
 // ---- 存储操作 ----
 async function getJobs() {
-    const result = await chrome.storage.local.get(JOBS_KEY);
-    return (result[JOBS_KEY] || []);
+    const result = await chrome.storage.local.get(JOBS_STORAGE_KEY);
+    const raw = result[JOBS_STORAGE_KEY];
+    // Legacy migration: older versions stored plain array in collectedJobs.
+    if (Array.isArray(raw)) {
+        const migrated = {
+            version: JOBS_SCHEMA_VERSION,
+            jobs: raw,
+        };
+        await chrome.storage.local.set({ [JOBS_STORAGE_KEY]: migrated });
+        return migrated.jobs;
+    }
+    const parsed = sanitizeVersionedJobsStore(raw);
+    return parsed.jobs;
 }
 async function saveJobs(jobs) {
-    await chrome.storage.local.set({ [JOBS_KEY]: jobs });
+    const payload = {
+        version: JOBS_SCHEMA_VERSION,
+        jobs,
+    };
+    await chrome.storage.local.set({ [JOBS_STORAGE_KEY]: payload });
     await updateBadge(jobs.length);
 }
 async function getSettings() {
@@ -148,7 +244,7 @@ async function mergeJobs(newJobs) {
 }
 async function getStatus() {
     const jobs = await getJobs();
-    const ready = jobs.filter((j) => isReadyToSync(j)).length;
+    const ready = jobs.filter((j) => isJobReadyToSync(j)).length;
     const draft = jobs.length - ready;
     const settings = await getSettings();
     return {
@@ -195,43 +291,48 @@ async function syncToServer() {
     if (jobs.length === 0) {
         return { ok: true, synced: 0, skippedDraft: 0 };
     }
-    const readyJobs = jobs.filter((j) => isReadyToSync(j));
-    const skippedDraft = jobs.length - readyJobs.length;
-    if (readyJobs.length === 0) {
-        return {
-            ok: false,
-            synced: 0,
-            skippedDraft,
-            error: "当前仅有草稿岗位，需在详情页补全JD后才能同步。",
-        };
+    const normalizedJobs = jobs.map(sanitizeJob);
+    const { jobsToSync, skippedDraft } = buildSyncPlan(normalizedJobs);
+    if (jobsToSync.length === 0) {
+        return { ok: true, synced: 0, skippedDraft };
     }
     const settings = await getSettings();
     const batchId = `offeru-ext-${Date.now()}`;
     const payload = {
-        jobs: readyJobs.map(toIngestJobPayload),
+        jobs: jobsToSync.map(toIngestJobPayload),
         source: "offeru-extension",
         batch_id: batchId,
     };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
         const resp = await fetch(`${settings.serverUrl}/api/jobs/ingest`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
             body: JSON.stringify(payload),
         });
         if (!resp.ok) {
             const text = await resp.text();
             return { ok: false, synced: 0, skippedDraft, error: `HTTP ${resp.status}: ${text}` };
         }
-        await resp.json();
-        const synced = readyJobs.length;
-        // 同步成功后仅移除 ready 岗位，保留草稿
-        const remaining = jobs.filter((j) => !isReadyToSync(j));
-        await saveJobs(remaining);
+        const data = await resp.json().catch(() => ({}));
+        const created = typeof data.created === "number" ? data.created : jobsToSync.length;
+        const skipped = typeof data.skipped === "number" ? data.skipped : 0;
+        const synced = Math.max(0, created + skipped);
+        const remainingJobs = retainUnsyncedJobs(normalizedJobs, jobsToSync);
+        await saveJobs(remainingJobs);
         return { ok: true, synced, skippedDraft };
     }
     catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+            return { ok: false, synced: 0, skippedDraft, error: "同步超时，请检查后端服务是否可访问" };
+        }
         const msg = err instanceof Error ? err.message : String(err);
         return { ok: false, synced: 0, skippedDraft, error: msg };
+    }
+    finally {
+        clearTimeout(timeout);
     }
 }
 // ---- 消息处理 ----
@@ -257,6 +358,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
                 sendResponse({ jobs });
             });
             return true;
+        case "COPY_IMAGE_TO_CLIPBOARD":
+            copyImageToClipboardViaOffscreen(message.imageUrl).then((result) => {
+                sendResponse(result);
+            });
+            return true;
+        case "OFFSCREEN_WRITE_IMAGE_RESULT": {
+            const resolver = pendingClipboardRequests.get(message.requestId);
+            if (resolver) {
+                resolver({ ok: message.ok, error: message.error });
+            }
+            return false;
+        }
+        case "OFFSCREEN_WRITE_IMAGE":
+            // Relay message for offscreen page only.
+            return false;
+        case "OPEN_DRAWER": {
+            const tab = message.tab || "settings";
+            const url = chrome.runtime.getURL(`popup.html?tab=${tab}`);
+            chrome.tabs.create({ url }, () => {
+                if (chrome.runtime.lastError) {
+                    sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                    return;
+                }
+                sendResponse({ ok: true });
+            });
+            return true;
+        }
         case "REMOVE_JOB":
             removeOneJob(message.hashKey).then((result) => {
                 sendResponse(result);
@@ -285,4 +413,3 @@ chrome.runtime.onStartup.addListener(async () => {
     const jobs = await getJobs();
     await updateBadge(jobs.length);
 });
-export {};

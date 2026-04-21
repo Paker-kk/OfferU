@@ -2,9 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Button, Card, CardBody, Chip, Input, Progress, Spinner } from "@nextui-org/react";
-import { CheckCircle2, FolderOpen, Layers3, ListChecks, Play, RefreshCw, Search } from "lucide-react";
+import { Button, Chip, Input, Select, SelectItem, Spinner } from "@nextui-org/react";
+import {
+  CheckCircle2,
+  FolderOpen,
+  Layers3,
+  ListChecks,
+  Play,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { jobsApi } from "@/lib/api";
+import { bauhausFieldClassNames, bauhausSelectClassNames } from "@/lib/bauhaus";
 import {
   Job,
   OptimizeDoneEvent,
@@ -26,20 +36,37 @@ interface OptimizeWorkspaceProps {
 const MAX_GENERATE_JOB_COUNT = 20;
 
 const SECTION_TYPE_LABELS: Record<string, string> = {
-  education: "教育",
-  internship: "实习",
-  experience: "经历",
-  project: "项目",
-  activity: "活动",
-  competition: "竞赛",
-  skill: "技能",
-  certificate: "证书",
-  honor: "荣誉",
-  language: "语言",
+  education: "Education",
+  internship: "Internship",
+  experience: "Experience",
+  project: "Project",
+  activity: "Activity",
+  competition: "Competition",
+  skill: "Skill",
+  certificate: "Certificate",
+  honor: "Honor",
+  language: "Language",
 };
 
 function formatSectionTypeLabel(sectionType: string) {
   return SECTION_TYPE_LABELS[sectionType] || sectionType;
+}
+
+function getPoolButtonClassName(active: boolean, tone: "yellow" | "red" | "white" = "white") {
+  if (active) {
+    const activeMap = {
+      yellow: "bg-[#F0C020] text-black",
+      red: "bg-[#D02020] text-white",
+      white: "bg-white text-black",
+    };
+    return `border-2 border-black px-3 py-2 text-xs font-semibold tracking-[0.06em] shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px] ${activeMap[tone]}`;
+  }
+
+  return "border-2 border-black bg-transparent px-3 py-2 text-xs font-semibold tracking-[0.06em] shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px] hover:bg-white hover:text-black";
+}
+
+function getLocationLabel(job: Job) {
+  return job.location || "Unknown";
 }
 
 export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
@@ -200,7 +227,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     const effectiveJobIds = Array.from(new Set(selectedJobIds));
     if (effectiveJobIds.length > MAX_GENERATE_JOB_COUNT) {
       setErrors([
-        `当前选中 ${effectiveJobIds.length} 个岗位，单次最多支持 ${MAX_GENERATE_JOB_COUNT} 个，请分批生成。`,
+        `本次最多支持 ${MAX_GENERATE_JOB_COUNT} 个岗位，当前已选择 ${effectiveJobIds.length} 个，请先缩小范围后再生成。`,
       ]);
       return;
     }
@@ -261,302 +288,423 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-white/90">AI 简历定制工作区</h2>
-          <p className="text-xs text-white/45 mt-1">① 选范围 ② 勾岗位 ③ 流式生成，生成结果可直接进入简历编辑。</p>
-        </div>
-        <Button
-          color="secondary"
-          startContent={<Play size={14} />}
-          onPress={startGenerate}
-          isDisabled={!canGenerate}
-          isLoading={generating}
-        >
-          开始生成
-        </Button>
-      </div>
+    <div className="grid gap-6 xl:grid-cols-[0.95fr_1fr_1.05fr]">
+      <section className="bauhaus-panel overflow-hidden bg-[#F0C020] text-black">
+        <div className="border-b-2 border-black p-5 md:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <span className="bauhaus-chip bg-white text-black">Scope Builder</span>
+              <div>
+                <p className="bauhaus-label text-black/55">Step One</p>
+                <h2 className="mt-2 text-3xl font-black uppercase leading-[0.9] tracking-[-0.07em] md:text-4xl">
+                  Filter
+                  <br />
+                  Pick
+                  <br />
+                  Direct
+                </h2>
+              </div>
+            </div>
 
-      {!loadingProfile && profileSectionCount === 0 && (
-        <div className="rounded-lg border border-warning-400/40 bg-warning-500/10 px-3 py-2 text-xs text-warning-200">
-          当前还没有已确认的档案条目。请先去
-          <Link href="/profile" className="ml-1 underline hover:text-warning-100">个人档案</Link>
-          完成条目确认，再回到这里生成简历。
+            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="bauhaus-panel-sm bg-white p-3">
+                <p className="bauhaus-label text-black/55">Profile</p>
+                <p className="mt-2 text-2xl font-black uppercase tracking-[-0.05em]">
+                  {loadingProfile ? "--" : profileSectionCount}
+                </p>
+              </div>
+              <div className="bauhaus-panel-sm !bg-[#1040C0] p-3 text-white">
+                <p className="bauhaus-label text-white/65">Selected</p>
+                <p className="mt-2 text-2xl font-black uppercase tracking-[-0.05em]">
+                  {selectedJobIds.length}
+                </p>
+              </div>
+              <div className="bauhaus-panel-sm !bg-[#D02020] p-3 text-white">
+                <p className="bauhaus-label text-white/65">Mode</p>
+                <p className="mt-2 text-xl font-black uppercase tracking-[-0.05em]">
+                  {mode === "per_job" ? "Per Job" : "Combined"}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
 
-      {overSelectionLimit && (
-        <div className="rounded-lg border border-danger-400/40 bg-danger-500/10 px-3 py-2 text-xs text-danger-200">
-          当前已选 {selectedJobIds.length} 个岗位，超出单次上限 {MAX_GENERATE_JOB_COUNT}。请先缩小本轮范围再生成。
-        </div>
-      )}
+        <div className="space-y-5 p-5 md:p-6">
+          {!loadingProfile && profileSectionCount === 0 && (
+            <div className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
+              当前还没有可复用的档案条目。先去
+              <Link href="/profile" className="mx-1 font-bold underline">
+                个人档案
+              </Link>
+              完成确认，再回来批量生成简历。
+            </div>
+          )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="bg-white/[0.02] border border-white/[0.08]">
-          <CardBody className="p-4 space-y-3">
-            <div className="flex items-center gap-2 text-white/80 text-sm font-semibold">
-              <FolderOpen size={15} className="text-cyan-300" />
-              ① 池/范围选择
+          {overSelectionLimit && (
+            <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-4 text-sm font-medium leading-relaxed text-white">
+              当前已选择 {selectedJobIds.length} 个岗位，超过单次上限 {MAX_GENERATE_JOB_COUNT}。
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <FolderOpen size={18} strokeWidth={2.6} />
+              <p className="bauhaus-label text-black/65">Pool Filter</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={poolFilter === "all" ? "solid" : "flat"}
-                color={poolFilter === "all" ? "primary" : "default"}
-                className={poolFilter === "all" ? "" : "bg-white/5 text-white/65"}
-                onPress={() => setPoolFilter("all")}
+              <button
+                type="button"
+                className={getPoolButtonClassName(poolFilter === "all", "white")}
+                onClick={() => setPoolFilter("all")}
               >
-                全部已筛选
-              </Button>
-              <Button
-                size="sm"
-                variant={poolFilter === "ungrouped" ? "solid" : "flat"}
-                color={poolFilter === "ungrouped" ? "primary" : "default"}
-                className={poolFilter === "ungrouped" ? "" : "bg-white/5 text-white/65"}
-                onPress={() => setPoolFilter("ungrouped")}
+                All Picked
+              </button>
+              <button
+                type="button"
+                className={getPoolButtonClassName(poolFilter === "ungrouped", "red")}
+                onClick={() => setPoolFilter("ungrouped")}
               >
-                未分组
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 max-h-[180px] overflow-auto pr-1">
+                Ungrouped
+              </button>
               {(pools || []).map((pool) => (
-                <Button
+                <button
                   key={pool.id}
-                  size="sm"
-                  variant={poolFilter === pool.id ? "solid" : "flat"}
-                  color={poolFilter === pool.id ? "primary" : "default"}
-                  className={poolFilter === pool.id ? "" : "bg-white/5 text-white/65"}
-                  onPress={() => setPoolFilter(pool.id)}
+                  type="button"
+                  className={getPoolButtonClassName(poolFilter === pool.id, "yellow")}
+                  onClick={() => setPoolFilter(pool.id)}
                 >
                   {pool.name}
-                </Button>
+                </button>
               ))}
             </div>
+          </div>
 
-            <Input
-              size="sm"
-              variant="bordered"
-              placeholder="筛选岗位关键词"
-              value={keyword}
-              onValueChange={setKeyword}
-              startContent={<Search size={14} className="text-white/35" />}
-              classNames={{ inputWrapper: "bg-white/[0.02] border-white/[0.08]" }}
-            />
+          <Input
+            size="sm"
+            label="Keyword"
+            placeholder="搜索岗位标题、公司或关键词"
+            value={keyword}
+            onValueChange={setKeyword}
+            startContent={<Search size={15} className="text-black/55" />}
+            classNames={bauhausFieldClassNames}
+          />
 
-            <div className="pt-1 space-y-2">
-              <div className="text-xs text-white/45">生成模式</div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} strokeWidth={2.6} />
+                <p className="bauhaus-label text-black/65">Generate Mode</p>
+              </div>
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={mode === "per_job" ? "solid" : "flat"}
-                  color={mode === "per_job" ? "secondary" : "default"}
-                  className={mode === "per_job" ? "" : "bg-white/5 text-white/65"}
-                  onPress={() => setMode("per_job")}
+                <button
+                  type="button"
+                  aria-pressed={mode === "per_job"}
+                  className={getPoolButtonClassName(mode === "per_job", "red")}
+                  onClick={() => setMode("per_job")}
                 >
-                  逐岗位
-                </Button>
-                <Button
-                  size="sm"
-                  variant={mode === "combined" ? "solid" : "flat"}
-                  color={mode === "combined" ? "secondary" : "default"}
-                  className={mode === "combined" ? "" : "bg-white/5 text-white/65"}
-                  onPress={() => setMode("combined")}
+                  Per Job
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={mode === "combined"}
+                  className={getPoolButtonClassName(mode === "combined", "white")}
+                  onClick={() => setMode("combined")}
                 >
-                  综合版
-                </Button>
+                  Combined
+                </button>
               </div>
             </div>
 
-            <div className="pt-1 space-y-2">
-              <div className="text-xs text-white/45">参考简历（可选）</div>
-              <select
-                value={referenceResumeId ?? ""}
-                onChange={(event) => {
-                  const raw = event.target.value;
-                  setReferenceResumeId(raw ? Number(raw) : null);
-                }}
-                className="w-full h-9 rounded-md bg-white/[0.03] border border-white/[0.1] text-sm text-white/80 px-2 outline-none"
-              >
-                <option value="" className="bg-zinc-900">不使用参考简历</option>
-                {referenceResumes.map((resume) => (
-                  <option key={resume.id} value={resume.id} className="bg-zinc-900">
-                    {resume.title || `简历 #${resume.id}`}
-                  </option>
-                ))}
-              </select>
-              <div className="text-[11px] text-white/35">
-                仅参考版式与表达风格，事实来源仍限定为档案已确认条目。
+            <Select
+              aria-label="Reference resume"
+              label="Reference Resume"
+              placeholder="可选：指定参考简历"
+              selectedKeys={referenceResumeId ? [String(referenceResumeId)] : []}
+              onSelectionChange={(keys) => {
+                const raw = Array.from(keys)[0] as string | undefined;
+                setReferenceResumeId(raw ? Number(raw) : null);
+              }}
+              classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
+            >
+              {referenceResumes.map((resume) => (
+                <SelectItem key={String(resume.id)}>
+                  {resume.title || `简历 #${resume.id}`}
+                </SelectItem>
+              ))}
+            </Select>
+          </div>
+
+          <div className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
+            参考简历只会影响表达方式和版面倾向，事实来源仍然限定为档案中已确认的内容。
+          </div>
+
+          <Button
+            className="bauhaus-button bauhaus-button-red w-full !justify-center"
+            startContent={<Play size={16} />}
+            onPress={startGenerate}
+            isDisabled={!canGenerate}
+            isLoading={generating}
+          >
+            Start Generate
+          </Button>
+        </div>
+      </section>
+
+      <section className="bauhaus-panel overflow-hidden bg-[#1040C0] text-white">
+        <div className="border-b-2 border-black p-5 md:p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="bauhaus-label text-white/68">Step Two</p>
+              <h2 className="mt-2 text-3xl font-black uppercase leading-[0.92] tracking-[-0.07em] md:text-4xl">
+                Select
+                <br />
+                Queue
+              </h2>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] px-4 py-3 text-black">
+              <p className="bauhaus-label text-black/55">Visible Jobs</p>
+              <p className="mt-2 text-2xl font-black uppercase tracking-[-0.05em]">{jobs.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 p-5 md:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ListChecks size={18} strokeWidth={2.6} />
+              <p className="bauhaus-label text-white/70">Current Queue</p>
+            </div>
+            <Chip className="bauhaus-chip bg-white text-black">
+              {selectedCountInCurrentList} / {totalJobsInCurrentPool}
+            </Chip>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              className="bauhaus-button bauhaus-button-yellow !min-h-11 !px-4 !py-3"
+              onPress={toggleSelectAllInCurrentList}
+              isDisabled={jobs.length === 0}
+            >
+              {allSelectedInCurrent ? "Clear Visible" : "Select Visible"}
+            </Button>
+          </div>
+
+          <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-white p-3 text-black custom-scrollbar">
+            {loadingJobs ? (
+              <div className="flex min-h-48 items-center justify-center gap-3 text-sm font-medium text-black/70">
+                <Spinner size="sm" color="warning" />
+                <span>正在加载岗位列表…</span>
               </div>
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card className="bg-white/[0.02] border border-white/[0.08]">
-          <CardBody className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-white/80 text-sm font-semibold">
-                <ListChecks size={15} className="text-amber-300" />
-                ② 本轮岗位勾选
+            ) : jobs.length === 0 ? (
+              <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium text-black/60">
+                当前筛选范围内没有岗位。
               </div>
-              <Chip size="sm" variant="flat" className="bg-white/10 text-white/70">
-                已选 {selectedCountInCurrentList} / 总 {totalJobsInCurrentPool}
-              </Chip>
-            </div>
+            ) : (
+              jobs.map((job, index) => {
+                const checked = selectedJobIds.includes(job.id);
+                return (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => toggleJob(job.id)}
+                    className={`w-full border-2 border-black p-4 text-left shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px] ${
+                      checked ? "bg-[#F0C020]" : "bg-[#F0F0F0]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="bauhaus-label text-black/55">#{String(index + 1).padStart(2, "0")}</p>
+                        <h3 className="mt-1 line-clamp-2 text-lg font-black uppercase tracking-[-0.05em]">
+                          {job.title}
+                        </h3>
+                        <p className="mt-2 text-sm font-semibold tracking-[0.04em] text-black/68">
+                          {job.company}
+                        </p>
+                        <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                          {getLocationLabel(job)}
+                        </p>
+                      </div>
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="flat"
-                className="bg-white/10 text-white/70"
-                onPress={toggleSelectAllInCurrentList}
-                isDisabled={jobs.length === 0}
-              >
-                {allSelectedInCurrent ? "取消全选" : "全选当前"}
-              </Button>
-            </div>
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center border-2 border-black ${
+                          checked ? "bg-[#1040C0] text-white" : "bg-white text-black"
+                        }`}
+                      >
+                        <CheckCircle2 size={18} strokeWidth={2.6} />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
 
-            <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
-              {loadingJobs ? (
-                <div className="text-xs text-white/45 flex items-center gap-2">
-                  <Spinner size="sm" /> 加载岗位中...
+          <div className="bauhaus-panel-sm bg-[#F0C020] px-4 py-4 text-sm font-medium leading-relaxed text-black/75">
+            当前池内共 {totalJobsInCurrentPool} 个岗位，本轮已选择 {selectedCountInCurrentList} 个。
+          </div>
+        </div>
+      </section>
+
+      <section className="bauhaus-panel overflow-hidden bg-[#D02020] text-white">
+        <div className="border-b-2 border-black p-5 md:p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="bauhaus-label text-white/68">Step Three</p>
+              <h2 className="mt-2 text-3xl font-black uppercase leading-[0.92] tracking-[-0.07em] md:text-4xl">
+                Build
+                <br />
+                Output
+              </h2>
+            </div>
+            <div className="bauhaus-panel-sm bg-white px-4 py-3 text-black">
+              <p className="bauhaus-label text-black/55">Progress</p>
+              <p className="mt-2 text-2xl font-black uppercase tracking-[-0.05em]">{progressRatio}%</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 p-5 md:p-6">
+          <div className="flex items-center gap-2">
+            <Layers3 size={18} strokeWidth={2.6} />
+            <p className="bauhaus-label text-white/70">Result Stack</p>
+          </div>
+
+          <div className="bauhaus-panel-sm overflow-hidden bg-white text-black">
+            <div
+              className="h-4 bg-[#F0F0F0]"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressRatio}
+            >
+              <div
+                className="h-full border-r-2 border-black bg-[#F0C020] transition-all duration-300 ease-out"
+                style={{ width: `${progressRatio}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 text-sm font-semibold tracking-[0.04em]">
+              <span>Generated {results.length}</span>
+              <span>{doneSummary ? `${doneSummary.created} success / ${doneSummary.failed} failed` : "waiting"}</span>
+            </div>
+          </div>
+
+          {doneSummary && (
+            <div className="bauhaus-panel-sm bg-[#F0C020] px-4 py-4 text-sm font-medium leading-relaxed text-black">
+              本轮已完成，共生成 {doneSummary.created} 份简历，失败 {doneSummary.failed} 份。
+            </div>
+          )}
+
+          {errors.length > 0 && (
+            <div className="space-y-3">
+              {errors.map((line, idx) => (
+                <div
+                  key={`${line}-${idx}`}
+                  className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium leading-relaxed text-[#D02020]"
+                >
+                  {line}
                 </div>
-              ) : jobs.length === 0 ? (
-                <div className="text-xs text-white/35 py-6 text-center">当前筛选范围暂无岗位</div>
-              ) : (
-                jobs.map((job) => {
-                  const checked = selectedJobIds.includes(job.id);
-                  return (
-                    <button
-                      key={job.id}
-                      onClick={() => toggleJob(job.id)}
-                      className={`w-full text-left rounded-lg border p-3 transition-all ${
-                        checked
-                          ? "border-secondary-400/50 bg-secondary-500/10"
-                          : "border-white/[0.08] bg-white/[0.02] hover:border-white/20"
+              ))}
+            </div>
+          )}
+
+          <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-[#F0F0F0] p-3 text-black custom-scrollbar">
+            {results.length === 0 ? (
+              <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium leading-relaxed text-black/60">
+                生成后的简历、命中条目和缺失关键词会出现在这里。
+              </div>
+            ) : (
+              results.map((item, index) => (
+                <article
+                  key={`${item.resume_id}-${item.mode}-${item.job_id || "combined"}`}
+                  className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="bauhaus-label text-black/55">{item.mode === "combined" ? "Combined" : "Per Job"}</p>
+                      <h3 className="mt-1 line-clamp-2 text-xl font-black uppercase tracking-[-0.05em]">
+                        {item.resume_title}
+                      </h3>
+                      <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                        {item.job_title || "多岗位综合版本"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`bauhaus-chip ${
+                        index % 3 === 0
+                          ? "bg-[#1040C0] text-white"
+                          : index % 3 === 1
+                            ? "bg-[#F0C020] text-black"
+                            : "bg-[#D02020] text-white"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm text-white/85 line-clamp-1">{job.title}</div>
-                          <div className="text-[11px] text-white/40 mt-1 line-clamp-1">{job.company} · {job.location || "未知地点"}</div>
-                        </div>
-                        {checked && <CheckCircle2 size={14} className="text-secondary-300 mt-1" />}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="text-[11px] text-white/35">
-              当前池内共 {totalJobsInCurrentPool} 个岗位，本轮已勾选 {selectedCountInCurrentList} 个。
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card className="bg-white/[0.02] border border-white/[0.08]">
-          <CardBody className="p-4 space-y-3">
-            <div className="flex items-center gap-2 text-white/80 text-sm font-semibold">
-              <Layers3 size={15} className="text-emerald-300" />
-              ③ 输出简历区
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs text-white/45">
-                <span>生成进度</span>
-                <span>{progressRatio}%</span>
-              </div>
-              <Progress value={progressRatio} color="success" size="sm" />
-            </div>
-
-            {doneSummary && (
-              <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-                已完成：成功 {doneSummary.created} / 失败 {doneSummary.failed}
-              </div>
-            )}
-
-            {errors.length > 0 && (
-              <div className="space-y-2">
-                {errors.map((line, idx) => (
-                  <div key={`${line}-${idx}`} className="rounded-lg border border-danger-400/30 bg-danger-500/10 px-3 py-2 text-xs text-danger-200">
-                    {line}
+                      Hit {item.profile_hit_ratio}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
 
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-              {results.length === 0 ? (
-                <div className="text-xs text-white/35 py-6 text-center">生成后这里会显示结果、命中条目和缺失能力。</div>
-              ) : (
-                results.map((item) => (
-                  <div key={`${item.resume_id}-${item.mode}-${item.job_id || "combined"}`} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm text-white/80 line-clamp-1">
-                        {item.job_title ? `${item.job_title} · ` : ""}{item.resume_title}
+                  {(item.used_bullets || []).length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="bauhaus-label text-black/55">Used Profile Blocks</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(item.used_bullets || []).slice(0, 6).map((bullet) => (
+                          <span
+                            key={`${item.resume_id}-${bullet.id}`}
+                            className="bauhaus-chip bg-[#F0F0F0] text-black"
+                          >
+                            {formatSectionTypeLabel(bullet.section_type)}
+                            {bullet.title}
+                          </span>
+                        ))}
                       </div>
-                      <Link href={`/resume/${item.resume_id}`} className="text-[11px] text-cyan-300 hover:text-cyan-200">
-                        打开
-                      </Link>
                     </div>
-                    <div className="text-[11px] text-white/45">档案命中率 {item.profile_hit_ratio}</div>
+                  )}
 
-                    {(item.used_bullets || []).length > 0 && (
-                      <div className="space-y-1">
-                        <div className="text-[11px] text-white/45">已使用档案条目</div>
-                        <div className="flex flex-wrap gap-1">
-                          {(item.used_bullets || []).slice(0, 6).map((bullet) => (
-                            <Chip
-                              key={`${item.resume_id}-${bullet.id}`}
-                              size="sm"
-                              variant="flat"
-                              className="bg-emerald-500/10 text-emerald-200 text-[10px]"
-                            >
-                              {formatSectionTypeLabel(bullet.section_type)} · {bullet.title}
-                            </Chip>
-                          ))}
-                          {(item.used_bullets || []).length > 6 && (
-                            <Chip size="sm" variant="flat" className="bg-white/10 text-white/60 text-[10px]">
-                              +{(item.used_bullets || []).length - 6}
-                            </Chip>
-                          )}
-                        </div>
+                  {(item.missing_keywords || []).length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="bauhaus-label text-black/55">Missing Keywords</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(item.missing_keywords || []).slice(0, 8).map((kw, keywordIndex) => (
+                          <span
+                            key={`${item.resume_id}-${kw}`}
+                            className={`bauhaus-chip ${
+                              keywordIndex % 2 === 0
+                                ? "bg-[#D02020] text-white"
+                                : "bg-[#F0C020] text-black"
+                            }`}
+                          >
+                            {kw}
+                          </span>
+                        ))}
                       </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-1">
-                      {(item.missing_keywords || []).slice(0, 6).map((kw) => (
-                        <Chip key={`${item.resume_id}-${kw}`} size="sm" variant="flat" className="bg-warning-500/10 text-warning-200 text-[10px]">
-                          {kw}
-                        </Chip>
-                      ))}
                     </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link href={`/resume/${item.resume_id}`} className="bauhaus-button bauhaus-button-blue">
+                      Open Resume
+                    </Link>
                   </div>
-                ))
-              )}
-            </div>
+                </article>
+              ))
+            )}
+          </div>
 
-            <Button
-              size="sm"
-              variant="flat"
-              className="bg-white/10 text-white/70"
-              startContent={<RefreshCw size={13} />}
-              onPress={() => {
-                setProgressEvents([]);
-                setResults([]);
-                setErrors([]);
-                setDoneSummary(null);
-              }}
-              isDisabled={generating}
-            >
-              清空输出
-            </Button>
-          </CardBody>
-        </Card>
-      </div>
+          <Button
+            className="bauhaus-button bauhaus-button-outline w-full !justify-center"
+            startContent={<RefreshCw size={15} />}
+            onPress={() => {
+              setProgressEvents([]);
+              setResults([]);
+              setErrors([]);
+              setDoneSummary(null);
+            }}
+            isDisabled={generating}
+          >
+            Clear Output
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

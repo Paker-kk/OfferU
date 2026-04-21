@@ -1,65 +1,75 @@
-// =============================================
-// 日程表页 — FullCalendar 面试日程管理
-// =============================================
-// 主视图：FullCalendar 月/周/日历视图
-// 交互：点击日期创建事件、点击事件查看详情
-// 侧栏：最近事件概览列表
-// =============================================
-
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import {
-  Card, CardBody, Button, Modal, ModalContent,
-  ModalHeader, ModalBody, ModalFooter, Input,
-  useDisclosure, Tabs, Tab,
+  Button,
+  Card,
+  CardBody,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Tab,
+  Tabs,
+  Input,
+  useDisclosure,
 } from "@nextui-org/react";
-import { Sparkles, Plus, Calendar as CalendarIcon, List } from "lucide-react";
-import { useCalendarEvents, createCalendarEvent } from "@/lib/hooks";
+import { Calendar as CalendarIcon, List, Plus, Sparkles } from "lucide-react";
+import { createCalendarEvent, useCalendarEvents } from "@/lib/hooks";
+import {
+  bauhausFieldClassNames,
+  bauhausModalContentClassName,
+  bauhausTabsClassNames,
+} from "@/lib/bauhaus";
 
-// FullCalendar 动态导入（避免 SSR 问题）
 const FullCalendar = dynamic(() => import("@fullcalendar/react"), { ssr: false });
 import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import timeGridPlugin from "@fullcalendar/timegrid";
 
 export default function CalendarPage() {
   const { data: events, mutate } = useCalendarEvents();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [viewMode, setViewMode] = useState<string>("calendar");
   const [newEvent, setNewEvent] = useState({
-    title: "", description: "", start_time: "", end_time: "", location: "",
+    title: "",
+    description: "",
+    start_time: "",
+    end_time: "",
+    location: "",
   });
 
-  /** 将 API 事件转为 FullCalendar 事件格式 */
   const calendarEvents = useMemo(() => {
     if (!events) return [];
-    return events.map((e) => ({
-      id: String(e.id),
-      title: e.title,
-      start: e.start_time,
-      end: e.end_time || undefined,
+    return events.map((event) => ({
+      id: String(event.id),
+      title: event.title,
+      start: event.start_time,
+      end: event.end_time || undefined,
       backgroundColor:
-        e.event_type === "interview" ? "#3b82f6" :
-        e.event_type === "deadline" ? "#ef4444" : "#6b7280",
-      borderColor: "transparent",
+        event.event_type === "interview"
+          ? "#1040C0"
+          : event.event_type === "deadline"
+            ? "#D02020"
+            : "#F0C020",
+      borderColor: "#121212",
+      textColor: event.event_type === "deadline" || event.event_type === "interview" ? "#FFFFFF" : "#121212",
       extendedProps: {
-        location: e.location,
-        description: e.description,
-        event_type: e.event_type,
+        location: event.location,
+        description: event.description,
+        event_type: event.event_type,
       },
     }));
   }, [events]);
 
-  /** 点击日历空白日期 → 打开创建弹窗并预填时间 */
   const handleDateClick = (info: { dateStr: string }) => {
-    setNewEvent((prev) => ({ ...prev, start_time: info.dateStr + "T09:00" }));
+    setNewEvent((prev) => ({ ...prev, start_time: `${info.dateStr}T09:00` }));
     onOpen();
   };
 
-  /** 创建新日程事件 */
   const handleCreate = async () => {
     if (!newEvent.title || !newEvent.start_time) return;
     await createCalendarEvent({
@@ -73,56 +83,85 @@ export default function CalendarPage() {
     mutate();
   };
 
-  /** 事件类型颜色映射 */
-  const typeColor = (type: string) => {
+  const typeTone = (type: string) => {
     switch (type) {
-      case "interview": return "bg-blue-500/20 border-blue-500/50 text-blue-300";
-      case "deadline": return "bg-red-500/20 border-red-500/50 text-red-300";
-      default: return "bg-white/10 border-white/20 text-white/70";
+      case "interview":
+        return "bg-[#1040C0] text-white";
+      case "deadline":
+        return "bg-[#D02020] text-white";
+      default:
+        return "bg-[#F0C020] text-black";
     }
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 15 }}
-      className="space-y-6"
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="space-y-8"
     >
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">日程表</h1>
-        <div className="flex gap-2">
-          <Tabs
-            size="sm"
-            selectedKey={viewMode}
-            onSelectionChange={(k) => setViewMode(k as string)}
-          >
-            <Tab key="calendar" title={<CalendarIcon size={14} />} />
-            <Tab key="list" title={<List size={14} />} />
-          </Tabs>
-          <Button
-            startContent={<Sparkles size={16} />}
-            color="secondary"
-            size="sm"
-            variant="flat"
-          >
+      <section className="bauhaus-panel overflow-hidden bg-white">
+        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <span className="bauhaus-chip bg-[#F0C020]">Interview Calendar</span>
+            <div>
+              <p className="bauhaus-label text-black/55">Schedule Board</p>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
+                Plan
+                <br />
+                Time
+                <br />
+                Move
+              </h1>
+              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
+                把笔试、面试和截止日期收束到一块几何日历板上，避免信息散落在邮件和聊天记录里，
+                让后续准备和时间冲突一眼可见。
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Events</p>
+              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{events?.length ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
+              <p className="bauhaus-label text-black/60">Modes</p>
+              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">2</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
+              <p className="bauhaus-label text-white/70">Capture</p>
+              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">Interview / Deadline</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-4">
+        <Tabs
+          size="sm"
+          selectedKey={viewMode}
+          onSelectionChange={(key) => setViewMode(key as string)}
+          classNames={bauhausTabsClassNames}
+        >
+          <Tab key="calendar" title={<span className="inline-flex items-center gap-2"><CalendarIcon size={14} /> 日历</span>} />
+          <Tab key="list" title={<span className="inline-flex items-center gap-2"><List size={14} /> 列表</span>} />
+        </Tabs>
+
+        <div className="flex flex-wrap gap-2">
+          <Button startContent={<Sparkles size={16} />} className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]">
             AI 自动填充
           </Button>
-          <Button
-            startContent={<Plus size={16} />}
-            color="primary"
-            size="sm"
-            onPress={onOpen}
-          >
+          <Button startContent={<Plus size={16} />} onPress={onOpen} className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]">
             添加日程
           </Button>
         </div>
-      </div>
+      </section>
 
-      {/* FullCalendar 视图 */}
       {viewMode === "calendar" && (
-        <Card className="bg-white/5 border border-white/10">
-          <CardBody className="p-4 fullcalendar-dark">
+        <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
+          <CardBody className="fullcalendar-dark p-4 md:p-5">
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               initialView="dayGridMonth"
@@ -135,43 +174,40 @@ export default function CalendarPage() {
               dateClick={handleDateClick}
               height="auto"
               locale="zh-cn"
-              buttonText={{
-                today: "今天",
-                month: "月",
-                week: "周",
-                day: "日",
-              }}
+              buttonText={{ today: "今天", month: "月", week: "周", day: "日" }}
             />
           </CardBody>
         </Card>
       )}
 
-      {/* 列表视图 */}
       {viewMode === "list" && (
         events && events.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {events.map((event) => (
               <motion.div
                 key={event.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                whileHover={{ x: 4 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                transition={{ duration: 0.24, ease: "easeOut" }}
               >
-                <Card className="bg-white/5 border border-white/10">
-                  <CardBody className="flex flex-row items-center gap-4 p-4">
-                    <div className={`p-2 rounded-lg border ${typeColor(event.event_type)}`}>
-                      <CalendarIcon size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold">{event.title}</p>
-                      <p className="text-sm text-white/50">
-                        {new Date(event.start_time).toLocaleString("zh-CN")}
-                        {event.location && ` · ${event.location}`}
-                      </p>
-                      {event.description && (
-                        <p className="text-xs text-white/40 mt-1">{event.description}</p>
-                      )}
+                <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+                  <CardBody className="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
+                    <div className="flex items-start gap-4">
+                      <div className={`bauhaus-panel-sm flex h-12 w-12 items-center justify-center ${typeTone(event.event_type)}`}>
+                        <CalendarIcon size={18} />
+                      </div>
+                      <div>
+                        <p className="text-xl font-black tracking-[-0.04em] text-black">{event.title}</p>
+                        <p className="mt-2 text-sm font-medium text-black/60">
+                          {new Date(event.start_time).toLocaleString("zh-CN")}
+                          {event.location && ` · ${event.location}`}
+                        </p>
+                        {event.description && (
+                          <p className="mt-3 max-w-3xl text-sm font-medium leading-relaxed text-black/68">
+                            {event.description}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </CardBody>
                 </Card>
@@ -179,30 +215,37 @@ export default function CalendarPage() {
             ))}
           </div>
         ) : (
-          <Card className="bg-white/5 border border-white/10">
-            <CardBody className="p-8 text-center text-white/40">
-              <CalendarIcon size={48} className="mx-auto mb-4 opacity-30" />
-              <p className="text-lg mb-2">暂无日程</p>
-              <p className="text-sm">点击"添加日程"手动创建，或使用"AI 自动填充"</p>
+          <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+            <CardBody className="p-10 text-center">
+              <CalendarIcon size={54} className="mx-auto" />
+              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Events Yet</p>
+              <p className="mt-3 text-sm font-medium text-white/80">
+                点击「添加日程」或使用 AI 自动填充，把面试和截止时间收拢进这块时间板。
+              </p>
             </CardBody>
           </Card>
         )
       )}
 
-      {/* 创建日程 Modal */}
       <Modal isOpen={isOpen} onClose={onClose} placement="center">
-        <ModalContent className="bg-[#1a1a2e] border border-white/10">
-          <ModalHeader>添加日程</ModalHeader>
-          <ModalBody className="space-y-3">
-            <Input label="标题" variant="bordered" value={newEvent.title} onValueChange={(v) => setNewEvent((p) => ({ ...p, title: v }))} />
-            <Input label="开始时间" variant="bordered" type="datetime-local" value={newEvent.start_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, start_time: v }))} />
-            <Input label="结束时间" variant="bordered" type="datetime-local" value={newEvent.end_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, end_time: v }))} />
-            <Input label="地点" variant="bordered" value={newEvent.location} onValueChange={(v) => setNewEvent((p) => ({ ...p, location: v }))} />
-            <Input label="描述" variant="bordered" value={newEvent.description} onValueChange={(v) => setNewEvent((p) => ({ ...p, description: v }))} />
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+            添加日程
+          </ModalHeader>
+          <ModalBody className="space-y-3 px-6 py-6">
+            <Input label="标题" variant="bordered" value={newEvent.title} onValueChange={(v) => setNewEvent((p) => ({ ...p, title: v }))} classNames={bauhausFieldClassNames} />
+            <Input label="开始时间" variant="bordered" type="datetime-local" value={newEvent.start_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, start_time: v }))} classNames={bauhausFieldClassNames} />
+            <Input label="结束时间" variant="bordered" type="datetime-local" value={newEvent.end_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, end_time: v }))} classNames={bauhausFieldClassNames} />
+            <Input label="地点" variant="bordered" value={newEvent.location} onValueChange={(v) => setNewEvent((p) => ({ ...p, location: v }))} classNames={bauhausFieldClassNames} />
+            <Input label="描述" variant="bordered" value={newEvent.description} onValueChange={(v) => setNewEvent((p) => ({ ...p, description: v }))} classNames={bauhausFieldClassNames} />
           </ModalBody>
-          <ModalFooter>
-            <Button variant="flat" onPress={onClose}>取消</Button>
-            <Button color="primary" onPress={handleCreate}>创建</Button>
+          <ModalFooter className="border-t-2 border-black px-6 py-5">
+            <Button variant="light" onPress={onClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
+              取消
+            </Button>
+            <Button onPress={handleCreate} className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]">
+              创建
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

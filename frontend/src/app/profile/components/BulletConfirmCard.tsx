@@ -97,12 +97,12 @@ export function BulletConfirmCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white/5 border border-white/10 rounded-xl p-4 my-2"
+      className="bg-black/5 border border-black/10 rounded-xl p-4 my-2"
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
         <Pin size={14} className="text-blue-400" />
-        <span className="text-sm font-medium text-white">
+        <span className="text-sm font-medium text-black">
           生成的 Bullet:
         </span>
         <Chip size="sm" variant="flat" color={confidenceColor}>
@@ -112,16 +112,16 @@ export function BulletConfirmCard({
 
       {/* Content */}
       <div className="pl-5 space-y-1">
-        <p className="text-sm font-medium text-white/90">{bullet.title}</p>
+        <p className="text-sm font-medium text-black/90">{bullet.title}</p>
         {bullet.organization && (
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-black/40">
             {bullet.organization}
             {bullet.date_range && ` · ${bullet.date_range}`}
           </p>
         )}
 
         {mode === "view" ? (
-          <p className="text-sm text-white/70 mt-1 whitespace-pre-wrap">
+          <p className="text-sm text-black/70 mt-1 whitespace-pre-wrap">
             {bullet.description}
           </p>
         ) : (
@@ -132,8 +132,8 @@ export function BulletConfirmCard({
             maxRows={6}
             variant="bordered"
             classNames={{
-              input: "text-sm text-white/80",
-              inputWrapper: "bg-white/5 border-white/10",
+              input: "text-sm text-black/80",
+              inputWrapper: "bg-black/5 border-black/10",
             }}
           />
         )}
@@ -163,7 +163,7 @@ export function BulletConfirmCard({
           size="sm"
           variant="light"
           startContent={<X size={14} />}
-          className="text-white/40"
+          className="text-black/40"
           onPress={onSkipped}
         >
           跳过
