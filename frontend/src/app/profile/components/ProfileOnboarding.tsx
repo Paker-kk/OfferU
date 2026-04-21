@@ -115,12 +115,14 @@ export function ProfileOnboarding({ onComplete }: ProfileOnboardingProps) {
     try {
       await profileApi.update({
         name: name.trim(),
-        school: school.trim(),
-        major: major.trim(),
-        degree,
-        gpa: gpa.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
+        base_info_json: {
+          email: email.trim(),
+          phone: phone.trim(),
+          school: school.trim(),
+          major: major.trim(),
+          degree,
+          gpa: gpa.trim(),
+        },
       });
       goNext();
     } catch {

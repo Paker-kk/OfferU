@@ -70,16 +70,16 @@ export function BatchGroup({
     : "";
 
   return (
-    <div className="rounded-xl border border-white/10 overflow-hidden bg-white/[0.02]">
+    <div className="rounded-xl border border-black/10 overflow-hidden bg-black/[0.02]">
       {/* ── 批次头部 ── */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-black/5 transition-colors text-left"
       >
         {expanded ? (
-          <ChevronDown size={16} className="text-white/40 shrink-0" />
+          <ChevronDown size={16} className="text-black/40 shrink-0" />
         ) : (
-          <ChevronRight size={16} className="text-white/40 shrink-0" />
+          <ChevronRight size={16} className="text-black/40 shrink-0" />
         )}
 
         {batch ? (
@@ -88,26 +88,26 @@ export function BatchGroup({
               {batch.source}
             </Chip>
             {batch.keywords?.length > 0 && (
-              <span className="text-sm text-white/70 truncate">
+              <span className="text-sm text-black/70 truncate">
                 {batch.keywords.join("、")}
               </span>
             )}
             {batch.location && (
-              <span className="text-xs text-white/40">· {batch.location}</span>
+              <span className="text-xs text-black/40">· {batch.location}</span>
             )}
           </div>
         ) : (
-          <span className="text-sm text-white/50 flex-1">无批次</span>
+          <span className="text-sm text-black/50 flex-1">无批次</span>
         )}
 
         <div className="flex items-center gap-2 shrink-0">
           {dateStr && (
-            <span className="flex items-center gap-1 text-xs text-white/30">
+            <span className="flex items-center gap-1 text-xs text-black/30">
               <Clock size={12} />
               {dateStr}
             </span>
           )}
-          <Chip size="sm" variant="flat" className="bg-white/5 text-white/50">
+          <Chip size="sm" variant="flat" className="bg-black/5 text-black/50">
             {jobs.length} 个岗位
           </Chip>
         </div>
@@ -115,7 +115,7 @@ export function BatchGroup({
 
       {/* ── 批次一键操作栏 ── */}
       {expanded && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-white/[0.02]">
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-black/5 bg-black/[0.02]">
           {triageStatus === "unscreened" && (
             <>
               <Button
