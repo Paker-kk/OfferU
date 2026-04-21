@@ -1,5 +1,5 @@
 // Build helper: copy static files to dist/
-import { cpSync, mkdirSync, existsSync } from "fs";
+import { cpSync, mkdirSync, existsSync, copyFileSync, rmSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -11,13 +11,17 @@ if (!existsSync(dist)) mkdirSync(dist, { recursive: true });
 
 const statics = ["manifest.json", "popup.html", "popup.css"];
 for (const f of statics) {
-  cpSync(resolve(root, "static", f), resolve(dist, f));
+  copyFileSync(resolve(root, "static", f), resolve(dist, f));
 }
 
 // Copy icons
 const iconsDir = resolve(root, "static", "icons");
 if (existsSync(iconsDir)) {
-  cpSync(iconsDir, resolve(dist, "icons"), { recursive: true });
+  const distIconsDir = resolve(dist, "icons");
+  if (existsSync(distIconsDir)) {
+    rmSync(distIconsDir, { recursive: true, force: true });
+  }
+  cpSync(iconsDir, distIconsDir, { recursive: true });
 }
 
 console.log("✅ Static files copied to dist/");
