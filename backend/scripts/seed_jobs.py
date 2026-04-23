@@ -1,5 +1,5 @@
 """
-插入 3 个针对李凯风背景的 mock JD（AIGC/AI产品方向）
+插入 3 个针对示例候选人背景的 mock JD（AIGC/AI产品方向）
 """
 import hashlib
 import json

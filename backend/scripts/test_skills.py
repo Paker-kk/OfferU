@@ -75,21 +75,21 @@ async def main():
         # ── 1. SkillPipeline 测试 (粘贴文本模式) ──
         print("\n═══ 1. SkillPipeline (ai/analyze-text) ═══")
         RESUME_TEXT = """
-李凯风
-华南师范大学 软件工程 本科 2025届
+示例候选人
+示例大学 软件工程 本科 2025届
 GPA: 3.5/4.0
 实习经历:
-  中国电信广州研发中心 — AI研发工程师 (2024.07 - 2024.12)
-  - 负责 AI 视频生成平台后端开发（FastAPI + PostgreSQL）
-  - 开发 ComfyUI 自动工作流编排模块，视频生成耗时降低 40%
-  - 优化大模型推理服务，日处理请求从 500 提升至 2000
+    示例科技公司 — AI应用研发实习生 (2024.07 - 2024.12)
+    - 负责 AI 内容生成平台后端开发（FastAPI + PostgreSQL）
+    - 开发工作流编排模块，批处理耗时降低 40%
+    - 优化推理服务，日处理请求从 500 提升至 2000
 项目经历:
-  校招助手 OfferU — 全栈开发 (2025.01 - now)
-  - 开发 AI 驱动的校招信息聚合、简历优化、面经分析平台
-  - 技术栈: Next.js 14 + FastAPI + SQLite + Qwen LLM API
-  - 实现 Profile→简历生成→ATS 评分全链路
+    OfferU — 全栈开发 (2025.01 - now)
+    - 开发 AI 驱动的岗位聚合、简历优化、面经分析平台
+    - 技术栈: Next.js 14 + FastAPI + SQLite + Qwen LLM API
+    - 实现 Profile→简历生成→ATS 评分全链路
 技能:
-  Python, TypeScript, FastAPI, Next.js, Docker, Git, ComfyUI
+    Python, TypeScript, FastAPI, Next.js, Docker, Git, 工作流编排
 """
         if jd_text:
             log("INFO", f"使用 JD: {jd_text[:60]}...")
