@@ -1,10 +1,13 @@
 """快速测试 Qwen 工作空间 API 连通性 + 模型名称"""
 import asyncio
+import os
 import httpx
 from openai import AsyncOpenAI
 
 BASE_URL = "https://ws-swr9i9kneudx2ljk.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-API_KEY = "sk-REDACTED"
+API_KEY = os.getenv("QWEN_API_KEY", "")
+if not API_KEY:
+    raise RuntimeError("请先设置环境变量 QWEN_API_KEY")
 
 # 候选模型名称
 MODELS_TO_TEST = [

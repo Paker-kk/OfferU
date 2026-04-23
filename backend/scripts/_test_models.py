@@ -1,10 +1,13 @@
 import requests
 import json
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
 BASE = "https://ws-swr9i9kneudx2ljk.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-KEY = "sk-REDACTED"
+KEY = os.getenv("QWEN_API_KEY", "")
+if not KEY:
+    raise RuntimeError("请先设置环境变量 QWEN_API_KEY")
 headers = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
 
 models = ["qwen-flash", "qwen3.5-flash", "qwen3.5-plus", "qwen3.6-plus"]
