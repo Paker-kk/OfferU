@@ -69,36 +69,36 @@ export function OnboardingChecklist() {
   const steps = [
     {
       key: "apikey",
-      label: "配置 AI 能力",
-      description: "设置 API Key，打开简历优化、分析与问答能力。",
+      label: "配置模型能力",
+      description: "先设置访问密钥，再使用简历优化、分析和问答能力。",
       icon: Key,
       done: apiKeyConfigured,
       action: () => router.push("/settings"),
       actionLabel: "前往设置",
-      panel: "bg-[#F0C020] text-black",
-      iconBox: "bg-white text-black",
+      panel: "bg-[#f3ead2] text-black",
+      iconBox: "bg-[#fdfbf7] text-black",
     },
     {
       key: "resume",
       label: "创建第一份简历",
-      description: "先建立基础档案，后续岗位匹配和优化才有抓手。",
+      description: "先建立基础简历，后续岗位匹配和优化才能更高效。",
       icon: FileText,
       done: resumeCreated,
       action: () => router.push("/resume"),
       actionLabel: "新建简历",
-      panel: "bg-white text-black",
-      iconBox: "bg-[#1040C0] text-white",
+      panel: "bg-[var(--surface)] text-black",
+      iconBox: "bg-[#e4ece6] text-black",
     },
     {
       key: "jobs",
       label: "抓取目标岗位",
-      description: "连接平台并开始同步，让首页和岗位库进入工作状态。",
+      description: "连接平台并开始同步，让岗位库进入可筛选、可推进状态。",
       icon: Briefcase,
       done: jobsScraped,
       action: () => router.push("/scraper"),
       actionLabel: "开始抓取",
-      panel: "bg-[#1040C0] text-white",
-      iconBox: "bg-[#F0C020] text-black",
+      panel: "bg-[#e4ece6] text-black",
+      iconBox: "bg-[#f3ead2] text-black",
     },
   ];
 
@@ -110,33 +110,30 @@ export function OnboardingChecklist() {
     <motion.section
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bauhaus-panel overflow-hidden bg-white"
+      className="bauhaus-panel overflow-hidden bg-[var(--surface)]"
     >
       <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="border-b-2 border-black p-6 lg:border-b-0 lg:border-r-2 md:p-8">
+        <div className="border-b border-black/15 p-6 lg:border-b-0 lg:border-r md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="bauhaus-label text-black/55">Quick Start</p>
-              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] md:text-3xl">
-                Build The System
-              </h2>
+              <p className="bauhaus-label text-black/55">快速开始</p>
+              <h2 className="mt-2 text-2xl font-bold md:text-3xl">完成基础配置</h2>
               <p className="mt-3 max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-                这不是传统意义上的欢迎卡片，而是一条明确的装配线。完成三步后，
-                抓取、简历与分析模块就会进入可用状态。
+                完成这三步后，抓取、简历和分析模块会进入稳定可用状态。
               </p>
             </div>
 
-            <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-center text-white">
-              <p className="bauhaus-label text-white/70">Progress</p>
-              <p className="mt-1 text-2xl font-black tracking-[-0.06em]">
+            <div className="bauhaus-panel-sm bg-[#f7ece9] px-4 py-3 text-center text-black">
+              <p className="bauhaus-label text-black/60">进度</p>
+              <p className="mt-1 text-2xl font-bold">
                 {completedCount}/{steps.length}
               </p>
             </div>
           </div>
 
-          <div className="mt-6 border-2 border-black bg-[#F0F0F0] p-1">
+          <div className="mt-6 border border-black/15 bg-[var(--surface-muted)] p-1">
             <motion.div
-              className="h-4 bg-[#F0C020]"
+              className="h-3.5 bg-[var(--primary-yellow)]"
               animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             />
@@ -148,7 +145,7 @@ export function OnboardingChecklist() {
               onClick={() => onboarding.resetWizard()}
               className="bauhaus-button bauhaus-button-yellow"
             >
-              <RotateCcw size={16} strokeWidth={2.6} />
+              <RotateCcw size={16} strokeWidth={2.2} />
               重新引导
             </button>
             <button
@@ -156,13 +153,13 @@ export function OnboardingChecklist() {
               onClick={() => router.push("/settings")}
               className="bauhaus-button bauhaus-button-outline"
             >
-              <Sparkles size={16} strokeWidth={2.6} />
+              <Sparkles size={16} strokeWidth={2.2} />
               系统配置
             </button>
           </div>
         </div>
 
-        <div className="bg-[#F0F0F0] p-4 text-black md:p-5">
+        <div className="bg-[var(--surface-muted)] p-4 text-black md:p-5">
           <div className="grid gap-4">
             <AnimatePresence initial={false}>
               {pendingSteps.map((step) => {
@@ -180,15 +177,13 @@ export function OnboardingChecklist() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex items-start gap-4">
                         <div
-                          className={`flex h-12 w-12 shrink-0 items-center justify-center border-2 border-black ${step.iconBox}`}
+                          className={`flex h-12 w-12 shrink-0 items-center justify-center border border-black/20 ${step.iconBox}`}
                         >
-                          <Icon size={20} strokeWidth={2.5} />
+                          <Icon size={20} strokeWidth={2.2} />
                         </div>
                         <div>
-                          <p className="bauhaus-label opacity-65">Step</p>
-                          <h3 className="mt-1 text-lg font-black uppercase tracking-[-0.05em]">
-                            {step.label}
-                          </h3>
+                          <p className="bauhaus-label opacity-65">待完成步骤</p>
+                          <h3 className="mt-1 text-lg font-semibold">{step.label}</h3>
                           <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed opacity-80">
                             {step.description}
                           </p>
@@ -198,16 +193,10 @@ export function OnboardingChecklist() {
                       <button
                         type="button"
                         onClick={step.action}
-                        className={`bauhaus-button ${
-                          step.key === "apikey"
-                            ? "bauhaus-button-red"
-                            : step.key === "resume"
-                              ? "bauhaus-button-blue"
-                              : "bauhaus-button-yellow"
-                        } !px-4 !py-2 !text-[11px]`}
+                        className="bauhaus-button bauhaus-button-red !px-4 !py-2 !text-[11px]"
                       >
                         {step.actionLabel}
-                        <ArrowRight size={14} strokeWidth={2.6} />
+                        <ArrowRight size={14} strokeWidth={2.2} />
                       </button>
                     </div>
                   </motion.div>
@@ -220,16 +209,14 @@ export function OnboardingChecklist() {
               .map((step) => (
                 <div
                   key={step.key}
-                  className="bauhaus-panel-sm flex items-center gap-3 bg-white px-4 py-3 text-black/70"
+                  className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface)] px-4 py-3 text-black/70"
                 >
-                  <div className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#F0C020]">
-                    <CheckCircle2 size={18} strokeWidth={2.4} />
+                  <div className="flex h-9 w-9 items-center justify-center border border-black/20 bg-[#f3ead2]">
+                    <CheckCircle2 size={18} strokeWidth={2.2} />
                   </div>
                   <div>
-                    <p className="bauhaus-label text-black/45">Completed</p>
-                    <p className="text-sm font-semibold tracking-[0.04em]">
-                      {step.label}
-                    </p>
+                    <p className="bauhaus-label text-black/45">已完成</p>
+                    <p className="text-sm font-semibold">{step.label}</p>
                   </div>
                 </div>
               ))}
@@ -251,7 +238,7 @@ export function OnboardingTriggerButton() {
       onClick={() => onboarding.resetWizard()}
       className="bauhaus-button bauhaus-button-blue"
     >
-      <Sparkles size={16} strokeWidth={2.6} />
+      <Sparkles size={16} strokeWidth={2.2} />
       快速开始
     </button>
   );

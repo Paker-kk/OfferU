@@ -27,6 +27,9 @@
 from __future__ import annotations
 
 import os
+import time
+import threading
+from pathlib import Path
 
 import re
 import uuid
@@ -38,6 +41,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+import anyio
 from pydantic import BaseModel, Field
 from jinja2 import Template
 from sse_starlette import EventSourceResponse, ServerSentEvent
@@ -46,6 +50,11 @@ from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 
 router = APIRouter()
+
+_EXPORT_IMAGE_CACHE_TTL_SECONDS = 120
+_EXPORT_IMAGE_CACHE_MAX_ENTRIES = 8
+_export_image_cache: dict[tuple[int, str, str], tuple[float, bytes]] = {}
+_export_image_cache_lock = threading.Lock()
 
 
 # =============================================
@@ -501,8 +510,12 @@ async def reorder_sections(
 # =============================================
 
 # 头像存储目录（后端本地），生产环境可替换为云存储
+BACKEND_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+)
+
 UPLOAD_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    BACKEND_DIR,
     "uploads", "photos",
 )
 
@@ -565,124 +578,322 @@ async def upload_photo(
 #   5. StreamingResponse 返回二进制流
 # =============================================
 
-# 默认 HTML 模板：简洁白底 A4 简历
-# 使用 CSS 变量实现样式可调，前端预览和 PDF 导出共用同一套变量
+# 默认 HTML 模板：双栏专业简历（左侧深色栏 + 右侧主内容）
+# 使用 CSS 变量实现样式可调，并与前端预览视觉保持一致
 DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  :root {
-    --primary-color: {{ primary_color }};
-    --accent-color: {{ accent_color }};
-    --body-size: {{ body_size }};
-    --heading-size: {{ heading_size }};
-    --line-height: {{ line_height }};
-    --page-margin: {{ page_margin }};
-    --section-gap: {{ section_gap }};
-    --font-family: {{ font_family }};
-  }
-  @page { size: A4; margin: var(--page-margin); }
-  body {
-    font-family: var(--font-family);
-    font-size: var(--body-size);
-    line-height: var(--line-height);
-    color: #222;
-    margin: 0;
-    padding: 0;
-  }
-  .header { text-align: center; margin-bottom: var(--section-gap); }
-  .header h1 { font-size: 22pt; margin: 0 0 4pt; color: var(--primary-color); }
-  .header .contact { margin: 2pt 0; color: #555; font-size: 9pt; }
-  .header .summary { margin-top: 6pt; font-size: 9.5pt; color: #444; font-style: italic; }
-  .photo-wrap { text-align: center; margin-bottom: 8pt; }
-  .photo-wrap img { width: 80px; height: 80px; border-radius: 50%%; object-fit: cover; }
-  h2 {
-    font-size: var(--heading-size);
-    border-bottom: 1.5px solid var(--primary-color);
-    padding-bottom: 3pt;
-    margin: var(--section-gap) 0 6pt;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--primary-color);
-  }
-  .entry { margin-bottom: 8pt; }
-  .entry-title { font-weight: bold; }
-  .entry-meta { color: #666; font-size: 9pt; }
-  .entry-desc { margin-top: 2pt; }
-  .entry-desc ul { padding-left: 16pt; margin: 2pt 0; }
-  .entry-desc li { margin-bottom: 2pt; }
-  .skills-list { display: flex; flex-wrap: wrap; gap: 6pt; }
-  .skill-tag { background: #f0f0f0; padding: 2pt 8pt; border-radius: 3pt; font-size: 9pt; }
-  .skill-category { font-weight: bold; font-size: 9.5pt; margin-bottom: 3pt; }
+    :root {
+        --primary-color: {{ primary_color }};
+        --accent-color: {{ accent_color }};
+        --body-size: {{ body_size }};
+        --heading-size: {{ heading_size }};
+        --line-height: {{ line_height }};
+        --page-margin: {{ page_margin }};
+        --section-gap: {{ section_gap }};
+        --font-family: {{ font_family }};
+    }
+
+    @page {
+        size: A4;
+        margin: 0;
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        width: 100%%;
+        height: 100%%;
+        background: #ffffff;
+    }
+
+    body {
+        font-family: var(--font-family);
+        font-size: var(--body-size);
+        line-height: var(--line-height);
+        color: #1f1f1f;
+        background: #ffffff;
+    }
+
+    .page {
+        width: 100%%;
+        min-height: 297mm;
+        display: flex;
+    }
+
+    .sidebar {
+        width: 32%%;
+        flex-shrink: 0;
+        background: var(--primary-color);
+        color: #ffffff;
+        padding: 22pt 16pt;
+        box-sizing: border-box;
+        min-height: 297mm;
+    }
+
+    .photo-wrap {
+        text-align: center;
+        margin-top: 2pt;
+    }
+
+    .photo-wrap img {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%%;
+        object-fit: cover;
+        border: 2px solid rgba(255, 255, 255, 0.28);
+    }
+
+    .photo-fallback {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%%;
+        border: 2px dashed rgba(255, 255, 255, 0.28);
+        color: rgba(255, 255, 255, 0.35);
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 500;
+    }
+
+    .name {
+        margin-top: 8pt;
+        text-align: center;
+        font-size: 16pt;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+
+    .sidebar-title {
+        margin-top: 14pt;
+        margin-bottom: 5pt;
+        padding-bottom: 3pt;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        font-size: max(8pt, calc(var(--heading-size) - 1pt));
+        letter-spacing: 1px;
+        font-weight: 700;
+    }
+
+    .contact-line {
+        font-size: max(7pt, calc(var(--body-size) - 1.2pt));
+        line-height: 1.55;
+        opacity: 0.95;
+        word-break: break-all;
+        margin-bottom: 3pt;
+    }
+
+    .skill-group {
+        margin-bottom: 5pt;
+    }
+
+    .skill-category {
+        font-size: max(7pt, calc(var(--body-size) - 0.8pt));
+        font-weight: 700;
+        margin-bottom: 3pt;
+        opacity: 0.9;
+    }
+
+    .skills-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3pt;
+    }
+
+    .skill-tag {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.14);
+        color: rgba(255, 255, 255, 0.9);
+        border-radius: 3pt;
+        padding: 1pt 6pt;
+        font-size: max(6.5pt, calc(var(--body-size) - 2pt));
+    }
+
+    .main {
+        flex: 1;
+        background: #ffffff;
+        color: #222;
+        padding: 22pt 24pt;
+        box-sizing: border-box;
+        min-height: 297mm;
+    }
+
+    .section {
+        margin-bottom: 11pt;
+    }
+
+    .section-title {
+        margin: 0 0 5pt;
+        padding-bottom: 2pt;
+        border-bottom: 1.5px solid #333;
+        font-size: var(--heading-size);
+        font-weight: 700;
+        color: #111;
+        letter-spacing: 0.6px;
+    }
+
+    .summary {
+        color: #4b4b4b;
+        font-style: italic;
+        font-size: max(8pt, calc(var(--body-size) - 0.3pt));
+    }
+
+    .entry {
+        margin-bottom: 7pt;
+    }
+
+    .entry-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8pt;
+        align-items: baseline;
+    }
+
+    .entry-title {
+        font-weight: 700;
+        color: #1e1e1e;
+    }
+
+    .entry-meta {
+        flex-shrink: 0;
+        color: #6f6f6f;
+        font-size: max(7pt, calc(var(--body-size) - 1.3pt));
+    }
+
+    .entry-sub {
+        margin-top: 1pt;
+        color: #5f5f5f;
+        font-size: max(7.5pt, calc(var(--body-size) - 0.7pt));
+    }
+
+    .entry-desc {
+        margin-top: 2pt;
+        color: #333;
+    }
+
+    .entry-desc ul {
+        padding-left: 15pt;
+        margin: 2pt 0;
+    }
+
+    .entry-desc li {
+        margin-bottom: 2pt;
+    }
 </style>
 </head>
 <body>
-  <div class="header">
-    {% if photo_url %}<div class="photo-wrap"><img src="{{ photo_url }}" /></div>{% endif %}
-    <h1>{{ name }}</h1>
-    <p class="contact">{{ contact_line }}</p>
-    {% if summary %}<div class="summary">{{ summary }}</div>{% endif %}
-  </div>
+    {% set skill_sections = sections | selectattr("visible") | selectattr("section_type", "equalto", "skill") | list %}
+    {% set main_sections = sections | selectattr("visible") | rejectattr("section_type", "equalto", "skill") | list %}
 
-  {% for section in sections %}
-  {% if section.visible %}
-  <h2>{{ section.title }}</h2>
+    <div class="page">
+        <aside class="sidebar">
+            <div class="photo-wrap">
+                {% if photo_url %}
+                    <img src="{{ photo_url }}" />
+                {% else %}
+                    <div class="photo-fallback">?</div>
+                {% endif %}
+            </div>
+            <div class="name">{{ name }}</div>
 
-  {% if section.section_type == "education" %}
-    {% for item in section.content_json %}
-    <div class="entry">
-      <div class="entry-title">{{ item.school }}{% if item.degree %} — {{ item.degree }}{% endif %}{% if item.major %}, {{ item.major }}{% endif %}</div>
-      <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} ~ {{ item.endDate }}{% endif %}{% if item.gpa %} | GPA: {{ item.gpa }}{% endif %}</div>
-      {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+            {% if contact_line %}
+                <div class="sidebar-title">联系方式</div>
+                {% for c in contact_line.split(" · ") %}
+                    {% if c.strip() %}
+                        <div class="contact-line">{{ c }}</div>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+
+            {% for sec in skill_sections %}
+                <div class="sidebar-title">{{ sec.title }}</div>
+                {% for group in sec.content_json %}
+                    <div class="skill-group">
+                        {% if group.category %}<div class="skill-category">{{ group.category }}</div>{% endif %}
+                        <div class="skills-list">
+                            {% for s in group.items %}
+                                <span class="skill-tag">{{ s }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        </aside>
+
+        <main class="main">
+            {% if summary %}
+                <section class="section">
+                    <h2 class="section-title">职业概述</h2>
+                    <div class="summary">{{ summary }}</div>
+                </section>
+            {% endif %}
+
+            {% for section in main_sections %}
+            <section class="section">
+                <h2 class="section-title">{{ section.title }}</h2>
+
+                {% if section.section_type == "education" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-head">
+                            <div class="entry-title">{{ item.school }}{% if item.degree %} — {{ item.degree }}{% endif %}{% if item.major %}, {{ item.major }}{% endif %}</div>
+                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        </div>
+                        <div class="entry-sub">{% if item.gpa %}GPA: {{ item.gpa }}{% endif %}</div>
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "experience" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-head">
+                            <div class="entry-title">{{ item.position }}{% if item.company %} @ {{ item.company }}{% endif %}</div>
+                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        </div>
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "project" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-head">
+                            <div class="entry-title">{{ item.name }}{% if item.role %} — {{ item.role }}{% endif %}</div>
+                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        </div>
+                        {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "certificate" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-head">
+                            <div class="entry-title">{{ item.name }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</div>
+                            <div class="entry-meta">{{ item.date }}</div>
+                        </div>
+                        {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% else %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        {% if item.subtitle %}<div class="entry-title">{{ item.subtitle }}</div>{% endif %}
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </section>
+            {% endfor %}
+        </main>
     </div>
-    {% endfor %}
-
-  {% elif section.section_type == "experience" %}
-    {% for item in section.content_json %}
-    <div class="entry">
-      <div class="entry-title">{{ item.position }} @ {{ item.company }}</div>
-      <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} ~ {{ item.endDate }}{% endif %}</div>
-      {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-    </div>
-    {% endfor %}
-
-  {% elif section.section_type == "skill" %}
-    {% for group in section.content_json %}
-    {% if group.category %}<div class="skill-category">{{ group.category }}</div>{% endif %}
-    <div class="skills-list">
-      {% for s in group.items %}<span class="skill-tag">{{ s }}</span>{% endfor %}
-    </div>
-    {% endfor %}
-
-  {% elif section.section_type == "project" %}
-    {% for item in section.content_json %}
-    <div class="entry">
-      <div class="entry-title">{{ item.name }}{% if item.role %} — {{ item.role }}{% endif %}</div>
-      <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} ~ {{ item.endDate }}{% endif %}{% if item.url %} | <a href="{{ item.url }}">链接</a>{% endif %}</div>
-      {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-    </div>
-    {% endfor %}
-
-  {% elif section.section_type == "certificate" %}
-    {% for item in section.content_json %}
-    <div class="entry">
-      <div class="entry-title">{{ item.name }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</div>
-      <div class="entry-meta">{{ item.date }}{% if item.url %} | <a href="{{ item.url }}">查看</a>{% endif %}</div>
-    </div>
-    {% endfor %}
-
-  {% else %}
-    {% for item in section.content_json %}
-    <div class="entry">
-      {% if item.subtitle %}<div class="entry-title">{{ item.subtitle }}</div>{% endif %}
-      {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-    </div>
-    {% endfor %}
-  {% endif %}
-
-  {% endif %}
-  {% endfor %}
 </body>
 </html>
 """)
@@ -700,21 +911,50 @@ DEFAULT_STYLE = {
 }
 
 
-@router.post("/{resume_id}/export/pdf")
-async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
+def _resolve_photo_url_for_render(photo_url: str) -> str:
     """
-    导出简历为 PDF
-    ─────────────────────────────────────────────
-    1. 读取简历 + 段落 + 模板
-    2. 合并样式优先级：DEFAULT_STYLE → 模板 css_variables → 用户 style_config
-    3. Jinja2 渲染 HTML
-    4. WeasyPrint 转 PDF
-    5. StreamingResponse 返回
+    将 /uploads/... 相对路径转换为本地 file:// URI，方便 WeasyPrint 读取头像。
     """
-    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
+    if not photo_url:
+        return ""
 
-    # 合并样式优先级：默认 < 模板 < 用户覆盖
+    if photo_url.startswith("/uploads/"):
+        local_path = os.path.join(BACKEND_DIR, photo_url.lstrip("/"))
+        if os.path.exists(local_path):
+            return Path(local_path).as_uri()
+
+    return photo_url
+
+
+def _build_contact_line(contact_json: Optional[dict]) -> str:
+    c = contact_json or {}
+    contact_parts = [
+        c.get("phone", ""),
+        c.get("email", ""),
+        c.get("linkedin", ""),
+        c.get("website", ""),
+    ]
+    return " · ".join(str(p).strip() for p in contact_parts if str(p).strip())
+
+
+def _serialize_export_sections(resume: Resume) -> list[dict]:
+    return [
+        {
+            "title": s.title,
+            "section_type": s.section_type,
+            "visible": s.visible,
+            "content_json": s.content_json or [],
+        }
+        for s in resume.sections
+    ]
+
+
+async def _resolve_export_style(resume: Resume, db: AsyncSession) -> dict:
+    """
+    合并样式优先级：默认 < 模板 < 用户覆盖。
+    """
     style = {**DEFAULT_STYLE}
+
     if resume.template_id:
         tpl_result = await db.execute(
             select(ResumeTemplate).where(ResumeTemplate.id == resume.template_id)
@@ -722,32 +962,22 @@ async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
         tpl = tpl_result.scalar_one_or_none()
         if tpl and tpl.css_variables:
             style.update(tpl.css_variables)
+
     if resume.style_config:
         style.update(resume.style_config)
 
-    # 构建联系方式行
-    c = resume.contact_json or {}
-    contact_parts = [
-        c.get("phone", ""), c.get("email", ""),
-        c.get("linkedin", ""), c.get("website", ""),
-    ]
-    contact_line = " · ".join(p for p in contact_parts if p)
+    return style
 
-    # 渲染 HTML
-    html_str = DEFAULT_HTML_TEMPLATE.render(
+
+async def _render_resume_html_for_export(resume: Resume, db: AsyncSession) -> str:
+    style = await _resolve_export_style(resume, db)
+
+    return DEFAULT_HTML_TEMPLATE.render(
         name=resume.user_name,
-        photo_url=resume.photo_url or "",
-        contact_line=contact_line,
+        photo_url=_resolve_photo_url_for_render(resume.photo_url or ""),
+        contact_line=_build_contact_line(resume.contact_json),
         summary=resume.summary or "",
-        sections=[
-            {
-                "title": s.title,
-                "section_type": s.section_type,
-                "visible": s.visible,
-                "content_json": s.content_json or [],
-            }
-            for s in resume.sections
-        ],
+        sections=_serialize_export_sections(resume),
         primary_color=style.get("primaryColor", "#222"),
         accent_color=style.get("accentColor", "#666"),
         body_size=style.get("bodySize", "10pt"),
@@ -758,18 +988,173 @@ async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
         font_family=style.get("fontFamily", "sans-serif"),
     )
 
+
+def _render_resume_png_from_pdf(pdf_bytes: bytes, scale: float) -> bytes:
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PyMuPDF not installed")
+
+    safe_scale = _normalize_export_image_scale(scale)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        if doc.page_count < 1:
+            raise HTTPException(status_code=500, detail="Empty resume page")
+
+        matrix = fitz.Matrix(safe_scale, safe_scale)
+        pixmaps: list[Any] = [
+            page.get_pixmap(matrix=matrix, alpha=False)
+            for page in doc
+        ]
+
+        if len(pixmaps) == 1:
+            return pixmaps[0].tobytes("png")
+
+        max_width = max(pix.width for pix in pixmaps)
+        total_height = sum(pix.height for pix in pixmaps)
+
+        merged = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, max_width, total_height), False)
+        merged.set_rect(merged.irect, (255, 255, 255))
+
+        offset_y = 0
+        for pix in pixmaps:
+            offset_x = max(0, (max_width - pix.width) // 2)
+            pix.set_origin(offset_x, offset_y)
+            merged.copy(pix, pix.irect)
+            offset_y += pix.height
+
+        return merged.tobytes("png")
+    finally:
+        doc.close()
+
+
+def _normalize_export_image_scale(scale: float) -> float:
+    return max(1.0, min(scale, 2.2))
+
+
+def _render_resume_pdf_bytes(html_str: str) -> bytes:
     try:
         from weasyprint import HTML
-    except ImportError:
-        raise HTTPException(status_code=500, detail="WeasyPrint not installed")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"WeasyPrint unavailable: {exc}")
 
-    pdf_bytes = HTML(string=html_str).write_pdf()
+    try:
+        return HTML(string=html_str).write_pdf()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to render PDF: {exc}")
+
+
+def _build_export_image_cache_key(resume: Resume, scale: float) -> tuple[int, str, str]:
+    return (resume.id, str(resume.updated_at or ""), f"{scale:.2f}")
+
+
+def _get_cached_export_image(cache_key: tuple[int, str, str]) -> bytes | None:
+    now = time.monotonic()
+    with _export_image_cache_lock:
+        cached = _export_image_cache.get(cache_key)
+        if not cached:
+            return None
+
+        expires_at, png_bytes = cached
+        if expires_at <= now:
+            _export_image_cache.pop(cache_key, None)
+            return None
+
+        return png_bytes
+
+
+def _set_cached_export_image(cache_key: tuple[int, str, str], png_bytes: bytes) -> None:
+    now = time.monotonic()
+    with _export_image_cache_lock:
+        _export_image_cache[cache_key] = (now + _EXPORT_IMAGE_CACHE_TTL_SECONDS, png_bytes)
+
+        expired_keys = [
+            key
+            for key, (expires_at, _) in _export_image_cache.items()
+            if expires_at <= now
+        ]
+        for key in expired_keys:
+            _export_image_cache.pop(key, None)
+
+        overflow = len(_export_image_cache) - _EXPORT_IMAGE_CACHE_MAX_ENTRIES
+        if overflow > 0:
+            oldest_keys = sorted(_export_image_cache.items(), key=lambda item: item[1][0])[:overflow]
+            for key, _ in oldest_keys:
+                _export_image_cache.pop(key, None)
+
+
+@router.post("/{resume_id}/export/pdf")
+async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    导出简历为 PDF
+    ─────────────────────────────────────────────
+    1. 读取简历 + 段落 + 模板
+    2. 使用统一 HTML 渲染逻辑（与图片导出共用）
+    3. WeasyPrint 转 PDF
+    4. StreamingResponse 返回
+    """
+    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
+    html_str = await _render_resume_html_for_export(resume, db)
+    pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
 
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="resume_{resume_id}.pdf"',
+        },
+    )
+
+
+@router.get("/{resume_id}/export/image")
+@router.post("/{resume_id}/export/image")
+async def export_image(
+    resume_id: int,
+    db: AsyncSession = Depends(get_db),
+    scale: float = 1.2,
+):
+    """
+    导出完整简历为 PNG 图片
+    ─────────────────────────────────────────────
+    1. 复用与 PDF 相同的 HTML 模板渲染
+    2. WeasyPrint 先生成 PDF（二进制）
+    3. PyMuPDF 将所有页光栅化并纵向拼接成单张 PNG
+    """
+    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
+    html_str = await _render_resume_html_for_export(resume, db)
+    safe_scale = _normalize_export_image_scale(scale)
+    cache_key = _build_export_image_cache_key(resume, safe_scale)
+    cached_png = _get_cached_export_image(cache_key)
+
+    if cached_png is not None:
+        return StreamingResponse(
+            BytesIO(cached_png),
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f'inline; filename="resume_{resume_id}.png"',
+                "Cache-Control": "private, max-age=120",
+                "X-OfferU-Export-Cache": "hit",
+            },
+        )
+
+    pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
+
+    try:
+        png_bytes = await anyio.to_thread.run_sync(_render_resume_png_from_pdf, pdf_bytes, safe_scale)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to render image: {exc}")
+
+    _set_cached_export_image(cache_key, png_bytes)
+
+    return StreamingResponse(
+        BytesIO(png_bytes),
+        media_type="image/png",
+        headers={
+            "Content-Disposition": f'inline; filename="resume_{resume_id}.png"',
+            "Cache-Control": "private, max-age=120",
+            "X-OfferU-Export-Cache": "miss",
         },
     )
 

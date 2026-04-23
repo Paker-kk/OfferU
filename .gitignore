@@ -45,12 +45,12 @@ npm-debug.log*
 coverage/
 .pytest_cache/
 
-# ---- 本地敏感讨论文档 ----
-docs/产品分歧分析_*.md
-
 # ---- Trae 本地元数据 ----
 .trae/
 .Trae/
 
 # ---- 本地参考仓库（不入库） ----
 references/
+
+# ---- 隐私文档（不入库） ----
+docs/
