@@ -48,6 +48,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
+from app.services.application_workspace import auto_write_job_to_total
 
 router = APIRouter()
 
@@ -1809,6 +1810,15 @@ async def ai_batch_optimize(
 
                 entry["status"] = "success"
                 await db.commit()
+                try:
+                    await auto_write_job_to_total(db, job_id=job_id)
+                except Exception as auto_write_error:
+                    logger.warning("auto write failed for job %s: %s", job_id, auto_write_error)
+                    entry["error"] = (
+                        f"{entry['error']}; 自动写入投递总表失败"
+                        if entry["error"]
+                        else "自动写入投递总表失败"
+                    )
 
             except Exception as e:
                 logger.error(f"批量优化岗位 {job_id} 失败: {e}")
