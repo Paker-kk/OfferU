@@ -54,3 +54,6 @@ references/
 
 # ---- 隐私文档（不入库） ----
 docs/
+
+# ---- 缓存文件（不入库） ----
+frontend/tsconfig.tsbuildinfo

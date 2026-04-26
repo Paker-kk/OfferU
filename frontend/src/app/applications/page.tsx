@@ -1,381 +1,1717 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  Card,
-  CardBody,
+  Checkbox,
   Chip,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+  Input,
   Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
   ModalHeader,
-  Pagination,
-  Tab,
-  Tabs,
+  Select,
+  SelectItem,
+  Switch,
   Textarea,
-  useDisclosure,
+  Tooltip,
 } from "@nextui-org/react";
 import {
-  Building2,
-  CheckCircle,
-  Clock,
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  CopyPlus,
   ExternalLink,
-  FileText,
-  MessageSquare,
-  Send,
-  Sparkles,
-  XCircle,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Table2,
+  Trash2,
+  X,
 } from "lucide-react";
 import {
-  generateCoverLetter,
-  updateApplication,
-  useApplications,
-  useApplicationStats,
+  type ApplicationFieldSchema,
+  type ApplicationTableRecordItem,
+  createApplicationRecord,
+  createApplicationTable,
+  deleteApplicationRecords,
+  deleteApplicationTable,
+  importJobsToApplicationTable,
+  moveApplicationRecords,
+  renameApplicationTable,
+  updateApplicationRecordCell,
+  updateApplicationTableSchema,
+  updateApplicationTemplate,
+  updateApplicationWorkspaceSettings,
+  useApplicationTableRecords,
+  useApplicationWorkspace,
+  useJobs,
 } from "@/lib/hooks";
-import {
-  bauhausFieldClassNames,
-  bauhausModalContentClassName,
-  bauhausTabsClassNames,
-} from "@/lib/bauhaus";
 
-const statusConfig: Record<
-  string,
-  {
-    label: string;
-    chipClass: string;
-    panelClass: string;
+type EditingCell = {
+  recordId: number;
+  fieldKey: string;
+};
+
+type OperationFeedback = {
+  tone: "success" | "warning" | "error";
+  message: string;
+};
+
+type AddTemplateFieldDraft = {
+  label: string;
+  type: ApplicationFieldSchema["type"];
+  options: string;
+  width: number;
+  visible: boolean;
+};
+
+type InlineCellEditorProps = {
+  field: ApplicationFieldSchema;
+  initialValue: unknown;
+  onCommit: (value: unknown) => Promise<void>;
+  onClose: () => void;
+  onFirstEditHint: () => void;
+};
+
+const CHECKBOX_COL_WIDTH = 48;
+
+const FIELD_TYPE_OPTIONS: Array<{ value: ApplicationFieldSchema["type"]; label: string }> = [
+  { value: "text", label: "文本" },
+  { value: "long_text", label: "长文本" },
+  { value: "single_select", label: "单选" },
+  { value: "multi_select", label: "多选" },
+  { value: "date", label: "日期" },
+  { value: "datetime", label: "日期时间" },
+  { value: "number", label: "数字" },
+  { value: "boolean", label: "是否" },
+  { value: "link", label: "链接" },
+];
+
+const SOURCE_LABEL_MAP: Record<string, string> = {
+  shixiseng: "实习僧",
+  zhaopin: "智联招聘",
+  zhilian: "智联招聘",
+  boss: "BOSS直聘",
+  liepin: "猎聘",
+  maimai: "脉脉",
+  linkedin: "LinkedIn",
+  manual: "手动",
+  corporate: "企业官网",
+};
+
+function cloneSchema(schema: ApplicationFieldSchema[]): ApplicationFieldSchema[] {
+  return JSON.parse(JSON.stringify(schema)) as ApplicationFieldSchema[];
+}
+
+function nextFieldKey(existing: ApplicationFieldSchema[]): string {
+  const base = "custom_field_";
+  let index = 1;
+  const keys = new Set(existing.map((item) => item.field_key));
+  while (keys.has(`${base}${index}`)) {
+    index += 1;
   }
-> = {
-  pending: {
-    label: "待投递",
-    chipClass: "border-2 border-black bg-white text-black font-semibold",
-    panelClass: "bg-white text-black",
-  },
-  submitted: {
-    label: "已投递",
-    chipClass: "border-2 border-black bg-[#1040C0] text-white font-semibold",
-    panelClass: "bg-[#1040C0] text-white",
-  },
-  rejected: {
-    label: "已拒绝",
-    chipClass: "border-2 border-black bg-[#D02020] text-white font-semibold",
-    panelClass: "bg-[#D02020] text-white",
-  },
-  interview: {
-    label: "面试中",
-    chipClass: "border-2 border-black bg-[#F0C020] text-black font-semibold",
-    panelClass: "bg-[#F0C020] text-black",
-  },
-  offer: {
-    label: "已录用",
-    chipClass: "border-2 border-black bg-black text-white font-semibold",
-    panelClass: "bg-black text-white",
-  },
-};
+  return `${base}${index}`;
+}
 
-const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
-};
+function formatDateOnly(value: string): string {
+  const direct = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (direct) return direct[1];
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+}
 
-const item = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.24, ease: "easeOut" } },
-};
+function formatLinkDisplayLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return "閾炬帴";
+  return trimmed.includes("閾炬帴") ? trimmed : `${trimmed}閾炬帴`;
+}
 
-export default function ApplicationsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const { data: appsData, mutate } = useApplications(
-    page,
-    statusFilter === "all" ? undefined : statusFilter
-  );
-  const { data: stats } = useApplicationStats();
+function formatValue(value: unknown, type: string, fieldKey?: string): string {
+  if (type === "boolean") {
+    return value ? "是" : "否";
+  }
+  if (Array.isArray(value)) {
+    return value.join(" / ");
+  }
+  if (value == null) {
+    return "";
+  }
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (fieldKey === "source") {
+    return SOURCE_LABEL_MAP[raw.toLowerCase()] ?? raw;
+  }
+  if (fieldKey === "updated_at" || type === "date" || type === "datetime") {
+    return formatDateOnly(raw);
+  }
+  return raw;
+}
 
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [selectedApp, setSelectedApp] = useState<any>(null);
-  const [coverLetter, setCoverLetter] = useState("");
-  const [generating, setGenerating] = useState(false);
+function InlineCellEditor({
+  field,
+  initialValue,
+  onCommit,
+  onClose,
+  onFirstEditHint,
+}: InlineCellEditorProps) {
+  const [draft, setDraft] = useState<unknown>(initialValue);
+  const savingRef = useRef(false);
 
-  const openCoverLetter = (app: any) => {
-    setSelectedApp(app);
-    setCoverLetter(app.cover_letter || "");
-    onOpen();
+  useEffect(() => {
+    onFirstEditHint();
+  }, [onFirstEditHint]);
+
+  const commitAndClose = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await onCommit(draft);
+    } finally {
+      onClose();
+      savingRef.current = false;
+    }
   };
 
-  const handleGenerate = async () => {
-    if (!selectedApp) return;
-    setGenerating(true);
-    const result = await generateCoverLetter(selectedApp.job_id, 1);
-    if (result.cover_letter) setCoverLetter(result.cover_letter);
-    setGenerating(false);
-  };
+  if (field.type === "long_text") {
+    return (
+      <Textarea
+        autoFocus
+        minRows={2}
+        value={String(draft ?? "")}
+        onValueChange={setDraft}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            void commitAndClose();
+          }
+        }}
+        onBlur={() => void commitAndClose()}
+        classNames={{
+          inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none",
+        }}
+      />
+    );
+  }
 
-  const handleSaveCoverLetter = async () => {
-    if (!selectedApp) return;
-    await updateApplication(selectedApp.id, { cover_letter: coverLetter });
-    onClose();
-    mutate();
-  };
+  if (field.type === "boolean") {
+    return (
+      <div
+        className="inline-flex"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            void commitAndClose();
+          }
+        }}
+        onBlur={() => void commitAndClose()}
+      >
+        <Switch
+          isSelected={Boolean(draft)}
+          onValueChange={(next) => setDraft(next)}
+        />
+      </div>
+    );
+  }
 
-  const handleStatusChange = async (appId: number, newStatus: string) => {
-    await updateApplication(appId, { status: newStatus });
-    mutate();
-  };
-
-  const totalPages = appsData ? Math.ceil(appsData.total / appsData.page_size) : 1;
-
-  const statBlocks = [
-    { key: "pending", label: "待投递", count: stats?.pending ?? 0, surface: "bg-white text-black" },
-    { key: "submitted", label: "已投递", count: stats?.submitted ?? 0, surface: "bg-[#1040C0] text-white" },
-    { key: "interview", label: "面试中", count: stats?.interview ?? 0, surface: "bg-[#F0C020] text-black" },
-    { key: "offer", label: "已录用", count: stats?.offer ?? 0, surface: "bg-[#D02020] text-white" },
-  ];
+  if (field.type === "single_select") {
+    return (
+      <Select
+        autoFocus
+        className="min-w-[220px]"
+        selectedKeys={draft ? [String(draft)] : []}
+        onSelectionChange={(keys) => {
+          const first = Array.from(keys).at(0);
+          setDraft(first ? String(first) : "");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            void commitAndClose();
+          }
+        }}
+        onBlur={() => void commitAndClose()}
+        classNames={{
+          trigger: "rounded-none border border-[var(--border)] bg-white shadow-none h-10",
+        }}
+      >
+        {field.options.map((option) => (
+          <SelectItem key={option}>{option}</SelectItem>
+        ))}
+      </Select>
+    );
+  }
 
   return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="space-y-8"
-    >
-      <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Application Grid</span>
-            <div>
-              <p className="bauhaus-label text-black/55">Pipeline Monitor</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Track
-                <br />
-                Follow
-                <br />
-                Close
-              </h1>
-              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
-                把待投递、面试推进和 Offer 收口放在同一张工作面板里，方便我们快速判断当前漏斗卡在哪一步，
-                以及哪些岗位需要补求职信或后续动作。
-              </p>
+    <Input
+      autoFocus
+      value={String(Array.isArray(draft) ? draft.join(", ") : draft ?? "")}
+      type={
+        field.type === "number"
+          ? "number"
+          : field.type === "date"
+          ? "date"
+          : field.type === "datetime"
+          ? "datetime-local"
+          : "text"
+      }
+      onValueChange={(next) => {
+        if (field.type === "multi_select") {
+          setDraft(
+            next
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          );
+          return;
+        }
+        setDraft(next);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          void commitAndClose();
+        }
+        if (event.key === "Enter" && field.type !== "long_text") {
+          event.preventDefault();
+        }
+      }}
+      onBlur={() => void commitAndClose()}
+      classNames={{
+        inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-10",
+        input: "text-sm",
+      }}
+    />
+  );
+}
+
+export default function ApplicationsPage() {
+  const { data: workspace, mutate: mutateWorkspace } = useApplicationWorkspace();
+  const [currentTableId, setCurrentTableId] = useState<number | null>(null);
+  const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const [tableModalOpen, setTableModalOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [tableActionLoading, setTableActionLoading] = useState(false);
+  const [editingTableId, setEditingTableId] = useState<number | null>(null);
+  const [editingTableName, setEditingTableName] = useState("");
+  const [tableDeleteTarget, setTableDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importKeyword, setImportKeyword] = useState("");
+  const [importSelected, setImportSelected] = useState<Set<number>>(new Set());
+  const [importTargetTableId, setImportTargetTableId] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [templateDraft, setTemplateDraft] = useState<ApplicationFieldSchema[]>([]);
+  const [settingsDraft, setSettingsDraft] = useState({
+    auto_row_height: true,
+    auto_column_width: true,
+    delete_subtable_sync_total_default: false,
+  });
+  const [purgeNonTemplateFields, setPurgeNonTemplateFields] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [templateFieldModalOpen, setTemplateFieldModalOpen] = useState(false);
+  const [templateFieldDraft, setTemplateFieldDraft] = useState<AddTemplateFieldDraft>({
+    label: "",
+    type: "text",
+    options: "",
+    width: 180,
+    visible: true,
+  });
+  const [templateDeleteTargetIndex, setTemplateDeleteTargetIndex] = useState<number | null>(null);
+
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editHintToastVisible, setEditHintToastVisible] = useState(false);
+  const [hasShownEditHint, setHasShownEditHint] = useState(false);
+  const [cellSaving, setCellSaving] = useState(false);
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteFromTotal, setDeleteFromTotal] = useState(false);
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveDialogTargetTableId, setMoveDialogTargetTableId] = useState<number | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 220);
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
+
+  useEffect(() => {
+    if (!workspace) return;
+    const hasCurrent = workspace.tables.some((table) => table.id === currentTableId);
+    if (currentTableId == null || !hasCurrent) {
+      setCurrentTableId(workspace.current_table_id);
+    }
+    setSettingsDraft({
+      auto_row_height: workspace.settings.auto_row_height,
+      auto_column_width: workspace.settings.auto_column_width,
+      delete_subtable_sync_total_default: workspace.settings.delete_subtable_sync_total_default,
+    });
+    setTemplateDraft(cloneSchema(workspace.template_schema));
+    if (importTargetTableId == null) {
+      setImportTargetTableId(workspace.current_table_id);
+    }
+  }, [workspace, currentTableId, importTargetTableId]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setEditingCell(null);
+    setMoveDialogTargetTableId(null);
+  }, [currentTableId, debouncedKeyword]);
+
+  useEffect(() => {
+    if (!operationFeedback || operationFeedback.tone === "error") return;
+    const timer = window.setTimeout(() => setOperationFeedback(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [operationFeedback]);
+
+  useEffect(() => {
+    if (!editHintToastVisible) return;
+    const timer = window.setTimeout(() => setEditHintToastVisible(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [editHintToastVisible]);
+
+  const { data: tablePayload, mutate: mutateRecords } = useApplicationTableRecords(
+    currentTableId,
+    debouncedKeyword
+  );
+  const { data: importJobs } = useJobs({
+    page: 1,
+    page_size: 40,
+    keyword: importKeyword.trim() || undefined,
+  });
+
+  const tables = workspace?.tables ?? [];
+  const currentTable = tablePayload?.table ?? tables.find((item) => item.id === currentTableId) ?? null;
+  const records = tablePayload?.records ?? [];
+  const visibleFields = useMemo(
+    () => (currentTable?.schema ?? []).filter((field) => field.visible),
+    [currentTable]
+  );
+  const allChecked = records.length > 0 && selectedIds.size === records.length;
+  const hasSelection = selectedIds.size > 0;
+  const currentTableIsTotal = !!currentTable?.is_total;
+  const templateDeleteTarget =
+    templateDeleteTargetIndex != null ? templateDraft[templateDeleteTargetIndex] ?? null : null;
+  const targetMoveTables = useMemo(
+    () => tables.filter((table) => table.id !== currentTableId),
+    [tables, currentTableId]
+  );
+  const fieldWidthMap = useMemo(() => {
+    const pairs = visibleFields.map((field) => [field.field_key, Math.max(120, field.width)] as const);
+    return new Map<string, number>(pairs);
+  }, [visibleFields]);
+  const companyColWidth = fieldWidthMap.get("company_name") ?? 0;
+  const stickyFieldLeftMap = useMemo(
+    () =>
+      new Map<string, number>([
+        ["company_name", CHECKBOX_COL_WIDTH],
+        ["job_title", CHECKBOX_COL_WIDTH + companyColWidth],
+      ]),
+    [companyColWidth]
+  );
+  const tableMinWidth = useMemo(() => {
+    const fieldsWidth = visibleFields.reduce((sum, field) => sum + Math.max(120, field.width), 0);
+    return CHECKBOX_COL_WIDTH + fieldsWidth;
+  }, [visibleFields]);
+
+  const toSafeCount = (value: unknown, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const toNumberArray = (value: unknown): number[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item));
+  };
+
+  const refreshAll = async () => {
+    await Promise.all([mutateWorkspace(), mutateRecords()]);
+  };
+
+  const closeSettingsModal = () => {
+    if (workspace) {
+      setSettingsDraft({
+        auto_row_height: workspace.settings.auto_row_height,
+        auto_column_width: workspace.settings.auto_column_width,
+        delete_subtable_sync_total_default: workspace.settings.delete_subtable_sync_total_default,
+      });
+      setTemplateDraft(cloneSchema(workspace.template_schema));
+    }
+    setPurgeNonTemplateFields(false);
+    setTemplateFieldModalOpen(false);
+    setTemplateDeleteTargetIndex(null);
+    setSettingsModalOpen(false);
+  };
+
+  const handleSchemaPatch = async (mutator: (schema: ApplicationFieldSchema[]) => void) => {
+    if (!currentTableId || !currentTable) return;
+    const draft = cloneSchema(currentTable.schema);
+    mutator(draft);
+    await updateApplicationTableSchema(currentTableId, draft);
+    await refreshAll();
+  };
+
+  const beginEditCell = (record: ApplicationTableRecordItem, field: ApplicationFieldSchema) => {
+    setEditingCell({ recordId: record.id, fieldKey: field.field_key });
+  };
+
+  const saveCell = async (nextValue: unknown, targetCell: EditingCell | null = editingCell) => {
+    if (!targetCell) return;
+    setCellSaving(true);
+    try {
+      await updateApplicationRecordCell(targetCell.recordId, targetCell.fieldKey, nextValue);
+      await mutateRecords();
+      await mutateWorkspace();
+    } finally {
+      setCellSaving(false);
+    }
+  };
+
+  const showEditHint = () => {
+    if (hasShownEditHint) return;
+    setHasShownEditHint(true);
+    setEditHintToastVisible(true);
+  };
+
+  const toggleSelectAll = (next: boolean) => {
+    if (!next) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(records.map((record) => record.id)));
+  };
+
+  const toggleSelectRow = (recordId: number, next: boolean) => {
+    setSelectedIds((prev) => {
+      const nextSet = new Set(prev);
+      if (next) {
+        nextSet.add(recordId);
+      } else {
+        nextSet.delete(recordId);
+      }
+      return nextSet;
+    });
+  };
+
+  const handleCreateTable = async () => {
+    if (!newTableName.trim()) return;
+    setTableActionLoading(true);
+    try {
+      await createApplicationTable(newTableName.trim());
+      setNewTableName("");
+      await mutateWorkspace();
+    } finally {
+      setTableActionLoading(false);
+    }
+  };
+
+  const handleRenameTable = async (tableId: number) => {
+    if (!editingTableName.trim()) return;
+    setTableActionLoading(true);
+    try {
+      await renameApplicationTable(tableId, editingTableName.trim());
+      setEditingTableId(null);
+      setEditingTableName("");
+      await mutateWorkspace();
+      await mutateRecords();
+    } finally {
+      setTableActionLoading(false);
+    }
+  };
+
+  const handleDeleteTable = async (tableId: number) => {
+    setTableActionLoading(true);
+    try {
+      await deleteApplicationTable(tableId);
+      await mutateWorkspace();
+      await mutateRecords();
+    } finally {
+      setTableActionLoading(false);
+    }
+  };
+
+  const openImportModal = () => {
+    setImportModalOpen(true);
+    setImportSelected(new Set());
+    setImportKeyword("");
+    if (currentTableId != null) {
+      setImportTargetTableId(currentTableId);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importTargetTableId || importSelected.size === 0) return;
+    setImporting(true);
+    try {
+      const selectedCount = importSelected.size;
+      const result = await importJobsToApplicationTable(importTargetTableId, Array.from(importSelected));
+      const created = toSafeCount(result?.created, selectedCount);
+      const duplicateCreated = toSafeCount(result?.duplicate_created, 0);
+
+      if (duplicateCreated > 0) {
+        setOperationFeedback({
+          tone: "warning",
+          message: `成功导入 ${created} 条记录，其中 ${duplicateCreated} 条已标记为重复。`,
+        });
+      } else {
+        setOperationFeedback({
+          tone: "success",
+          message: `成功导入 ${created} 条记录。`,
+        });
+      }
+
+      setImportModalOpen(false);
+      setImportSelected(new Set());
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "导入失败，请稍后重试。",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleCreateManualRecord = async () => {
+    if (!currentTableId) return;
+    await createApplicationRecord(currentTableId, {
+      company_name: "",
+      job_title: "",
+      location: "",
+      job_link: "",
+      source: "",
+      salary_text: "",
+      updated_at: new Date().toISOString(),
+    });
+    await refreshAll();
+  };
+
+  const openMoveModal = () => {
+    if (targetMoveTables.length === 0) return;
+    setMoveDialogTargetTableId(targetMoveTables[0].id);
+    setMoveModalOpen(true);
+  };
+
+  const handleMoveRecords = async () => {
+    if (!currentTableId || !moveDialogTargetTableId || selectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      const requestedIds = Array.from(selectedIds);
+      const result = await moveApplicationRecords(currentTableId, moveDialogTargetTableId, requestedIds);
+      const moved = toSafeCount(result?.moved, 0);
+      const alreadyExists = toNumberArray(result?.already_exists);
+      const missingFromSource = toNumberArray(result?.missing_from_source);
+
+      if (alreadyExists.length > 0 || missingFromSource.length > 0) {
+        const remaining = new Set<number>([...alreadyExists, ...missingFromSource]);
+        setSelectedIds(new Set(requestedIds.filter((id) => remaining.has(id))));
+        setOperationFeedback({
+          tone: "warning",
+          message: `已移动 ${moved} 条记录，跳过 ${alreadyExists.length + missingFromSource.length} 条冲突/无效记录。`,
+        });
+      } else {
+        setSelectedIds(new Set());
+        setOperationFeedback({
+          tone: "success",
+          message: `成功移动 ${moved} 条记录。`,
+        });
+      }
+
+      setMoveModalOpen(false);
+      setMoveDialogTargetTableId(null);
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "批量移动失败，请稍后重试。",
+      });
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleDeleteRecords = async () => {
+    if (!currentTableId || selectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      await deleteApplicationRecords(currentTableId, Array.from(selectedIds), deleteFromTotal);
+      setDeleteConfirmOpen(false);
+      setSelectedIds(new Set());
+      await refreshAll();
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const openDeleteConfirm = () => {
+    setDeleteFromTotal(
+      currentTableIsTotal
+        ? true
+        : settingsDraft.delete_subtable_sync_total_default
+    );
+    setDeleteConfirmOpen(true);
+  };
+
+  const openTemplateFieldModal = () => {
+    setTemplateFieldDraft({
+      label: "",
+      type: "text",
+      options: "",
+      width: 180,
+      visible: true,
+    });
+    setTemplateFieldModalOpen(true);
+  };
+
+  const addTemplateField = (draft: AddTemplateFieldDraft) => {
+    const options = draft.options
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    setTemplateDraft((prev) => {
+      const next = cloneSchema(prev);
+      next.push({
+        field_key: nextFieldKey(next),
+        label: draft.label.trim() || "新字段",
+        type: draft.type,
+        fixed: false,
+        visible: draft.visible,
+        width: Math.max(120, Number(draft.width) || 120),
+        options: draft.type === "single_select" || draft.type === "multi_select" ? options : [],
+        order: next.length,
+      });
+      return next.map((item, index) => ({ ...item, order: index }));
+    });
+  };
+
+  const updateTemplateField = <K extends keyof ApplicationFieldSchema,>(
+    index: number,
+    key: K,
+    value: ApplicationFieldSchema[K]
+  ) => {
+    setTemplateDraft((prev) => {
+      const next = cloneSchema(prev);
+      const target = next[index];
+      if (!target) return prev;
+      next[index] = { ...target, [key]: value };
+      return next;
+    });
+  };
+
+  const moveTemplateField = (index: number, direction: -1 | 1) => {
+    setTemplateDraft((prev) => {
+      const next = cloneSchema(prev);
+      const to = index + direction;
+      if (to < 0 || to >= next.length) return prev;
+      const [item] = next.splice(index, 1);
+      next.splice(to, 0, item);
+      return next.map((field, order) => ({ ...field, order }));
+    });
+  };
+
+  const removeTemplateField = (index: number) => {
+    setTemplateDraft((prev) => {
+      const target = prev[index];
+      if (!target || target.fixed) return prev;
+      const next = cloneSchema(prev);
+      next.splice(index, 1);
+      return next.map((field, order) => ({ ...field, order }));
+    });
+  };
+
+  const saveSettingsAndTemplate = async () => {
+    setSettingsSaving(true);
+    try {
+      await updateApplicationWorkspaceSettings(settingsDraft);
+      await updateApplicationTemplate(templateDraft, purgeNonTemplateFields);
+      await refreshAll();
+      closeSettingsModal();
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+        <div className="grid gap-4 p-6 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">投递管理工作台</span>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-black">投递</h1>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-black/65">
+              总表承接全量记录，子表用于分类管理。你可以在任意表编辑记录值，系统会同步到同一业务记录的其他视图。
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-3">
+              <p className="bauhaus-label text-black/55">总记录</p>
+              <p className="mt-2 text-2xl font-semibold">{workspace?.stats.total_records ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-3">
+              <p className="bauhaus-label text-black/55">重复记录</p>
+              <p className="mt-2 text-2xl font-semibold">{workspace?.stats.duplicate_records ?? 0}</p>
+            </div>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-3">
+              <p className="bauhaus-label text-black/55">当前表</p>
+              <p className="mt-2 text-base font-semibold">{currentTable?.name ?? "-"}</p>
             </div>
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {statBlocks.map((block) => (
-              <div key={block.key} className={`bauhaus-panel-sm p-4 ${block.surface}`}>
-                <p className={`bauhaus-label ${block.surface.includes("text-white") ? "text-white/70" : "text-black/55"}`}>
-                  {block.label}
-                </p>
-                <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{block.count}</p>
-              </div>
-            ))}
-          </div>
         </div>
-      </motion.section>
+      </section>
 
-      <motion.section variants={item} className="flex flex-wrap items-center justify-between gap-4">
-        <Tabs
-          selectedKey={statusFilter}
-          onSelectionChange={(key) => {
-            setStatusFilter(key as string);
-            setPage(1);
-          }}
-          size="sm"
-          classNames={bauhausTabsClassNames}
-        >
-          <Tab key="all" title="全部" />
-          <Tab key="pending" title="待投递" />
-          <Tab key="submitted" title="已投递" />
-          <Tab key="interview" title="面试中" />
-          <Tab key="offer" title="已录用" />
-          <Tab key="rejected" title="已拒绝" />
-        </Tabs>
-
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(statusConfig).map(([key, cfg]) => (
-            <Chip key={key} variant="flat" className={`${cfg.chipClass} cursor-pointer`}>
-              {cfg.label}: {stats?.[key] ?? 0}
-            </Chip>
-          ))}
-        </div>
-      </motion.section>
-
-      {appsData && appsData.items.length > 0 ? (
-        <div className="space-y-4">
-          {appsData.items.map((app) => {
-            const cfg = statusConfig[app.status] || statusConfig.pending;
-            return (
-              <motion.div key={app.id} variants={item}>
-                <Card className="bauhaus-panel rounded-none bg-white shadow-none">
-                  <CardBody className="space-y-4 p-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Chip size="sm" variant="flat" className={cfg.chipClass}>
-                            {cfg.label}
-                          </Chip>
-                          <span className="bauhaus-label text-black/45">Pipeline Entry</span>
-                        </div>
-                        <div>
-                          <h3 className="text-2xl font-black tracking-[-0.05em] text-black">{app.job_title}</h3>
-                          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-medium text-black/60">
-                            <span className="flex items-center gap-1">
-                              <Building2 size={13} />
-                              {app.job_company}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Clock size={13} />
-                              {new Date(app.created_at).toLocaleDateString("zh-CN")}
-                            </span>
-                          </div>
-                          {app.notes && (
-                            <p className="mt-3 max-w-3xl text-sm font-medium leading-relaxed text-black/68">
-                              {app.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className={`bauhaus-panel-sm min-w-[180px] px-4 py-3 ${cfg.panelClass}`}>
-                        <p className={`bauhaus-label ${cfg.panelClass.includes("text-white") ? "text-white/70" : "text-black/55"}`}>
-                          Current State
-                        </p>
-                        <p className="mt-2 text-lg font-black uppercase tracking-[-0.04em]">{cfg.label}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        startContent={<FileText size={14} />}
-                        onPress={() => openCoverLetter(app)}
-                        className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-                      >
-                        求职信
-                      </Button>
-
-                      {app.status === "pending" && (
-                        <Button
-                          size="sm"
-                          startContent={<Send size={14} />}
-                          onPress={() => handleStatusChange(app.id, "submitted")}
-                          className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-                        >
-                          标记已投
-                        </Button>
-                      )}
-
-                      {app.status === "submitted" && (
-                        <>
-                          <Button
-                            size="sm"
-                            startContent={<MessageSquare size={14} />}
-                            onPress={() => handleStatusChange(app.id, "interview")}
-                            className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
-                          >
-                            进入面试
-                          </Button>
-                          <Button
-                            size="sm"
-                            startContent={<XCircle size={14} />}
-                            onPress={() => handleStatusChange(app.id, "rejected")}
-                            className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-                          >
-                            已拒绝
-                          </Button>
-                        </>
-                      )}
-
-                      {app.status === "interview" && (
-                        <Button
-                          size="sm"
-                          startContent={<CheckCircle size={14} />}
-                          onPress={() => handleStatusChange(app.id, "offer")}
-                          className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-                        >
-                          收到 Offer
-                        </Button>
-                      )}
-
-                      {app.apply_url && (
-                        <Button
-                          size="sm"
-                          as="a"
-                          href={app.apply_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          startContent={<ExternalLink size={14} />}
-                          className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-                        >
-                          申请链接
-                        </Button>
-                      )}
-                    </div>
-                  </CardBody>
-                </Card>
-              </motion.div>
-            );
-          })}
-
-          {totalPages > 1 && (
-            <motion.div variants={item} className="flex justify-center pt-2">
-              <Pagination total={totalPages} page={page} onChange={setPage} />
-            </motion.div>
-          )}
-        </div>
-      ) : (
-        <motion.div variants={item}>
-          <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
-            <CardBody className="p-10 text-center">
-              <Send size={54} className="mx-auto" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Applications Yet</p>
-              <p className="mt-3 text-sm font-medium text-white/80">
-                在岗位详情页点击「一键投递」，这里就会开始形成完整的投递看板。
-              </p>
-            </CardBody>
-          </Card>
-        </motion.div>
-      )}
-
-      <Modal isOpen={isOpen} onClose={onClose} size="2xl" placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
-            {selectedApp?.job_title} · 求职信
-          </ModalHeader>
-          <ModalBody className="px-6 py-6">
-            <div className="mb-3 flex justify-end">
+      <section className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:flex-1 lg:flex-nowrap">
+            <div className="w-full sm:max-w-[420px] lg:w-[34%] lg:min-w-[260px] lg:max-w-[500px]">
+              <Input
+                startContent={<Search size={14} className="text-black/50" />}
+                value={keyword}
+                onValueChange={setKeyword}
+                placeholder="搜索公司 / 岗位 / 地点 / 链接"
+                classNames={{
+                  inputWrapper: "border border-[var(--border)] bg-white shadow-none rounded-none h-11",
+                  input: "text-sm font-medium",
+                }}
+              />
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
               <Button
-                size="sm"
-                startContent={<Sparkles size={14} />}
-                isLoading={generating}
-                onPress={handleGenerate}
-                className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+                className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
+                onPress={() => setTableModalOpen(true)}
+                startContent={<Table2 size={14} />}
               >
-                AI 生成
+                <span className="max-w-[240px] truncate">{currentTable?.name ?? "表管理"}</span>
+              </Button>
+              <Button
+                isIconOnly
+                className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
+                onPress={() => setTableModalOpen(true)}
+                aria-label="打开表管理弹窗"
+              >
+                <Plus size={14} />
               </Button>
             </div>
-            <Textarea
-              variant="bordered"
-              minRows={10}
-              maxRows={20}
-              placeholder="在此编写或使用 AI 生成求职信..."
-              value={coverLetter}
-              onValueChange={setCoverLetter}
-              classNames={bauhausFieldClassNames}
-            />
-          </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
-            <Button variant="light" onPress={onClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
-              取消
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
+              startContent={<CopyPlus size={14} />}
+              onPress={openImportModal}
+            >
+              快捷导入
             </Button>
-            <Button onPress={handleSaveCoverLetter} className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]">
-              保存
+            <Tooltip content="设置" placement="bottom" closeDelay={120}>
+              <Button
+                isIconOnly
+                className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
+                onPress={() => setSettingsModalOpen(true)}
+                aria-label="投递设置"
+              >
+                <Settings size={14} />
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
+      </section>
+
+      {operationFeedback && (
+        <div className="fixed right-4 top-4 z-50 max-w-md">
+          <div
+            className={`flex items-start justify-between gap-3 border px-3 py-2 text-sm shadow-sm ${
+              operationFeedback.tone === "success"
+                ? "border-[#5e6f65]/35 bg-[var(--status-sage)] text-black"
+                : operationFeedback.tone === "warning"
+                ? "border-[#c95548]/35 bg-[var(--status-blush)] text-black"
+                : "border-[#c95548]/45 bg-[#f9e2dd] text-[#7f2f24]"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {operationFeedback.tone === "success" ? (
+                <Check size={14} />
+              ) : (
+                <AlertTriangle size={14} />
+              )}
+              <p>{operationFeedback.message}</p>
+            </div>
+            <button
+              type="button"
+              className="border border-[var(--border)] bg-white px-2 py-0.5 text-xs font-semibold"
+              onClick={() => setOperationFeedback(null)}
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
+      <section className="bauhaus-panel relative overflow-hidden bg-white">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-black/70">
+            <ChevronsUpDown size={14} />
+            共 {records.length} 条记录
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="hidden text-xs font-medium text-black/55 lg:block">
+              双击单元格可编辑；按 Esc 或点击空白处保存并退出
+            </p>
+            <Button
+              size="sm"
+              className="bauhaus-button bauhaus-button-outline !min-h-9 !px-3 !py-2 !text-[11px]"
+              onPress={handleCreateManualRecord}
+              startContent={<Plus size={13} />}
+            >
+              新增记录
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[68vh] overflow-x-auto overflow-y-auto">
+          <table
+            className="text-left text-sm"
+            style={{
+              tableLayout: "fixed",
+              minWidth: `${tableMinWidth}px`,
+              width: `${tableMinWidth}px`,
+            }}
+          >
+            <thead className="bg-[var(--surface-muted)]">
+              <tr>
+                <th
+                  className="sticky left-0 z-30 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"
+                  style={{ width: `${CHECKBOX_COL_WIDTH}px`, minWidth: `${CHECKBOX_COL_WIDTH}px` }}
+                >
+                  <Checkbox
+                    isSelected={allChecked}
+                    isIndeterminate={!allChecked && selectedIds.size > 0}
+                    onValueChange={toggleSelectAll}
+                    radius="none"
+                  />
+                </th>
+                {visibleFields.map((field) => (
+                  <th
+                    key={field.field_key}
+                    className={`border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-black ${
+                      stickyFieldLeftMap.has(field.field_key) ? "sticky z-20" : ""
+                    }`}
+                    style={{
+                      width: `${Math.max(120, field.width)}px`,
+                      minWidth: `${Math.max(120, field.width)}px`,
+                      left: stickyFieldLeftMap.get(field.field_key),
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">{field.label}</span>
+                      <Dropdown>
+                        <DropdownTrigger>
+                          <button
+                            type="button"
+                            className="rounded-none border border-[var(--border)] bg-white px-1.5 py-1 text-black/70 hover:bg-[var(--surface-muted)]"
+                            aria-label={`操作列-${field.label}`}
+                          >
+                            <MoreHorizontal size={12} />
+                          </button>
+                        </DropdownTrigger>
+                        <DropdownMenu
+                          aria-label={`字段操作-${field.field_key}`}
+                          onAction={async (actionKey) => {
+                            if (!currentTable) return;
+                            const key = String(actionKey);
+                            if (key === "hide") {
+                              await handleSchemaPatch((schema) => {
+                                const item = schema.find((entry) => entry.field_key === field.field_key);
+                                if (item) item.visible = false;
+                              });
+                            } else if (key === "wider") {
+                              await handleSchemaPatch((schema) => {
+                                const item = schema.find((entry) => entry.field_key === field.field_key);
+                                if (item) item.width += 20;
+                              });
+                            } else if (key === "narrower") {
+                              await handleSchemaPatch((schema) => {
+                                const item = schema.find((entry) => entry.field_key === field.field_key);
+                                if (item) item.width = Math.max(120, item.width - 20);
+                              });
+                            } else if (key === "delete-custom" && !field.fixed) {
+                              await handleSchemaPatch((schema) => {
+                                const index = schema.findIndex((entry) => entry.field_key === field.field_key);
+                                if (index >= 0) {
+                                  schema.splice(index, 1);
+                                  schema.forEach((entry, idx) => {
+                                    entry.order = idx;
+                                  });
+                                }
+                              });
+                            }
+                          }}
+                        >
+                          <DropdownItem key="hide">隐藏列</DropdownItem>
+                          <DropdownItem key="wider">列宽 +20</DropdownItem>
+                          <DropdownItem key="narrower">列宽 -20</DropdownItem>
+                          {field.fixed ? (
+                            <DropdownItem key="locked" isReadOnly className="text-black/50">
+                              固定字段不可删改定义
+                            </DropdownItem>
+                          ) : (
+                            <DropdownItem key="delete-custom" className="text-[#b7483c]">
+                              删除自定义字段
+                            </DropdownItem>
+                          )}
+                        </DropdownMenu>
+                      </Dropdown>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {records.length === 0 && (
+                <tr>
+                  <td colSpan={visibleFields.length + 1} className="px-4 py-10 text-center text-black/60">
+                    暂无记录。你可以手动新增，或者从快捷导入中批量添加岗位。
+                  </td>
+                </tr>
+              )}
+              {records.map((record) => (
+                <tr
+                  key={record.id}
+                  className={`border-b border-[var(--border)] align-top ${
+                    record.is_duplicate ? "bg-[var(--status-blush)]" : "bg-white"
+                  }`}
+                >
+                  <td
+                    className="sticky left-0 z-20 bg-white px-3 py-2"
+                    style={{ width: `${CHECKBOX_COL_WIDTH}px`, minWidth: `${CHECKBOX_COL_WIDTH}px` }}
+                  >
+                    <Checkbox
+                      isSelected={selectedIds.has(record.id)}
+                      onValueChange={(next) => toggleSelectRow(record.id, next)}
+                      radius="none"
+                    />
+                  </td>
+                  {visibleFields.map((field) => {
+                    const isEditing =
+                      editingCell?.recordId === record.id &&
+                      editingCell?.fieldKey === field.field_key;
+                    const rawValue = record.values[field.field_key];
+                    const displayValue = formatValue(rawValue, field.type, field.field_key);
+                    const rawLinkValue = typeof rawValue === "string" ? rawValue.trim() : "";
+                    const truncateWidthClass = field.type === "single_select" ? "max-w-[260px]" : "max-w-[220px]";
+                    const cellClass = settingsDraft.auto_row_height
+                      ? "whitespace-normal break-words"
+                      : `${truncateWidthClass} truncate whitespace-nowrap`;
+
+                    return (
+                      <td
+                        key={`${record.id}-${field.field_key}`}
+                        className={`px-3 py-2 ${cellClass} ${stickyFieldLeftMap.has(field.field_key) ? "sticky z-10 bg-white" : ""}`}
+                        style={{
+                          width: `${Math.max(120, field.width)}px`,
+                          minWidth: `${Math.max(120, field.width)}px`,
+                          left: stickyFieldLeftMap.get(field.field_key),
+                        }}
+                        onDoubleClick={() => beginEditCell(record, field)}
+                      >
+                        {isEditing ? (
+                          <div className="space-y-1">
+                            <InlineCellEditor
+                              field={field}
+                              initialValue={rawValue ?? (field.type === "boolean" ? false : "")}
+                              onCommit={async (nextValue) => {
+                                await saveCell(nextValue, { recordId: record.id, fieldKey: field.field_key });
+                              }}
+                              onClose={() => setEditingCell(null)}
+                              onFirstEditHint={showEditHint}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {field.type === "link" ? (
+                              rawLinkValue ? (
+                                <a
+                                  href={rawLinkValue}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[#5e6f65] hover:underline"
+                                  title={rawLinkValue}
+                                >
+                                  <span className={cellClass}>{formatLinkDisplayLabel(field.label)}</span>
+                                  <ExternalLink size={12} />
+                                </a>
+                              ) : (
+                                <span className={cellClass}>-</span>
+                              )
+                            ) : (
+                              <span className={cellClass} title={displayValue || undefined}>
+                                {displayValue || "-"}
+                              </span>
+                            )}
+                            {record.is_duplicate && field.field_key === "job_title" && (
+                              <Chip
+                                size="sm"
+                                variant="flat"
+                                className="rounded-none border border-[#c95548]/60 bg-[#fdece8] text-[#b7483c]"
+                                startContent={<AlertTriangle size={11} />}
+                              >
+                                重复
+                              </Chip>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {hasSelection && (
+        <div className="sticky bottom-4 z-40 mt-3 flex justify-center px-4 pb-3">
+          <div className="bauhaus-panel flex w-full max-w-[980px] flex-nowrap items-center gap-3 overflow-x-auto bg-[var(--surface)] px-4 py-3">
+            <p className="whitespace-nowrap text-sm font-medium text-black/75">
+              已选 <span className="font-semibold text-[var(--primary-red)]">{selectedIds.size}</span> 条记录
+            </p>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+              startContent={<Table2 size={13} />}
+              isDisabled={targetMoveTables.length === 0}
+              isLoading={bulkLoading}
+              onPress={openMoveModal}
+            >
+              移动到其他表
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !min-h-10 !px-4 !py-2 !text-[11px]"
+              startContent={<Trash2 size={13} />}
+              isLoading={bulkLoading}
+              onPress={openDeleteConfirm}
+            >
+              删除
+            </Button>
+            <Button
+              isIconOnly
+              className="bauhaus-button bauhaus-button-outline !min-h-10 !w-10 !px-0 !py-0"
+              onPress={() => setSelectedIds(new Set())}
+              aria-label="关闭批量操作"
+            >
+              <X size={14} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Modal isOpen={tableModalOpen} onClose={() => setTableModalOpen(false)} size="lg">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">表管理</ModalHeader>
+          <ModalBody className="space-y-4 py-5">
+            <div className="flex gap-2">
+              <Input
+                value={newTableName}
+                onValueChange={setNewTableName}
+                placeholder="输入新表名称"
+                classNames={{
+                  inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none",
+                }}
+              />
+              <Button
+                className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+                startContent={<Plus size={13} />}
+                onPress={handleCreateTable}
+                isLoading={tableActionLoading}
+              >
+                新建表
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {tables.map((table) => (
+                <div
+                  key={table.id}
+                  className={`bauhaus-panel-sm flex items-center justify-between gap-2 px-3 py-2 ${
+                    table.id === currentTableId ? "bg-[#f3ead2]" : "bg-white"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="flex flex-1 items-center justify-between text-left"
+                    onClick={() => {
+                      setCurrentTableId(table.id);
+                      setTableModalOpen(false);
+                    }}
+                  >
+                    <span className="truncate text-sm font-medium">
+                      {table.is_total ? "总表" : table.name}
+                    </span>
+                    <span className="text-xs text-black/50">{table.record_count}</span>
+                  </button>
+                  {table.id === currentTableId && <Check size={14} className="text-[var(--primary-red)]" />}
+                  {!table.is_total && (
+                    <div className="flex items-center gap-1">
+                      {editingTableId === table.id ? (
+                        <>
+                          <Input
+                            size="sm"
+                            value={editingTableName}
+                            onValueChange={setEditingTableName}
+                            className="w-36"
+                            classNames={{
+                              inputWrapper:
+                                "rounded-none border border-[var(--border)] bg-white shadow-none h-8 min-h-8",
+                              input: "text-xs",
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            className="bauhaus-button bauhaus-button-blue !min-h-8 !px-2 !py-1 !text-[10px]"
+                            onPress={() => handleRenameTable(table.id)}
+                            isLoading={tableActionLoading}
+                          >
+                            保存
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          className="bauhaus-button bauhaus-button-outline !min-h-8 !w-8 !px-0 !py-0 !text-[10px]"
+                          onPress={() => {
+                            setEditingTableId(table.id);
+                            setEditingTableName(table.name);
+                          }}
+                        >
+                          <Pencil size={12} />
+                        </Button>
+                      )}
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        className="bauhaus-button bauhaus-button-red !min-h-8 !w-8 !px-0 !py-0 !text-[10px]"
+                        onPress={() => setTableDeleteTarget({ id: table.id, name: table.name })}
+                        isLoading={tableActionLoading}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setTableModalOpen(false)}>
+              关闭
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </motion.div>
+
+      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="3xl">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">快捷导入</ModalHeader>
+          <ModalBody className="space-y-4 py-5">
+            <div className="grid gap-2 md:grid-cols-[1fr_220px]">
+              <Input
+                value={importKeyword}
+                onValueChange={setImportKeyword}
+                placeholder="搜索岗位名称 / 公司"
+                startContent={<Search size={14} className="text-black/50" />}
+                classNames={{
+                  inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none",
+                }}
+              />
+              <Select
+                selectedKeys={importTargetTableId ? [String(importTargetTableId)] : []}
+                onSelectionChange={(keys) => {
+                  const first = Array.from(keys).at(0);
+                  setImportTargetTableId(first ? Number(first) : null);
+                }}
+                classNames={{
+                  trigger: "rounded-none border border-[var(--border)] bg-white shadow-none h-11",
+                }}
+              >
+                {tables.map((table) => (
+                  <SelectItem key={String(table.id)}>
+                    {table.is_total ? "总表" : table.name}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
+
+            <div className="max-h-[380px] space-y-2 overflow-auto pr-1">
+              {(importJobs?.items ?? []).map((job) => {
+                const checked = importSelected.has(job.id);
+                return (
+                  <label
+                    key={job.id}
+                    className={`bauhaus-panel-sm flex cursor-pointer items-start gap-3 px-3 py-3 ${
+                      checked ? "bg-[#f3ead2]" : "bg-white"
+                    }`}
+                  >
+                    <Checkbox
+                      isSelected={checked}
+                      onValueChange={(next) => {
+                        setImportSelected((prev) => {
+                          const nextSet = new Set(prev);
+                          if (next) {
+                            nextSet.add(job.id);
+                          } else {
+                            nextSet.delete(job.id);
+                          }
+                          return nextSet;
+                        });
+                      }}
+                      radius="none"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-black">{job.title}</p>
+                      <p className="truncate text-xs text-black/65">{job.company} · {job.location || "未知地点"}</p>
+                      <p className="truncate text-xs text-black/55">{job.apply_url || job.url || "无岗位链接"}</p>
+                    </div>
+                    {job.salary_text && (
+                      <Chip size="sm" variant="flat" className="rounded-none border border-[var(--border)] bg-[#e4ece6] text-black">
+                        {job.salary_text}
+                      </Chip>
+                    )}
+                  </label>
+                );
+              })}
+              {(importJobs?.items ?? []).length === 0 && (
+                <div className="bauhaus-panel-sm bg-white px-4 py-8 text-center text-sm text-black/60">
+                  未找到可导入岗位，请调整搜索条件。
+                </div>
+              )}
+            </div>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <div className="mr-auto text-sm font-medium text-black/70">已选 {importSelected.size} 条</div>
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setImportModalOpen(false)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+              isDisabled={!importTargetTableId || importSelected.size === 0}
+              isLoading={importing}
+              onPress={handleImport}
+            >
+              导入
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={settingsModalOpen} onClose={closeSettingsModal} size="5xl" scrollBehavior="inside">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">投递设置</ModalHeader>
+          <ModalBody className="space-y-5 py-5">
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-black">模块级显示设置</h3>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-white px-3 py-3">
+                  <span className="text-sm font-medium">自动行高</span>
+                  <Switch
+                    isSelected={settingsDraft.auto_row_height}
+                    onValueChange={(next) =>
+                      setSettingsDraft((prev) => ({ ...prev, auto_row_height: next }))
+                    }
+                  />
+                </label>
+                <label className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-white px-3 py-3">
+                  <span className="text-sm font-medium">自动列宽</span>
+                  <Switch
+                    isSelected={settingsDraft.auto_column_width}
+                    onValueChange={(next) =>
+                      setSettingsDraft((prev) => ({ ...prev, auto_column_width: next }))
+                    }
+                  />
+                </label>
+                <label className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-white px-3 py-3">
+                  <span className="text-sm font-medium">子表删除默认同步总表</span>
+                  <Switch
+                    isSelected={settingsDraft.delete_subtable_sync_total_default}
+                    onValueChange={(next) =>
+                      setSettingsDraft((prev) => ({
+                        ...prev,
+                        delete_subtable_sync_total_default: next,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-black">默认投递模板（新建子表基于此模板）</h3>
+                <Button
+                  size="sm"
+                  className="bauhaus-button bauhaus-button-outline !min-h-9 !px-3 !py-2 !text-[11px]"
+                  onPress={openTemplateFieldModal}
+                >
+                  新增自定义字段
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {templateDraft.map((field, index) => (
+                  <div key={field.field_key} className="bauhaus-panel-sm grid gap-2 bg-white p-3 md:grid-cols-[180px_150px_1fr_90px_auto]">
+                    <Input
+                      value={field.label}
+                      onValueChange={(next) => updateTemplateField(index, "label", next)}
+                      isDisabled={field.fixed}
+                      classNames={{
+                        inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-9 min-h-9",
+                        input: "text-xs",
+                      }}
+                    />
+                    <Select
+                      selectedKeys={[field.type]}
+                      onSelectionChange={(keys) => {
+                        if (field.fixed) return;
+                        const first = Array.from(keys).at(0);
+                        if (!first) return;
+                        updateTemplateField(index, "type", String(first) as ApplicationFieldSchema["type"]);
+                      }}
+                      isDisabled={field.fixed}
+                      classNames={{
+                        trigger: "rounded-none border border-[var(--border)] bg-white shadow-none h-9 min-h-9",
+                      }}
+                    >
+                      {FIELD_TYPE_OPTIONS.map((item) => (
+                        <SelectItem key={item.value}>{item.label}</SelectItem>
+                      ))}
+                    </Select>
+                    <Input
+                      value={field.options.join(", ")}
+                      onValueChange={(next) =>
+                        updateTemplateField(
+                          index,
+                          "options",
+                          next
+                            .split(",")
+                            .map((item) => item.trim())
+                            .filter(Boolean)
+                        )
+                      }
+                      isDisabled={field.type !== "single_select" && field.type !== "multi_select"}
+                      placeholder="选项用逗号分隔"
+                      classNames={{
+                        inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-9 min-h-9",
+                        input: "text-xs",
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      value={String(field.width)}
+                      onValueChange={(next) => updateTemplateField(index, "width", Math.max(120, Number(next) || 120))}
+                      classNames={{
+                        inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-9 min-h-9",
+                        input: "text-xs",
+                      }}
+                    />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        className="bauhaus-button bauhaus-button-outline !min-h-8 !w-8 !px-0 !py-0 !text-[10px]"
+                        onPress={() => moveTemplateField(index, -1)}
+                        isDisabled={index === 0}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        className="bauhaus-button bauhaus-button-outline !min-h-8 !w-8 !px-0 !py-0 !text-[10px]"
+                        onPress={() => moveTemplateField(index, 1)}
+                        isDisabled={index === templateDraft.length - 1}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        className="bauhaus-button bauhaus-button-red !min-h-8 !w-8 !px-0 !py-0 !text-[10px]"
+                        onPress={() => setTemplateDeleteTargetIndex(index)}
+                        isDisabled={field.fixed}
+                      >
+                        <Trash2 size={11} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="bauhaus-panel-sm space-y-3 bg-[#f7ece9] p-3">
+              <h3 className="text-sm font-semibold text-black">同步到所有表</h3>
+              <label className="flex items-center gap-2 text-sm font-medium text-black/70">
+                <Checkbox
+                  isSelected={purgeNonTemplateFields}
+                  onValueChange={setPurgeNonTemplateFields}
+                  radius="none"
+                />
+                同时删除现有表中不属于模板的自定义字段及其数据（高风险）
+              </label>
+              <p className="text-xs font-medium text-black/60">
+                不勾选时，仅同步模板新增和结构调整；已存在于各表中的非模板字段会继续保留。
+              </p>
+            </section>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={closeSettingsModal}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+              onPress={saveSettingsAndTemplate}
+              isLoading={settingsSaving}
+            >
+              保存设置与模板
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={!!tableDeleteTarget} onClose={() => setTableDeleteTarget(null)} size="md">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">确认删除子表</ModalHeader>
+          <ModalBody className="space-y-3 py-5">
+            <p className="text-sm font-medium leading-relaxed text-black/70">
+              确认删除子表「{tableDeleteTarget?.name || "当前子表"}」吗？总表记录不会受影响。
+            </p>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setTableDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !min-h-10 !px-4 !py-2 !text-[11px]"
+              isLoading={tableActionLoading}
+              onPress={async () => {
+                if (!tableDeleteTarget) return;
+                const targetId = tableDeleteTarget.id;
+                setTableDeleteTarget(null);
+                await handleDeleteTable(targetId);
+              }}
+            >
+              确认删除
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={templateFieldModalOpen} onClose={() => setTemplateFieldModalOpen(false)} size="lg">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">新增自定义字段</ModalHeader>
+          <ModalBody className="space-y-4 py-5">
+            <Input
+              label="字段名称"
+              labelPlacement="outside"
+              value={templateFieldDraft.label}
+              onValueChange={(next) => setTemplateFieldDraft((prev) => ({ ...prev, label: next }))}
+              classNames={{ inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-10 min-h-10" }}
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Select
+                label="字段类型"
+                labelPlacement="outside"
+                selectedKeys={[templateFieldDraft.type]}
+                onSelectionChange={(keys) => {
+                  const first = Array.from(keys).at(0);
+                  if (!first) return;
+                  setTemplateFieldDraft((prev) => ({ ...prev, type: String(first) as ApplicationFieldSchema["type"] }));
+                }}
+                classNames={{ trigger: "rounded-none border border-[var(--border)] bg-white shadow-none h-10 min-h-10" }}
+              >
+                {FIELD_TYPE_OPTIONS.map((item) => (
+                  <SelectItem key={item.value}>{item.label}</SelectItem>
+                ))}
+              </Select>
+              <Input
+                type="number"
+                label="默认列宽"
+                labelPlacement="outside"
+                value={String(templateFieldDraft.width)}
+                onValueChange={(next) =>
+                  setTemplateFieldDraft((prev) => ({ ...prev, width: Math.max(120, Number(next) || 120) }))
+                }
+                classNames={{ inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-10 min-h-10" }}
+              />
+            </div>
+            <Input
+              label="选项配置（单选/多选）"
+              labelPlacement="outside"
+              value={templateFieldDraft.options}
+              onValueChange={(next) => setTemplateFieldDraft((prev) => ({ ...prev, options: next }))}
+              isDisabled={templateFieldDraft.type !== "single_select" && templateFieldDraft.type !== "multi_select"}
+              placeholder="例如：待投递, 已投递, 面试中"
+              classNames={{ inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-10 min-h-10" }}
+            />
+            <label className="flex items-center gap-2 text-sm font-medium text-black/75">
+              <Checkbox
+                isSelected={templateFieldDraft.visible}
+                onValueChange={(next) => setTemplateFieldDraft((prev) => ({ ...prev, visible: next }))}
+                radius="none"
+              />
+              在表格中显示
+            </label>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setTemplateFieldModalOpen(false)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+              onPress={() => {
+                addTemplateField(templateFieldDraft);
+                setTemplateFieldModalOpen(false);
+              }}
+              isDisabled={!templateFieldDraft.label.trim()}
+            >
+              确认新增
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={templateDeleteTargetIndex != null} onClose={() => setTemplateDeleteTargetIndex(null)} size="sm">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">删除自定义字段</ModalHeader>
+          <ModalBody className="space-y-2 py-5">
+            <p className="text-sm font-medium leading-relaxed text-black/70">
+              确认删除字段「{templateDeleteTarget?.label || "当前字段"}」吗？该字段对应数据将被移除。
+            </p>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setTemplateDeleteTargetIndex(null)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !min-h-10 !px-4 !py-2 !text-[11px]"
+              onPress={() => {
+                if (templateDeleteTargetIndex == null) return;
+                removeTemplateField(templateDeleteTargetIndex);
+                setTemplateDeleteTargetIndex(null);
+              }}
+            >
+              确认删除
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={moveModalOpen} onClose={() => setMoveModalOpen(false)} size="md">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">移动到其他表</ModalHeader>
+          <ModalBody className="space-y-3 py-5">
+            <p className="text-sm font-medium leading-relaxed text-black/70">
+              将把当前已选记录加入目标表；若目标表已存在同一记录会自动跳过。
+            </p>
+            <Select
+              selectedKeys={moveDialogTargetTableId ? [String(moveDialogTargetTableId)] : []}
+              onSelectionChange={(keys) => {
+                const first = Array.from(keys).at(0);
+                setMoveDialogTargetTableId(first ? Number(first) : null);
+              }}
+              classNames={{ trigger: "rounded-none border border-[var(--border)] bg-white shadow-none h-11" }}
+              placeholder="选择目标表"
+            >
+              {targetMoveTables.map((table) => (
+                <SelectItem key={String(table.id)}>
+                  {table.is_total ? "总表" : table.name}
+                </SelectItem>
+              ))}
+            </Select>
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setMoveModalOpen(false)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-blue !min-h-10 !px-4 !py-2 !text-[11px]"
+              onPress={handleMoveRecords}
+              isDisabled={!moveDialogTargetTableId}
+              isLoading={bulkLoading}
+            >
+              确认移动
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      
+
+      <Modal isOpen={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} size="md">
+        <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
+          <ModalHeader className="border-b border-[var(--border)]">确认删除</ModalHeader>
+          <ModalBody className="space-y-3 py-5">
+            <p className="text-sm font-medium leading-relaxed text-black/70">
+              将删除选中的 {selectedIds.size} 条记录。
+            </p>
+            {!currentTableIsTotal && (
+              <label className="bauhaus-panel-sm flex items-center gap-2 bg-white px-3 py-3 text-sm font-medium text-black/75">
+                <Checkbox
+                  isSelected={deleteFromTotal}
+                  onValueChange={setDeleteFromTotal}
+                  radius="none"
+                />
+                同时从总表删除（高风险）
+              </label>
+            )}
+            {currentTableIsTotal && (
+              <div className="bauhaus-panel-sm bg-[#f7ece9] px-3 py-3 text-sm font-medium text-[#b7483c]">
+                当前是总表：删除将同步从所有子表移除。
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter className="border-t border-[var(--border)]">
+            <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setDeleteConfirmOpen(false)}>
+              取消
+            </Button>
+            <Button
+              className="bauhaus-button bauhaus-button-red !min-h-10 !px-4 !py-2 !text-[11px]"
+              onPress={handleDeleteRecords}
+              isLoading={bulkLoading}
+            >
+              确认删除
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {editHintToastVisible && (
+        <div className="fixed right-4 top-20 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-black/75">
+          编辑中：按 Esc 或点击空白处保存并退出
+        </div>
+      )}
+
+      {cellSaving && (
+        <div className="fixed right-4 top-4 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-black/65">
+          正在保存单元格...
+        </div>
+      )}
+    </div>
   );
 }
+
