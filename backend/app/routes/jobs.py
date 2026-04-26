@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -58,41 +57,6 @@ def _status_filter_values(status: str) -> list[str]:
     if internal == "ignored":
         return ["ignored"]
     return [status]
-
-
-def _parse_posted_at(value: Optional[str]) -> Optional[datetime]:
-    text = (value or "").strip()
-    if not text:
-        return None
-
-    # 去掉常见中文前缀，兼容“发布时间：2026-04-16”这类格式。
-    text = re.sub(r"^(发布时间|更新时间|发布于|更新于|发布|更新)[:：\s]*", "", text)
-
-    iso_candidates = [text, text.replace("Z", "+00:00"), text.replace("/", "-")]
-    for candidate in iso_candidates:
-        try:
-            return datetime.fromisoformat(candidate)
-        except ValueError:
-            continue
-
-    full_date = re.search(r"(20\d{2})[年\-/.](\d{1,2})[月\-/.](\d{1,2})", text)
-    if full_date:
-        try:
-            year, month, day = map(int, full_date.groups())
-            return datetime(year, month, day)
-        except ValueError:
-            return None
-
-    month_day = re.search(r"(\d{1,2})月(\d{1,2})日", text)
-    if month_day:
-        try:
-            month, day = map(int, month_day.groups())
-            now = datetime.utcnow()
-            return datetime(now.year, month, day)
-        except ValueError:
-            return None
-
-    return None
 
 
 # ---- Pydantic Schemas ----
@@ -653,6 +617,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
     """
     created = 0
     skipped = 0
+    created_hash_keys: list[str] = []
+    skipped_hash_keys: list[str] = []
 
     ingest_batch_id = req.batch_id or f"manual-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     await _ensure_batch(
@@ -667,6 +633,7 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
         if existing.scalar_one_or_none():
             skipped += 1
+            skipped_hash_keys.append(item.hash_key)
             continue
 
         job_batch_id = item.batch_id or ingest_batch_id
@@ -686,7 +653,6 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
             apply_url=item.apply_url,
             source=item.source,
             raw_description=item.raw_description,
-            posted_at=_parse_posted_at(item.posted_at),
             batch_id=job_batch_id,
             triage_status="inbox",
             hash_key=item.hash_key,
@@ -711,6 +677,7 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         )
         db.add(job)
         created += 1
+        created_hash_keys.append(item.hash_key)
 
     await db.flush()
     batch = (await db.execute(select(Batch).where(Batch.id == ingest_batch_id))).scalar_one_or_none()
@@ -718,7 +685,16 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         batch.total_fetched = (batch.total_fetched or 0) + created
 
     await db.commit()
-    return {"created": created, "skipped": skipped, "batch_id": ingest_batch_id}
+    accepted_hash_keys = created_hash_keys + skipped_hash_keys
+    return {
+        "created": created,
+        "skipped": skipped,
+        "batch_id": ingest_batch_id,
+        "accepted_hash_keys": accepted_hash_keys,
+        "created_hash_keys": created_hash_keys,
+        "skipped_hash_keys": skipped_hash_keys,
+        "failed": [],
+    }
 
 
 async def _ensure_batch(

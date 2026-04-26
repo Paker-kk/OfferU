@@ -136,3 +136,14 @@ export interface IngestPayload {
   source: string;
   batch_id: string;
 }
+
+/** 鍚庣 /api/jobs/ingest 鍝嶅簲浣?*/
+export interface IngestResponse {
+  created?: number;
+  skipped?: number;
+  batch_id?: string;
+  accepted_hash_keys?: string[];
+  created_hash_keys?: string[];
+  skipped_hash_keys?: string[];
+  failed?: Array<{ hash_key?: string; error: string }>;
+}

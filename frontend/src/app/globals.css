@@ -3,19 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --background: #f6f3eb;
-  --foreground: #1f1d1a;
-  --surface: #fdfbf7;
-  --surface-muted: #f2ede4;
-  --status-blush: #fdece8;
-  --status-sage: #f0f3ed;
-  --primary-red: #c95548;
-  --primary-blue: #5e6f65;
-  --primary-yellow: #e4c46a;
-  --border: rgba(18, 18, 18, 0.16);
-  --border-strong: rgba(18, 18, 18, 0.24);
-  --shadow-soft: rgba(18, 18, 18, 0.12);
-  --shadow-medium: rgba(18, 18, 18, 0.18);
+  --background: #f4f1eb;
+  --foreground: #121212;
+  --surface: #ffffff;
+  --surface-muted: #ece6dc;
+  --primary-red: #cf3e34;
+  --primary-blue: #596a60;
+  --primary-yellow: #efc94c;
+  --border: #121212;
 }
 
 * {
@@ -30,11 +25,11 @@ html {
 body {
   min-height: 100vh;
   background-color: var(--background);
-  background-image: radial-gradient(rgba(18, 18, 18, 0.02) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background-image: radial-gradient(rgba(18, 18, 18, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
   color: var(--foreground);
   font-family: var(--font-display), "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 a {
@@ -50,7 +45,7 @@ select {
 }
 
 ::selection {
-  background: rgba(228, 196, 106, 0.45);
+  background: var(--primary-yellow);
   color: var(--foreground);
 }
 
@@ -60,12 +55,12 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(18, 18, 18, 0.06);
+  background: rgba(18, 18, 18, 0.08);
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--primary-red);
-  border: 2px solid var(--background);
+  border: 2px solid var(--border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -82,20 +77,20 @@ select {
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: var(--primary-blue);
-  border: 2px solid var(--background);
+  border: 2px solid var(--border);
 }
 
 @layer components {
   .bauhaus-panel {
-    border: 1.5px solid var(--border-strong);
+    border: 2px solid var(--border);
     background: var(--surface);
-    box-shadow: 2px 2px 0 0 var(--shadow-soft);
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
   }
 
   .bauhaus-panel-sm {
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     background: var(--surface);
-    box-shadow: 1px 1px 0 0 rgba(18, 18, 18, 0.1);
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.45);
   }
 }
 
@@ -118,27 +113,27 @@ select {
   align-items: center;
   justify-content: center;
   gap: 0.625rem;
-  border: 1.5px solid var(--border-strong);
+  border: 2px solid var(--border);
   padding: 0.625rem 1.125rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  text-transform: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   transition:
     transform 200ms ease-out,
     box-shadow 200ms ease-out,
     background-color 200ms ease-out,
     color 200ms ease-out;
-  box-shadow: 2px 2px 0 0 var(--shadow-medium);
+  box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
 }
 
 .bauhaus-button:focus-visible {
-  outline: 2px solid var(--border-strong);
-  outline-offset: 3px;
+  outline: 2px solid var(--border);
+  outline-offset: 4px;
 }
 
 .bauhaus-button:active {
-  transform: translate(1px, 1px);
+  transform: translate(2px, 2px);
   box-shadow: none;
 }
 
@@ -148,7 +143,7 @@ select {
 }
 
 .bauhaus-button-blue {
-  background: rgba(94, 111, 101, 0.16);
+  background: rgba(89, 106, 96, 0.18);
   color: var(--foreground);
 }
 
@@ -164,8 +159,8 @@ select {
 
 .bauhaus-label {
   font-size: 0.76rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   text-transform: none;
 }
 
@@ -175,27 +170,27 @@ select {
     align-items: center;
     gap: 0.3rem;
     border: 1px solid var(--border);
-    background: rgba(253, 251, 247, 0.92);
+    background: var(--surface);
     padding: 0.3rem 0.7rem;
     font-size: 0.76rem;
-    font-weight: 500;
-    letter-spacing: 0;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     text-transform: none;
   }
 }
 
 .bauhaus-dot-pattern {
-  background-image: radial-gradient(rgba(18, 18, 18, 0.025) 1px, transparent 1px);
-  background-size: 44px 44px;
+  background-image: radial-gradient(rgba(18, 18, 18, 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
 }
 
 .bauhaus-stripe-pattern {
   background-image: repeating-linear-gradient(
     -45deg,
-    rgba(18, 18, 18, 0.03) 0,
-    rgba(18, 18, 18, 0.03) 6px,
+    rgba(18, 18, 18, 0.04) 0,
+    rgba(18, 18, 18, 0.04) 6px,
     transparent 6px,
-    transparent 32px
+    transparent 28px
   );
 }
 
@@ -204,18 +199,18 @@ select {
 }
 
 .fullcalendar-dark .fc {
-  --fc-border-color: rgba(18, 18, 18, 0.2);
-  --fc-button-bg-color: #ead18a;
-  --fc-button-border-color: rgba(18, 18, 18, 0.24);
+  --fc-border-color: #121212;
+  --fc-button-bg-color: #f0c020;
+  --fc-button-border-color: #121212;
   --fc-button-text-color: #121212;
-  --fc-button-hover-bg-color: #d67b71;
-  --fc-button-hover-border-color: rgba(18, 18, 18, 0.24);
+  --fc-button-hover-bg-color: #d02020;
+  --fc-button-hover-border-color: #121212;
   --fc-button-hover-text-color: #ffffff;
-  --fc-button-active-bg-color: #6f8075;
-  --fc-button-active-border-color: rgba(18, 18, 18, 0.24);
+  --fc-button-active-bg-color: #1040c0;
+  --fc-button-active-border-color: #121212;
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: rgba(18, 18, 18, 0.03);
-  --fc-today-bg-color: rgba(228, 196, 106, 0.22);
+  --fc-neutral-bg-color: rgba(18, 18, 18, 0.04);
+  --fc-today-bg-color: rgba(240, 192, 32, 0.3);
   --fc-event-text-color: #121212;
   color: var(--foreground);
 }
@@ -227,15 +222,15 @@ select {
 }
 
 .fullcalendar-dark .fc .fc-toolbar-title {
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .fullcalendar-dark .fc .fc-button {
-  border-width: 1.5px;
-  box-shadow: 2px 2px 0 0 var(--shadow-soft);
-  text-transform: none;
+  border-width: 2px;
+  box-shadow: 3px 3px 0 0 var(--border);
+  text-transform: uppercase;
 }
 
 .cs-main-container,
@@ -246,20 +241,20 @@ select {
 }
 
 .cs-message__content {
-  border: 1.5px solid var(--border-strong) !important;
+  border: 2px solid var(--border) !important;
   border-radius: 0 !important;
-  background: var(--surface) !important;
+  background: #ffffff !important;
   color: var(--foreground) !important;
-  box-shadow: 2px 2px 0 0 var(--shadow-soft) !important;
+  box-shadow: 4px 4px 0 0 var(--border) !important;
 }
 
 .cs-message--outgoing .cs-message__content {
-  background: rgba(228, 196, 106, 0.36) !important;
+  background: var(--primary-yellow) !important;
 }
 
 .cs-message-input {
-  border-top: 1.5px solid var(--border) !important;
-  background: rgba(253, 251, 247, 0.86) !important;
+  border-top: 3px solid var(--border) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
 }
 
 .cs-message-input__content-editor-wrapper,
@@ -278,18 +273,18 @@ select {
 
 @media (min-width: 768px) {
   .bauhaus-panel {
-    border-width: 1.5px;
-    box-shadow: 2px 2px 0 0 var(--shadow-soft);
+    border-width: 2px;
+    box-shadow: 3px 3px 0 0 rgba(18, 18, 18, 0.55);
   }
 
   .bauhaus-panel-sm {
-    border-width: 1px;
-    box-shadow: 1px 1px 0 0 rgba(18, 18, 18, 0.1);
+    border-width: 2px;
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.45);
   }
 
   .bauhaus-button {
-    border-width: 1.5px;
-    box-shadow: 2px 2px 0 0 var(--shadow-medium);
+    border-width: 2px;
+    box-shadow: 2px 2px 0 0 rgba(18, 18, 18, 0.55);
   }
 }
 

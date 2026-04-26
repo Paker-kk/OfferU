@@ -16,8 +16,12 @@ export function buildSyncPlan(jobs: ExtractedJob[]): SyncPlan {
 }
 
 export function retainUnsyncedJobs(allJobs: ExtractedJob[], syncedJobs: ExtractedJob[]): ExtractedJob[] {
-  if (syncedJobs.length === 0) return [...allJobs];
+  return retainUnsyncedJobsByHashKeys(allJobs, syncedJobs.map((job) => job.hash_key));
+}
 
-  const syncedKeys = new Set(syncedJobs.map((job) => job.hash_key));
+export function retainUnsyncedJobsByHashKeys(allJobs: ExtractedJob[], syncedHashKeys: string[]): ExtractedJob[] {
+  if (syncedHashKeys.length === 0) return [...allJobs];
+
+  const syncedKeys = new Set(syncedHashKeys.filter(Boolean));
   return allJobs.filter((job) => !syncedKeys.has(job.hash_key));
 }

@@ -1,33 +1,32 @@
+# =============================================
+# Applications 路由 — 投递管理 API
+# =============================================
+# GET    /api/applications/           投递记录列表
+# POST   /api/applications/           创建投递记录
+# PUT    /api/applications/{id}       更新投递状态
+# POST   /api/applications/generate   AI 生成求职信
+# GET    /api/applications/stats      投递统计
+# =============================================
+# 自动投递流程：
+#   1. 用户选择高分岗位，点击"一键投递"
+#   2. 后端调 cover_letter Agent 生成求职信
+#   3. 创建投递记录（status=pending）
+#   4. 未来扩展：自动填写各平台申请表单
+# =============================================
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import desc, func, select
+from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
-from app.agents.cover_letter import generate_cover_letter
 from app.database import get_db
 from app.models.models import Application, Job, Resume
-from app.services.application_workspace import (
-    apply_template_to_all_tables,
-    auto_write_job_to_total,
-    create_record,
-    create_records_from_jobs,
-    create_subtable,
-    delete_records_from_table,
-    delete_subtable,
-    get_workspace_payload,
-    list_table_records,
-    move_records_to_table,
-    rename_table,
-    save_template_schema_and_apply,
-    update_record_value,
-    update_settings,
-    update_table_schema,
-)
+from app.agents.cover_letter import generate_cover_letter
 
 router = APIRouter()
 
@@ -48,250 +47,6 @@ class GenerateRequest(BaseModel):
     resume_id: int
 
 
-class TableCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-
-
-class TableRenameRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-
-
-class ImportJobsRequest(BaseModel):
-    job_ids: list[int] = Field(..., min_length=1, max_length=500)
-
-
-class RecordCreateRequest(BaseModel):
-    table_id: int
-    values: dict[str, Any]
-    job_ref_id: Optional[int] = None
-
-
-class RecordPatchRequest(BaseModel):
-    field_key: str
-    value: Any = None
-
-
-class MoveRecordsRequest(BaseModel):
-    source_table_id: int
-    target_table_id: int
-    record_ids: list[int] = Field(..., min_length=1, max_length=500)
-
-
-class DeleteRecordsRequest(BaseModel):
-    table_id: int
-    record_ids: list[int] = Field(..., min_length=1, max_length=500)
-    delete_from_total: bool = False
-
-
-class TableSchemaUpdateRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    schema_payload: list[dict[str, Any]] = Field(alias="schema")
-
-
-class TemplateUpdateRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    schema_payload: list[dict[str, Any]] = Field(alias="schema")
-    purge_non_template_fields: bool = False
-
-
-class TemplateApplyRequest(BaseModel):
-    purge_non_template_fields: bool = False
-
-
-class SettingsUpdateRequest(BaseModel):
-    auto_row_height: Optional[bool] = None
-    auto_column_width: Optional[bool] = None
-    delete_subtable_sync_total_default: Optional[bool] = None
-
-
-class AutoWriteRequest(BaseModel):
-    job_id: int
-
-
-def _bad_request(error: ValueError) -> HTTPException:
-    return HTTPException(status_code=400, detail=str(error))
-
-
-@router.get("/workspace")
-async def workspace(db: AsyncSession = Depends(get_db)):
-    return await get_workspace_payload(db)
-
-
-@router.get("/tables/{table_id}/records")
-async def table_records(
-    table_id: int,
-    keyword: str = Query("", description="关键词搜索"),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await list_table_records(db, table_id=table_id, keyword=keyword)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.post("/tables")
-async def create_table(data: TableCreateRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_subtable(db, name=data.name)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.patch("/tables/{table_id}")
-async def rename_table_route(
-    table_id: int,
-    data: TableRenameRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await rename_table(db, table_id=table_id, name=data.name)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.delete("/tables/{table_id}")
-async def delete_table_route(table_id: int, db: AsyncSession = Depends(get_db)):
-    try:
-        return await delete_subtable(db, table_id=table_id)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.post("/tables/{table_id}/import-jobs")
-async def import_jobs(
-    table_id: int,
-    data: ImportJobsRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await create_records_from_jobs(db, table_id=table_id, job_ids=data.job_ids)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.post("/records")
-async def create_record_route(data: RecordCreateRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_record(
-            db,
-            table_id=data.table_id,
-            values=data.values,
-            job_ref_id=data.job_ref_id,
-        )
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.patch("/records/{record_id}")
-async def patch_record(
-    record_id: int,
-    data: RecordPatchRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await update_record_value(
-            db,
-            record_id=record_id,
-            field_key=data.field_key,
-            value=data.value,
-        )
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.post("/records/move")
-async def move_records(data: MoveRecordsRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        return await move_records_to_table(
-            db,
-            source_table_id=data.source_table_id,
-            target_table_id=data.target_table_id,
-            record_ids=data.record_ids,
-        )
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.post("/records/delete")
-async def delete_records(data: DeleteRecordsRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        return await delete_records_from_table(
-            db,
-            table_id=data.table_id,
-            record_ids=data.record_ids,
-            delete_from_total=data.delete_from_total,
-        )
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.put("/tables/{table_id}/schema")
-async def update_table_schema_route(
-    table_id: int,
-    data: TableSchemaUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        return await update_table_schema(db, table_id=table_id, schema=data.schema_payload)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-@router.get("/template")
-async def get_template(db: AsyncSession = Depends(get_db)):
-    payload = await get_workspace_payload(db)
-    return {"schema": payload["template_schema"]}
-
-
-@router.put("/template")
-async def put_template(data: TemplateUpdateRequest, db: AsyncSession = Depends(get_db)):
-    result = await save_template_schema_and_apply(
-        db,
-        schema=data.schema_payload,
-        purge_non_template_fields=data.purge_non_template_fields,
-    )
-    return {
-        "schema": result["template_schema"],
-        "updated_tables": result["updated_tables"],
-        "purged_keys": result["purged_keys"],
-    }
-
-
-@router.post("/template/apply-to-all")
-async def apply_template(data: TemplateApplyRequest, db: AsyncSession = Depends(get_db)):
-    return await apply_template_to_all_tables(
-        db,
-        purge_non_template_fields=data.purge_non_template_fields,
-    )
-
-
-@router.get("/settings")
-async def get_settings(db: AsyncSession = Depends(get_db)):
-    payload = await get_workspace_payload(db)
-    return payload["settings"]
-
-
-@router.put("/settings")
-async def put_settings(data: SettingsUpdateRequest, db: AsyncSession = Depends(get_db)):
-    return await update_settings(
-        db,
-        auto_row_height=data.auto_row_height,
-        auto_column_width=data.auto_column_width,
-        delete_subtable_sync_total_default=data.delete_subtable_sync_total_default,
-    )
-
-
-@router.post("/auto-write")
-async def auto_write(data: AutoWriteRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        return await auto_write_job_to_total(db, job_id=data.job_id)
-    except ValueError as exc:
-        raise _bad_request(exc) from exc
-
-
-# ---- 兼容旧接口（不移除） ----
-
-
 @router.get("/")
 async def list_applications(
     status: Optional[str] = None,
@@ -299,7 +54,9 @@ async def list_applications(
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
+    """获取投递记录列表，支持按状态筛选"""
     query = select(Application).order_by(desc(Application.created_at))
+
     if status:
         query = query.where(Application.status == status)
 
@@ -307,38 +64,42 @@ async def list_applications(
     total = (await db.execute(total_q)).scalar() or 0
 
     query = query.offset((page - 1) * page_size).limit(page_size)
-    apps = (await db.execute(query)).scalars().all()
+    result = await db.execute(query)
+    apps = result.scalars().all()
 
+    # 批量加载关联岗位，避免 N+1 查询
     job_ids = list({app.job_id for app in apps if app.job_id})
     jobs_map: dict[int, Job] = {}
     if job_ids:
-        job_rows = await db.execute(select(Job).where(Job.id.in_(job_ids)))
-        jobs_map = {job.id: job for job in job_rows.scalars().all()}
+        job_result = await db.execute(select(Job).where(Job.id.in_(job_ids)))
+        jobs_map = {j.id: j for j in job_result.scalars().all()}
 
     items = []
     for app in apps:
         job = jobs_map.get(app.job_id)
-        items.append(
-            {
-                "id": app.id,
-                "job_id": app.job_id,
-                "job_title": job.title if job else "",
-                "job_company": job.company if job else "",
-                "status": app.status,
-                "cover_letter": app.cover_letter,
-                "apply_url": app.apply_url,
-                "notes": app.notes,
-                "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
-                "created_at": str(app.created_at),
-            }
-        )
+        items.append({
+            "id": app.id,
+            "job_id": app.job_id,
+            "job_title": job.title if job else "",
+            "job_company": job.company if job else "",
+            "status": app.status,
+            "cover_letter": app.cover_letter,
+            "apply_url": app.apply_url,
+            "notes": app.notes,
+            "submitted_at": app.submitted_at.isoformat() if app.submitted_at else None,
+            "created_at": str(app.created_at),
+        })
 
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
 @router.post("/")
 async def create_application(data: ApplicationCreate, db: AsyncSession = Depends(get_db)):
-    job = (await db.execute(select(Job).where(Job.id == data.job_id))).scalar_one_or_none()
+    """创建投递记录"""
+    # 获取岗位的 apply_url
+    job_result = await db.execute(select(Job).where(Job.id == data.job_id))
+    job = job_result.scalar_one_or_none()
+
     app = Application(
         job_id=data.job_id,
         apply_url=job.apply_url if job else "",
@@ -348,25 +109,26 @@ async def create_application(data: ApplicationCreate, db: AsyncSession = Depends
     db.add(app)
     await db.commit()
     await db.refresh(app)
-
-    try:
-        await auto_write_job_to_total(db, job_id=data.job_id)
-    except ValueError:
-        pass
-
     return {"id": app.id, "message": "Application created"}
 
 
 @router.post("/generate")
 async def generate(data: GenerateRequest, db: AsyncSession = Depends(get_db)):
-    job = (await db.execute(select(Job).where(Job.id == data.job_id))).scalar_one_or_none()
+    """
+    AI 生成求职信
+    传入 job_id + resume_id，调 LLM Agent 生成定制求职信
+    """
+    job_result = await db.execute(select(Job).where(Job.id == data.job_id))
+    job = job_result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    resume = (await db.execute(select(Resume).where(Resume.id == data.resume_id))).scalar_one_or_none()
+    resume_result = await db.execute(select(Resume).where(Resume.id == data.resume_id))
+    resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    # 从简历 JSON 构造文本
     content = resume.content_json or {}
     resume_text = f"姓名: {content.get('name', '')}\n"
     resume_text += f"技能: {content.get('skills', '')}\n"
@@ -374,25 +136,30 @@ async def generate(data: GenerateRequest, db: AsyncSession = Depends(get_db)):
         resume_text += f"工作经历: {exp.get('company', '')} - {exp.get('position', '')}\n"
         resume_text += f"  描述: {exp.get('description', '')}\n"
 
-    return await generate_cover_letter(
+    result = await generate_cover_letter(
         jd=job.raw_description or job.summary,
         resume=resume_text,
     )
 
+    return result
+
 
 @router.get("/stats")
 async def application_stats(db: AsyncSession = Depends(get_db)):
+    """投递统计：按状态分组计数"""
     stats_q = (
         select(Application.status, func.count(Application.id).label("count"))
         .group_by(Application.status)
     )
     rows = (await db.execute(stats_q)).all()
-    return {row.status: row.count for row in rows}
+    return {r.status: r.count for r in rows}
 
 
 @router.put("/{app_id}")
 async def update_application(app_id: int, data: ApplicationUpdate, db: AsyncSession = Depends(get_db)):
-    app = (await db.execute(select(Application).where(Application.id == app_id))).scalar_one_or_none()
+    """更新投递记录状态"""
+    result = await db.execute(select(Application).where(Application.id == app_id))
+    app = result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 

@@ -46,24 +46,24 @@ const periodOptions = [
 
 const statColors = [
   {
-    panel: "bg-[var(--surface)]",
-    iconBox: "bg-[#f6ecea] text-black",
-    shape: "rounded-full bg-[#d8e2da]",
+    panel: "bg-white",
+    iconBox: "bg-[#D02020] text-white",
+    shape: "rounded-full bg-[var(--primary-blue)]",
   },
   {
     panel: "bg-[var(--surface-muted)]",
-    iconBox: "bg-[#e4ece6] text-black",
-    shape: "bg-[#efe3bc]",
+    iconBox: "bg-[var(--primary-blue)] text-white",
+    shape: "bg-[#F0C020]",
   },
   {
-    panel: "bg-[var(--surface)]",
-    iconBox: "bg-[#efe3bc] text-black",
-    shape: "bauhaus-triangle bg-[#e8d2cd]",
+    panel: "bg-white",
+    iconBox: "bg-[#F0C020] text-black",
+    shape: "bauhaus-triangle bg-[#D02020]",
   },
   {
     panel: "bg-[var(--surface-muted)]",
-    iconBox: "bg-[#efe3bc] text-black",
-    shape: "rotate-45 bg-[#d8e2da]",
+    iconBox: "bg-[#D02020] text-white",
+    shape: "rotate-45 bg-[var(--primary-blue)]",
   },
 ];
 
@@ -97,25 +97,25 @@ export default function DashboardPage() {
       label: "岗位总量",
       value: totalJobs,
       icon: Briefcase,
-      note: "所有已同步职位",
+      note: "所有已同步的职位",
     },
     {
       label: "活跃来源",
       value: sourceCount,
       icon: Target,
-      note: "当前参与抓取的平台数",
+      note: "当前参与抓取的平台",
     },
     {
       label: "本期新增",
       value: jobsData?.items?.length ?? 0,
       icon: TrendingUp,
-      note: "当前时间窗口新增岗位",
+      note: "当前时间视图中的新增",
     },
     {
       label: "关键词命中",
       value: keywordCount,
       icon: Layers,
-      note: "首页岗位卡片关键词总和",
+      note: "首页岗位卡片聚合结果",
     },
   ];
 
@@ -130,34 +130,40 @@ export default function DashboardPage() {
         variants={item}
         className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]"
       >
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+        <div className="bauhaus-panel overflow-hidden bg-white">
           <div className="grid gap-8 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-6">
-              <span className="bauhaus-chip bg-[#f3ead2]">岗位进展总览</span>
+              <span className="bauhaus-chip bg-[#F0C020]">
+                Daily Job Match Engine
+              </span>
 
               <div>
-                <p className="bauhaus-label text-black/60">求职工作台</p>
-                <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl xl:text-6xl">
-                  把求职节奏
+                <p className="bauhaus-label text-black/60">
+                  Constructivist Career Workspace
+                </p>
+                <h1 className="mt-3 text-4xl font-black uppercase leading-[0.88] tracking-[-0.06em] sm:text-5xl xl:text-6xl">
+                  Build
                   <br />
-                  握在手里
+                  Your
+                  <br />
+                  Offer
                 </h1>
                 <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72 md:text-lg">
-                  在一个页面里看清抓取、筛选、简历与投递状态。重点信息优先展示，
-                  让你更快判断下一步动作。
+                  把抓取、筛选、简历优化和投递跟踪压缩进一个几何感很强的工作台。
+                  这版首页不再做玻璃风装饰，而是用明确的色块、边界和结构把工作流立起来。
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-3">
                 <Link href="/jobs" className="bauhaus-button bauhaus-button-red">
-                  <Briefcase size={18} strokeWidth={2.4} />
+                  <Briefcase size={18} strokeWidth={2.6} />
                   浏览岗位
                 </Link>
                 <Link
                   href="/settings"
                   className="bauhaus-button bauhaus-button-outline"
                 >
-                  <Settings size={18} strokeWidth={2.4} />
+                  <Settings size={18} strokeWidth={2.6} />
                   配置来源
                 </Link>
                 <OnboardingTriggerButton />
@@ -165,26 +171,28 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="bauhaus-panel-sm bauhaus-lift bg-[#f3ead2] p-4">
-                <p className="bauhaus-label text-black/65">活跃公司数</p>
-                <p className="mt-3 text-3xl font-bold">{companyCount}</p>
+              <div className="bauhaus-panel-sm bauhaus-lift bg-[#F0C020] p-4">
+                <p className="bauhaus-label text-black/65">Active Companies</p>
+                <p className="mt-3 text-3xl font-black uppercase tracking-[-0.06em]">
+                  {companyCount}
+                </p>
                 <p className="mt-2 text-sm font-medium text-black/70">
-                  当前时间范围内涉及的公司数量。
+                  本期岗位涉及的公司数量。
                 </p>
               </div>
 
-              <div className="bauhaus-panel-sm bauhaus-lift bg-[var(--surface)] p-4">
-                <p className="bauhaus-label text-black/65">统计窗口</p>
-                <p className="mt-3 text-3xl font-bold">
-                  {period === "today" ? "24 小时" : period === "week" ? "近 7 天" : "近 30 天"}
+              <div className="bauhaus-panel-sm bauhaus-lift bg-white p-4">
+                <p className="bauhaus-label text-black/65">Current Window</p>
+                <p className="mt-3 text-3xl font-black uppercase tracking-[-0.06em]">
+                  {period === "today" ? "24H" : period === "week" ? "7D" : "30D"}
                 </p>
                 <p className="mt-2 text-sm font-medium text-black/70">
-                  图表、统计与岗位列表使用同一时间维度。
+                  图表、统计与岗位列表保持同一个时间维度。
                 </p>
               </div>
 
               <div className="bauhaus-panel-sm bauhaus-lift bg-[var(--surface-muted)] p-4 text-black sm:col-span-2 xl:col-span-1">
-                <p className="bauhaus-label text-black/55">快捷入口</p>
+                <p className="bauhaus-label text-black/55">Command Strip</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link href="/optimize" className="bauhaus-button bauhaus-button-yellow !px-3 !py-2 !text-[11px]">
                     <Sparkles size={14} />
@@ -202,30 +210,36 @@ export default function DashboardPage() {
 
         <div className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)] text-black">
           <div className="relative min-h-[360px] p-6 md:p-8">
-            <div className="absolute left-6 top-6 h-14 w-14 rounded-full border border-black/20 bg-[#efe3bc]/45" />
-            <div className="absolute right-8 top-14 h-16 w-16 rotate-45 border border-black/15 bg-[#e8d2cd]/35" />
+            <div className="absolute left-6 top-6 h-14 w-14 rounded-full border-2 border-black/30 bg-[#F0C020]/35" />
+            <div className="absolute right-8 top-14 h-16 w-16 rotate-45 border-2 border-black/20 bg-[#D02020]/12" />
 
             <div className="relative z-10 flex min-h-[300px] flex-col justify-between">
               <div className="max-w-sm space-y-3">
-                <p className="bauhaus-label text-black/55">本周概览</p>
-                <h2 className="text-3xl font-bold leading-tight md:text-4xl">
-                  数据有序
+                <p className="bauhaus-label text-black/55">Poster View</p>
+                <h2 className="text-3xl font-black leading-[0.92] tracking-[-0.06em] md:text-4xl">
+                  Data
                   <br />
-                  推进中
+                  In
+                  <br />
+                  Motion
                 </h2>
                 <p className="text-base font-medium leading-relaxed text-black/72">
-                  用简洁卡片呈现关键进展，帮助你快速确认“现在到哪一步、接下来做什么”。
+                  右侧不放插画，直接用几何结构表达数据流和筛选节奏，让首页更像一张 Bauhaus 海报。
                 </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="bauhaus-panel-sm bg-[var(--surface)] p-4 text-black">
-                  <p className="bauhaus-label text-black/60">新增岗位</p>
-                  <p className="mt-2 text-3xl font-bold">{jobsData?.items?.length ?? 0}</p>
+                <div className="bauhaus-panel-sm bg-white p-4 text-black">
+                  <p className="bauhaus-label text-black/60">Fresh Jobs</p>
+                  <p className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">
+                    {jobsData?.items?.length ?? 0}
+                  </p>
                 </div>
-                <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
-                  <p className="bauhaus-label text-black/60">关键词命中</p>
-                  <p className="mt-2 text-3xl font-bold">{keywordCount}</p>
+                <div className="bauhaus-panel-sm bg-[#F7E4E1] p-4 text-black">
+                  <p className="bauhaus-label text-black/60">Tracked Keywords</p>
+                  <p className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">
+                    {keywordCount}
+                  </p>
                 </div>
               </div>
             </div>
@@ -239,9 +253,9 @@ export default function DashboardPage() {
 
       <motion.section
         variants={item}
-        className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)]"
+        className="bauhaus-panel overflow-hidden bg-[#F0C020]"
       >
-        <div className="grid grid-cols-1 divide-y divide-black/15 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+          <div className="grid grid-cols-1 divide-y-2 divide-black sm:grid-cols-2 sm:divide-x-2 sm:divide-y-0 lg:grid-cols-4">
           {statCards.map((stat, index) => {
             const palette = statColors[index % statColors.length];
             const Icon = stat.icon;
@@ -252,15 +266,19 @@ export default function DashboardPage() {
                 className={`relative p-5 md:p-6 ${palette.panel}`}
               >
                 <span
-                  className={`absolute right-4 top-4 h-3 w-3 border border-black/30 ${palette.shape}`}
+                  className={`absolute right-4 top-4 h-3 w-3 border border-black/50 ${palette.shape}`}
                 />
                 <div
-                  className={`flex h-10 w-10 items-center justify-center border border-black/25 ${palette.iconBox}`}
+                  className={`flex h-10 w-10 items-center justify-center border-2 border-black ${palette.iconBox}`}
                 >
-                  <Icon size={20} strokeWidth={2.2} />
+                  <Icon size={20} strokeWidth={2.4} />
                 </div>
-                <p className="mt-4 text-3xl font-bold md:text-4xl">{stat.value}</p>
-                <p className="mt-2 text-sm font-semibold">{stat.label}</p>
+                <p className="mt-4 text-3xl font-black uppercase tracking-[-0.06em] md:text-4xl">
+                  {stat.value}
+                </p>
+                <p className="mt-2 text-sm font-semibold tracking-[0.06em]">
+                  {stat.label}
+                </p>
                 <p className="mt-2 text-sm font-medium leading-relaxed opacity-80">
                   {stat.note}
                 </p>
@@ -274,13 +292,15 @@ export default function DashboardPage() {
         variants={item}
         className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]"
       >
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-          <div className="flex flex-col gap-4 border-b border-black/15 p-6 md:flex-row md:items-end md:justify-between">
+        <div className="bauhaus-panel overflow-hidden bg-white">
+          <div className="flex flex-col gap-4 border-b-2 border-black p-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="bauhaus-label text-black/60">趋势监测</p>
-              <h2 className="mt-2 text-2xl font-bold md:text-3xl">抓取趋势</h2>
+              <p className="bauhaus-label text-black/60">Trend Monitor</p>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] md:text-3xl">
+                Collection Trend
+              </h2>
               <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-                统一时间窗口后，你可以更快判断抓取频率是否稳定、是否需要补充渠道。
+                用硬边柱状图替代柔和面积图，让时间变化读起来更直接，也更贴合整套几何视觉语言。
               </p>
             </div>
 
@@ -316,12 +336,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-black">
-          <div className="border-b border-black/15 p-6">
-            <p className="bauhaus-label text-black/55">来源结构</p>
-            <h2 className="mt-2 text-2xl font-bold">平台分布</h2>
+        <div className="bauhaus-panel overflow-hidden bg-white text-black">
+          <div className="border-b-2 border-black p-6">
+            <p className="bauhaus-label text-black/55">Source Split</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.06em]">
+              Platform Mix
+            </h2>
             <p className="mt-2 text-sm font-medium leading-relaxed text-black/70">
-              主动观察来源分布，有助于避免渠道单一导致的岗位样本偏差。
+              数据源不再藏在次级信息里，而是作为首页右侧的一个主视觉模块直接展示。
             </p>
           </div>
 
@@ -330,34 +352,40 @@ export default function DashboardPage() {
               topSources.map(([source, count], index) => (
                 <div
                   key={source}
-                  className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-black/10 bg-[var(--surface)] px-5 py-4 text-black last:border-b-0"
+                  className="grid grid-cols-[1fr_auto] items-center gap-4 border-b-2 border-black/60 bg-white px-5 py-4 text-black last:border-b-0"
                 >
                   <div className="flex items-center gap-3">
                     <span
-                      className={`h-3 w-3 border border-black/30 ${
+                      className={`h-3 w-3 border border-black/60 ${
                         index % 3 === 0
-                          ? "rounded-full bg-[#e8d2cd]"
+                          ? "rounded-full bg-[#D02020]"
                           : index % 3 === 1
-                            ? "bg-[#d8e2da]"
-                            : "bauhaus-triangle bg-[#efe3bc]"
+                            ? "bg-[var(--primary-blue)]"
+                            : "bauhaus-triangle bg-[#F0C020]"
                       }`}
                     />
                     <div>
-                      <p className="text-sm font-semibold">{source}</p>
-                      <p className="text-xs font-medium text-black/55">已同步岗位</p>
+                      <p className="text-sm font-semibold tracking-[0.04em]">
+                        {source}
+                      </p>
+                      <p className="text-xs font-medium text-black/55">
+                        synced positions
+                      </p>
                     </div>
                   </div>
-                  <div className="bauhaus-panel-sm min-w-[60px] bg-[#f3ead2] px-3 py-2 text-center">
-                    <p className="text-xl font-bold">{count}</p>
+                  <div className="bauhaus-panel-sm min-w-[60px] bg-[#F0C020] px-3 py-2 text-center">
+                    <p className="text-xl font-bold tracking-[-0.04em]">
+                      {count}
+                    </p>
                   </div>
                 </div>
               ))
             ) : (
               <div className="p-6">
-                <div className="bauhaus-panel-sm bg-[#f3ead2] p-5 text-black">
-                  <p className="bauhaus-label text-black/65">暂无来源数据</p>
+                <div className="bauhaus-panel-sm bg-[#F0C020] p-5 text-black">
+                  <p className="bauhaus-label text-black/65">No Source Data</p>
                   <p className="mt-2 text-sm font-medium leading-relaxed">
-                    先在设置页补齐平台配置，再去抓取器发起任务，这里会自动形成来源分布。
+                    先去设置页配置平台，再到抓取器启动任务，这里就会自动形成来源分布。
                   </p>
                 </div>
               </div>
@@ -369,16 +397,18 @@ export default function DashboardPage() {
       <motion.section variants={item} className="space-y-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="bauhaus-label text-black/60">最新岗位</p>
-            <h2 className="mt-2 text-2xl font-bold md:text-3xl">近期机会</h2>
+            <p className="bauhaus-label text-black/60">Latest Board</p>
+            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] md:text-3xl">
+              Recent Jobs
+            </h2>
             <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-              这里展示当前窗口下最值得优先处理的一批岗位，方便你直接进入下一步。
+              岗位卡片也统一切到硬边和色块系统，避免首页和岗位列表出现两套完全不同的视觉语法。
             </p>
           </div>
 
           <Link href="/jobs" className="bauhaus-button bauhaus-button-outline">
             查看全部
-            <ArrowRight size={18} strokeWidth={2.4} />
+            <ArrowRight size={18} strokeWidth={2.6} />
           </Link>
         </div>
 
@@ -391,24 +421,26 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : (
-          <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+          <div className="bauhaus-panel overflow-hidden bg-white">
             <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:p-8">
-              <div className="flex h-24 w-24 items-center justify-center border border-black/20 bg-[#f3ead2]">
-                <Building2 size={40} strokeWidth={2.2} />
+              <div className="flex h-24 w-24 items-center justify-center border-4 border-black bg-[#F0C020]">
+                <Building2 size={40} strokeWidth={2.4} />
               </div>
               <div>
-                <p className="bauhaus-label text-black/60">暂无岗位</p>
-                <h3 className="mt-2 text-3xl font-bold">先开始一次抓取</h3>
+                <p className="bauhaus-label text-black/60">No Jobs Yet</p>
+                <h3 className="mt-2 text-3xl font-black uppercase tracking-[-0.08em]">
+                  Start The Collection
+                </h3>
                 <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
                   当前还没有可展示的岗位。先去设置页补齐来源与关键词，再到抓取器启动任务，
-                  首页就会自动出现趋势与岗位卡片。
+                  首页就会自动长出趋势图和职位卡片。
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Link
                     href="/settings"
                     className="bauhaus-button bauhaus-button-outline"
                   >
-                    去配置
+                    先配设置
                   </Link>
                   <Link
                     href="/scraper"

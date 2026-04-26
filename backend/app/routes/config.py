@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -17,11 +16,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.paths import ensure_local_data_layout
 
 router = APIRouter()
 
-# backend/config.json
-_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
+_CONFIG_FILE = ensure_local_data_layout()[0].config_path
 _DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 _PLACEHOLDER_API_KEYS = {
     "sk-REDACTED",

@@ -9,18 +9,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    DateTime,
-    Float,
-    Integer,
-    String,
-    Text,
-    ForeignKey,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -377,94 +366,6 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
-
-
-class ApplicationWorkspaceSettings(Base):
-    """投递管理模块全局显示与行为设置"""
-    __tablename__ = "application_workspace_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    auto_row_height: Mapped[bool] = mapped_column(Boolean, default=True)
-    auto_column_width: Mapped[bool] = mapped_column(Boolean, default=True)
-    delete_subtable_sync_total_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-
-class ApplicationTemplate(Base):
-    """默认投递模板：用于初始化新子表与全量覆盖"""
-    __tablename__ = "application_templates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    schema_json: Mapped[list] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-
-class ApplicationTable(Base):
-    """投递表容器：总表 + 子表"""
-    __tablename__ = "application_tables"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(120), index=True)
-    is_total: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    schema_json: Mapped[list] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    table_records: Mapped[list["ApplicationTableRecord"]] = relationship(
-        back_populates="table",
-        cascade="all, delete-orphan",
-    )
-
-
-class ApplicationRecord(Base):
-    """投递业务记录实体：总表与子表共享同一实体，保证值同步"""
-    __tablename__ = "application_records"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_ref_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
-    company_name: Mapped[str] = mapped_column(String(300), default="", index=True)
-    job_title: Mapped[str] = mapped_column(String(500), default="", index=True)
-    location: Mapped[str] = mapped_column(String(300), default="", index=True)
-    job_link: Mapped[str] = mapped_column(Text, default="")
-    source: Mapped[str] = mapped_column(String(120), default="")
-    salary_text: Mapped[str] = mapped_column(String(120), default="")
-    updated_at_value: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    custom_values: Mapped[dict] = mapped_column(JSON, default=dict)
-    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    duplicate_group: Mapped[str] = mapped_column(String(160), default="", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    table_links: Mapped[list["ApplicationTableRecord"]] = relationship(
-        back_populates="record",
-        cascade="all, delete-orphan",
-    )
-
-
-class ApplicationTableRecord(Base):
-    """投递表与记录关联：支持一条记录挂在多张表"""
-    __tablename__ = "application_table_records"
-    __table_args__ = (
-        UniqueConstraint("table_id", "record_id", name="uq_application_table_record"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    table_id: Mapped[int] = mapped_column(Integer, ForeignKey("application_tables.id", ondelete="CASCADE"), index=True)
-    record_id: Mapped[int] = mapped_column(Integer, ForeignKey("application_records.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    table: Mapped["ApplicationTable"] = relationship(back_populates="table_records")
-    record: Mapped["ApplicationRecord"] = relationship(back_populates="table_links")
 
 
 # =============================================

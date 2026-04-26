@@ -11,14 +11,17 @@ __pycache__/
 # ---- 构建输出 ----
 frontend/.next/
 frontend/out/
+frontend/tsconfig.tsbuildinfo
 extension/.output/
 backend/*.db
 *.db
+backend/data/
 
 # ---- 环境配置 ----
 .env
 .env.local
 .env.*.local
+backend/.env
 backend/config.json
 
 # ---- IDE / 编辑器 ----
@@ -44,6 +47,10 @@ npm-debug.log*
 # ---- 测试/临时 ----
 coverage/
 .pytest_cache/
+docs/
+
+# ---- 本地敏感讨论文档 ----
+docs/产品分歧分析_*.md
 
 # ---- Trae 本地元数据 ----
 .trae/
@@ -51,9 +58,3 @@ coverage/
 
 # ---- 本地参考仓库（不入库） ----
 references/
-
-# ---- 隐私文档（不入库） ----
-docs/
-
-# ---- 缓存文件（不入库） ----
-frontend/tsconfig.tsbuildinfo

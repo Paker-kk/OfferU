@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const rootDir = resolve(process.cwd());
@@ -28,7 +28,7 @@ function copyOptionalDir(dirName) {
   if (existsSync(target)) {
     rmSync(target, { recursive: true, force: true });
   }
-  cpSync(source, target, { recursive: true, force: true });
+  copyDirectory(source, target);
 }
 
 function copyOptionalDirFromRoot(sourceRelativePath, targetRelativePath) {
@@ -39,7 +39,7 @@ function copyOptionalDirFromRoot(sourceRelativePath, targetRelativePath) {
   if (existsSync(target)) {
     rmSync(target, { recursive: true, force: true });
   }
-  cpSync(source, target, { recursive: true, force: true });
+  copyDirectory(source, target);
 }
 
 function copyOptionalDirToOutput(sourceRelativePath, targetRelativePath) {
@@ -50,7 +50,23 @@ function copyOptionalDirToOutput(sourceRelativePath, targetRelativePath) {
   if (existsSync(target)) {
     rmSync(target, { recursive: true, force: true });
   }
-  cpSync(source, target, { recursive: true, force: true });
+  copyDirectory(source, target);
+}
+
+function copyDirectory(source, target) {
+  mkdirSync(target, { recursive: true });
+
+  for (const entry of readdirSync(source)) {
+    const sourcePath = resolve(source, entry);
+    const targetPath = resolve(target, entry);
+
+    if (statSync(sourcePath).isDirectory()) {
+      copyDirectory(sourcePath, targetPath);
+    } else {
+      ensureParentDir(targetPath);
+      copyFileSync(sourcePath, targetPath);
+    }
+  }
 }
 
 copyRequiredFile("background.js", "background.js");

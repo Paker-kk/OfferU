@@ -516,7 +516,7 @@ export default function ProfilePage() {
       setImportModalOpen(true);
       setNotice(`已解析 ${file.name}，请审核后导入`);
     } catch (err: any) {
-      setError(err.message || "智能导入失败");
+      setError(err.message || "AI 导入失败");
     } finally {
       setImporting(false);
     }
@@ -679,16 +679,20 @@ export default function ProfilePage() {
       transition={{ type: "spring", damping: 18 }}
       className="space-y-6"
     >
-      <div className="bauhaus-panel flex flex-wrap items-end justify-between gap-4 bg-[var(--surface)] p-6 md:p-8">
+      <div className="bauhaus-panel flex flex-wrap items-end justify-between gap-4 bg-white p-6 md:p-8">
         <div className="hidden">
-          <p className="bauhaus-label text-black/60">档案事实源</p>
+          <p className="bauhaus-label text-black/60">Profile Source Of Truth</p>
           <h1 className="text-3xl font-bold">档案管理</h1>
           <p className="text-sm text-white/45 mt-1">档案库是唯一事实源，简历页只读取和同步，不会反向覆盖档案数据。</p>
         </div>
 
         <div>
-          <p className="bauhaus-label text-black/60">档案事实源</p>
-          <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">个人档案库</h1>
+          <p className="bauhaus-label text-black/60">Profile Source Of Truth</p>
+          <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-5xl">
+            Profile
+            <br />
+            Archive
+          </h1>
           <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
             档案库是唯一事实源。这里维护结构化经历、技能与证书，简历页只读取和同步这些内容，不反向覆盖原始档案。
           </p>
@@ -716,7 +720,7 @@ export default function ProfilePage() {
               isLoading={importing}
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
             >
-              智能导入
+              AI 导入
             </Button>
           </label>
 
@@ -752,8 +756,8 @@ export default function ProfilePage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">基础资料</p>
-            <div className="mt-2 text-2xl font-bold text-black">
+            <p className="bauhaus-label text-black/55">Base Identity</p>
+            <div className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">
               基础信息
             </div>
           </div>
@@ -772,8 +776,8 @@ export default function ProfilePage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-5 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">结构化经历</p>
-            <div className="mt-2 text-2xl font-bold text-black">
+            <p className="bauhaus-label text-black/55">Structured Entries</p>
+            <div className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">
               档案经历库
             </div>
           </div>
@@ -921,13 +925,7 @@ export default function ProfilePage() {
                                     {section.title || resolveProfileCategoryLabel(sectionKey, section.category_label)}
                                   </div>
                                   <div className="mt-1 text-xs font-medium tracking-[0.04em] text-black/45">
-                                    来源 {
-                                      section.source === "manual"
-                                        ? "手动录入"
-                                        : section.source === "ai_import"
-                                          ? "智能导入"
-                                          : section.source
-                                    } · 置信度 {Math.round(section.confidence * 100)}%
+                                    来源 {section.source} · 置信度 {Math.round(section.confidence * 100)}%
                                   </div>
                                   {isLowConfidence(section.confidence) && (
                                     <div
@@ -1045,7 +1043,7 @@ export default function ProfilePage() {
       <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="3xl" scrollBehavior="inside" data-testid="profile-import-review-modal">
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
-            智能导入审核
+            AI 导入审核
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             {importCandidates.length === 0 ? (

@@ -11,6 +11,7 @@ import type {
   Message,
   IngestPayload,
   IngestJobPayload,
+  IngestResponse,
   MergeResponse,
   RemoveResponse,
   StatusResponse,
@@ -25,7 +26,7 @@ import {
 import {
   buildSyncPlan,
   isJobReadyToSync,
-  retainUnsyncedJobs,
+  retainUnsyncedJobsByHashKeys,
 } from "./background/sync-contract.js";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -411,15 +412,32 @@ async function syncToServer(): Promise<SyncResponse> {
       return { ok: false, synced: 0, skippedDraft, error: `HTTP ${resp.status}: ${text}` };
     }
 
-    const data = await resp.json().catch(() => ({} as { created?: number; skipped?: number }));
-    const created = typeof data.created === "number" ? data.created : jobsToSync.length;
+    const data = await resp.json().catch(() => ({} as IngestResponse));
+    const acceptedHashKeys = Array.isArray(data.accepted_hash_keys)
+      ? data.accepted_hash_keys.filter((key: unknown): key is string => typeof key === "string" && key.trim().length > 0)
+      : [];
+    const created = typeof data.created === "number" ? data.created : 0;
     const skipped = typeof data.skipped === "number" ? data.skipped : 0;
-    const synced = Math.max(0, created + skipped);
+    const countedSynced = Math.max(0, created + skipped);
+    const confirmedHashKeys = acceptedHashKeys.length > 0
+      ? acceptedHashKeys
+      : countedSynced >= jobsToSync.length
+        ? jobsToSync.map((job) => job.hash_key)
+        : [];
 
-    const remainingJobs = retainUnsyncedJobs(normalizedJobs, jobsToSync);
+    if (confirmedHashKeys.length === 0 && countedSynced > 0) {
+      return {
+        ok: false,
+        synced: 0,
+        skippedDraft,
+        error: "后端未返回逐条同步确认，已保留插件本地队列",
+      };
+    }
+
+    const remainingJobs = retainUnsyncedJobsByHashKeys(normalizedJobs, confirmedHashKeys);
     await saveJobs(remainingJobs);
 
-    return { ok: true, synced, skippedDraft };
+    return { ok: true, synced: confirmedHashKeys.length, skippedDraft };
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") {
       return { ok: false, synced: 0, skippedDraft, error: "同步超时，请检查后端服务是否可访问" };

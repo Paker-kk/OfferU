@@ -4,6 +4,7 @@ import {
   buildSyncPlan,
   isJobReadyToSync,
   retainUnsyncedJobs,
+  retainUnsyncedJobsByHashKeys,
 } from "../src/background/sync-contract";
 import type { ExtractedJob } from "../src/types";
 
@@ -59,6 +60,23 @@ describe("sync contract", () => {
     const remaining = retainUnsyncedJobs([syncedReady, failedReady, draft], [syncedReady]);
 
     expect(remaining.map((job) => job.hash_key)).toEqual(["hk-failed", "hk-draft"]);
+  });
+
+  it("should keep jobs that are not confirmed by backend hash keys", () => {
+    const accepted = makeJob({ hash_key: "hk-accepted" });
+    const pending = makeJob({ hash_key: "hk-pending" });
+
+    const remaining = retainUnsyncedJobsByHashKeys([accepted, pending], ["hk-accepted"]);
+
+    expect(remaining.map((job) => job.hash_key)).toEqual(["hk-pending"]);
+  });
+
+  it("should keep the local queue when backend confirms no hash keys", () => {
+    const pending = makeJob({ hash_key: "hk-pending" });
+
+    const remaining = retainUnsyncedJobsByHashKeys([pending], []);
+
+    expect(remaining.map((job) => job.hash_key)).toEqual(["hk-pending"]);
   });
 
   it("should require title, company and jd content before syncing", () => {
