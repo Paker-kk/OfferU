@@ -5,8 +5,8 @@
 # 职责：注册路由、CORS、生命周期事件
 # =============================================
 
+import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +22,7 @@ except ImportError:
     mcp_server = None
     agent_route = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize, interview, local
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize, interview
 
 settings = get_settings()
 
@@ -45,12 +45,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+
 # ---- CORS 允许前端跨域访问 ----
 # cors_origins 以逗号分隔多个来源，如 "http://localhost:3000,http://localhost:8080"
 # allow_credentials=True 允许带 cookie 的跨域请求（Gmail OAuth 回调需要）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_origins=cors_origins,
+    allow_origin_regex=r"^(chrome-extension|ms-browser-extension)://[a-z0-9]{16,64}$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,14 +71,13 @@ app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
-app.include_router(local.router, prefix="/api/local", tags=["Local Data"])
 if agent_route is not None:
     app.include_router(agent_route.router, prefix="/api/agent", tags=["Agent"])
 
 # ---- 静态文件（头像等上传文件） ----
-UPLOAD_DIR = Path(settings.app_data_dir) / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ---- MCP Server (Streamable HTTP) ----
 if _HAS_MCP and mcp_server is not None:

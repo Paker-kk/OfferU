@@ -19,13 +19,13 @@ import { normalizeProfileCategoryKey, resolveProfileCategoryLabel, getProfileBul
 
 const bauhausFieldClassNames = {
   inputWrapper:
-    "border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] group-data-[focus=true]:border-black/25",
   input: "font-medium text-black placeholder:text-black/45",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-black/60",
+  label: "font-semibold text-[11px] text-black/60",
 };
 
 const bauhausModalContentClassName =
-  "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+  "border border-black/15 bg-[var(--surface)] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]";
 
 function getResumeSourceLabel(resume: ResumeBrief): { text: string; color: "default" | "secondary" | "success" } {
   if (resume.source_mode === "per_job") {
@@ -214,18 +214,16 @@ export default function ResumesListPage() {
       transition={{ type: "spring", damping: 15 }}
       className="space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 border-b-2 border-black p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+        <div className="grid gap-6 border-b border-black/15 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#D02020] text-white">Resume Factory</span>
+            <span className="bauhaus-chip bg-[#f7ece9] text-black">简历管理中心</span>
             <div>
-              <p className="bauhaus-label text-black/60">Draft, Iterate, Export</p>
-              <h1 className="mt-2 text-3xl font-black uppercase tracking-[-0.06em] md:text-5xl">
-                Build
+              <p className="bauhaus-label text-black/60">创建、管理与迭代</p>
+              <h1 className="mt-2 text-3xl font-bold leading-tight md:text-5xl">
+                建立版本
                 <br />
-                Store
-                <br />
-                Ship
+                稳定维护
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
                 在这里集中管理所有简历版本。你可以快速新建、进入编辑器、删除旧稿，并保留不同岗位定制所需的多份副本。
@@ -234,24 +232,24 @@ export default function ResumesListPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Resume Count</p>
-              <p className="mt-2 text-3xl font-black uppercase tracking-[-0.06em]">{resumes?.length ?? 0}</p>
-              <p className="mt-2 text-sm font-medium text-white/80">当前已保存的简历总数。</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/60">简历数量</p>
+              <p className="mt-2 text-3xl font-bold">{resumes?.length ?? 0}</p>
+              <p className="mt-2 text-sm font-medium text-black/72">当前已保存的简历总数。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Profile Owner</p>
-              <p className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] truncate">
-                {String(profileData?.base_info_json?.name || profileData?.name || "Anonymous")}
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/60">档案姓名</p>
+              <p className="mt-2 truncate text-2xl font-semibold">
+                {String(profileData?.base_info_json?.name || profileData?.name || "未命名用户")}
               </p>
               <p className="mt-2 text-sm font-medium text-black/75">新建简历时会默认写入这份档案姓名。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Quick Action</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/60">快捷操作</p>
               <Button
                 startContent={<Plus size={16} />}
                 onPress={onOpen}
-                className="bauhaus-button bauhaus-button-outline mt-3 !w-full !justify-center !border-white !bg-white !text-black !px-4 !py-3 !text-[11px]"
+                className="bauhaus-button bauhaus-button-outline mt-3 !w-full !justify-center !px-4 !py-3 !text-[11px]"
               >
                 新建简历
               </Button>
@@ -270,7 +268,7 @@ export default function ResumesListPage() {
                   as="span"
                   startContent={<Upload size={16} />}
                   isLoading={uploading}
-                  className="bauhaus-button bauhaus-button-outline !w-full !justify-center !border-white !bg-transparent !text-white !px-4 !py-3 !text-[11px] cursor-pointer"
+                  className="bauhaus-button bauhaus-button-outline !w-full !justify-center !px-4 !py-3 !text-[11px] cursor-pointer"
                 >
                   上传简历
                 </Button>
@@ -281,7 +279,7 @@ export default function ResumesListPage() {
       </section>
 
       {actionError && (
-        <div role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[#D02020] px-4 py-3 text-sm font-bold text-white">
+        <div role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[#f7ece9] px-4 py-3 text-sm font-semibold text-[#b7483c]">
           <span>{actionError}</span>
           <button onClick={() => setActionError("")} className="ml-4 font-black" aria-label="关闭错误提示">✕</button>
         </div>
@@ -301,21 +299,21 @@ export default function ResumesListPage() {
             >
               <Card
                 isPressable
-                className="bauhaus-panel bauhaus-lift group h-full min-h-[380px] w-full rounded-none bg-white shadow-none aspect-[3/5]"
+                className="bauhaus-panel bauhaus-lift group h-full min-h-[380px] w-full rounded-none bg-[var(--surface)] shadow-none aspect-[3/5]"
                 onPress={() => router.push(`/resume/${resume.id}`)}
               >
                 <CardBody className="flex h-full flex-col gap-4 p-4 md:p-5">
                   {/* 缩略图占位 */}
-                  <div className="relative flex min-h-[180px] h-[58%] items-center justify-center overflow-hidden border-2 border-black/60 bg-[#F0F0F0]">
+                  <div className="relative flex min-h-[180px] h-[58%] items-center justify-center overflow-hidden border border-black/12 bg-[var(--surface-muted)]">
                     <div className="absolute inset-0 bg-[radial-gradient(#121212_1.2px,transparent_1.2px)] bg-[size:20px_20px] opacity-05" />
-                    <div className="absolute left-4 top-4 h-4 w-4 rounded-full bg-[#D02020]/50" />
-                    <div className="absolute bottom-4 right-4 h-4 w-4 rotate-45 bg-[#1040C0]/40" />
+                    <div className="absolute left-4 top-4 h-4 w-4 rounded-full bg-[#e8d2cd]" />
+                    <div className="absolute bottom-4 right-4 h-4 w-4 rotate-45 bg-[#d8e2da]" />
                     <FileText size={36} className="relative z-10 text-black/30" />
                   </div>
 
                   {/* 简历信息 */}
                   <div className="space-y-1.5 min-h-[96px]">
-                    <h3 className="truncate text-base font-black uppercase tracking-[-0.04em] text-black">
+                    <h3 className="truncate text-base font-semibold text-black">
                       {resume.title || "未命名简历"}
                     </h3>
                     <div className="flex items-center gap-2 text-xs font-medium text-black/50">
@@ -332,12 +330,12 @@ export default function ResumesListPage() {
                         size="sm"
                         variant="flat"
                         color={getResumeSourceLabel(resume).color}
-                        className={`border-2 border-black text-[10px] ${
+                        className={`border border-black/15 text-[10px] ${
                           getResumeSourceLabel(resume).color === "secondary"
-                            ? "bg-[#1040C0] text-white"
+                            ? "bg-[#e4ece6] text-black"
                             : getResumeSourceLabel(resume).color === "success"
-                              ? "bg-[#F0C020] text-black"
-                              : "bg-white text-black"
+                              ? "bg-[#f3ead2] text-black"
+                              : "bg-[var(--surface)] text-black"
                         }`}
                       >
                         {getResumeSourceLabel(resume).text}
@@ -384,20 +382,20 @@ export default function ResumesListPage() {
           >
             <div className="grid gap-6 p-8 md:grid-cols-[1.05fr_0.95fr] md:p-10">
               <div className="space-y-3">
-                <span className="bauhaus-chip bg-[#F0C020] text-black">No Draft Yet</span>
-                <h2 className="text-3xl font-black uppercase tracking-[-0.08em] md:text-5xl">
-                  First
-                  <br />
-                  Resume
-                </h2>
+              <span className="bauhaus-chip bg-[#f3ead2] text-black">暂无简历草稿</span>
+              <h2 className="text-3xl font-bold md:text-5xl">
+                从第一份
+                <br />
+                简历开始
+              </h2>
                 <p className="max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
                   还没有简历。点击上方「新建简历」开始第一份版本，然后再按岗位逐步复制和打磨。
                 </p>
               </div>
-              <div className="bauhaus-panel-sm flex min-h-[220px] items-center justify-center bg-[#1040C0] p-6 text-white">
+              <div className="bauhaus-panel-sm flex min-h-[220px] items-center justify-center bg-[#e4ece6] p-6 text-black">
                 <div className="text-center">
                   <FileText size={54} className="mx-auto" aria-hidden="true" />
-                  <p className="mt-4 text-lg font-semibold tracking-[-0.04em]">Draft Board Ready</p>
+                  <p className="mt-4 text-lg font-semibold">随时创建新版本</p>
                 </div>
               </div>
             </div>
@@ -408,7 +406,7 @@ export default function ResumesListPage() {
       {/* 新建简历弹窗 */}
       <Modal isOpen={isOpen} onClose={onClose} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black uppercase tracking-[-0.04em]">
+          <ModalHeader className="border-b border-black/15 px-6 py-5 text-xl font-semibold">
             新建简历
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">
@@ -422,7 +420,7 @@ export default function ResumesListPage() {
               classNames={bauhausFieldClassNames}
             />
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -444,13 +442,13 @@ export default function ResumesListPage() {
       {/* 删除确认弹窗 */}
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black uppercase tracking-[-0.04em] text-white">
+          <ModalHeader className="border-b border-black/15 bg-[#f7ece9] px-6 py-5 text-xl font-semibold text-[var(--primary-red)]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">
             <p className="text-base font-medium text-black/80">确定要删除这份简历吗？此操作不可撤销。</p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -472,7 +470,7 @@ export default function ResumesListPage() {
       {/* 上传简历审核弹窗 */}
       <Modal isOpen={uploadModalOpen} onClose={() => setUploadModalOpen(false)} size="3xl" scrollBehavior="inside">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#1040C0] px-6 py-5 text-xl font-black uppercase tracking-[-0.04em] text-white">
+          <ModalHeader className="border-b border-black/15 bg-[#e4ece6] px-6 py-5 text-xl font-semibold text-black">
             上传简历 — AI 解析审核
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
@@ -494,7 +492,7 @@ export default function ResumesListPage() {
                 <div
                   key={candidate.localId}
                   className={`bauhaus-panel-sm space-y-3 p-4 ${
-                    candidate.confidence < 0.65 ? "bg-[#F0C020]" : "bg-white"
+                    candidate.confidence < 0.65 ? "bg-[#f3ead2]" : "bg-[var(--surface)]"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -509,10 +507,10 @@ export default function ResumesListPage() {
                       导入此段
                     </Checkbox>
                     <span
-                      className={`inline-block border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase ${
+                      className={`inline-block border border-black/15 px-2 py-0.5 text-[10px] font-semibold ${
                         candidate.confidence < 0.65
-                          ? "bg-white text-black"
-                          : "bg-[#1040C0] text-white"
+                          ? "bg-[var(--surface)] text-black"
+                          : "bg-[#e4ece6] text-black"
                       }`}
                     >
                       置信度 {Math.round(candidate.confidence * 100)}%
@@ -520,13 +518,13 @@ export default function ResumesListPage() {
                   </div>
 
                   {candidate.confidence < 0.65 && (
-                    <div className="text-[11px] font-semibold tracking-[0.06em] text-black/75">
+                    <div className="text-[11px] font-semibold text-black/75">
                       该候选条目置信度偏低，建议核对后再导入。
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr]">
-                    <span className="inline-block border-2 border-black bg-[#F0F0F0] px-3 py-1.5 text-[11px] font-black uppercase">
+                    <span className="inline-block border border-black/15 bg-[var(--surface-muted)] px-3 py-1.5 text-[11px] font-semibold">
                       {candidate.categoryLabel}
                     </span>
                     <Input
@@ -562,7 +560,7 @@ export default function ResumesListPage() {
               ))
             )}
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"

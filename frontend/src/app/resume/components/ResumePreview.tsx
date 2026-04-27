@@ -1,22 +1,26 @@
 // =============================================
-// ResumePreview — ATS-First 单栏专业简历 A4 预览
+// ResumePreview 鈥?ATS-First 鍗曟爮涓撲笟绠€鍘?A4 棰勮
 // =============================================
-// 设计原则：
-//   1. 单栏布局 — ATS 从上到下线性扫描，无交叉混读
-//   2. 标准段落标题 + 主色调下划线 — 结构清晰
-//   3. Bullet point 格式 — ATS 可精确提取每条经历
-//   4. 联系方式一行式 — 节省空间，ATS 友好
-//   5. 无图片/表格/文本框 — 避免 ATS 解析失败
+// 璁捐鍘熷垯锛?
+//   1. 单栏布局 鈥?ATS 浠庝笂鍒颁笅绾挎€ф壂鎻忥紝鏃犱氦鍙夋贩璇?
+//   2. 鏍囧噯娈佃惤鏍囬 + 主色调下划线 鈥?结构清晰
+//   3. Bullet point 格式 鈥?ATS 鍙簿纭彁鍙栨瘡鏉＄粡鍘?
+//   4. 鑱旂郴鏂瑰紡涓€行式 鈥?节省空间，ATS 鍙嬪ソ
+//   5. 鏃犲浘鐗?琛ㄦ牸/鏂囨湰妗?鈥?避免 ATS 解析失败
 // =============================================
-// 参考：open-resume (8.6k⭐) + Zety ATS 最佳实践
-// 支持 forwardRef，用于 PDF 导出
-// 所有样式通过 styleConfig 驱动
+// 鍙傝€冿細open-resume (8.6k猸? + Zety ATS 鏈€浣冲疄璺?
+// 鏀寔 forwardRef锛岀敤浜?PDF 导出
+// 鎵€鏈夋牱寮忛€氳繃 styleConfig 驱动
 // =============================================
 
 "use client";
 
 import { forwardRef } from "react";
 import { DEFAULT_STYLE_CONFIG } from "./StyleToolbar";
+import {
+  normalizeResumeSectionsForEditor,
+  splitSkillAndCertificateEntries,
+} from "../utils/sectionNormalization";
 
 interface Section {
   id: number;
@@ -36,16 +40,16 @@ interface ResumePreviewProps {
   styleConfig: Record<string, string>;
 }
 
-/** 将 HTML 描述中的 <li> 提取为纯文本 bullet 数组，兼容纯文本 */
+/** 灏?HTML 鎻忚堪涓殑 <li> 提取为纯文本 bullet 数组，兼容纯文本 */
 function extractBullets(html: string): string[] {
   if (!html) return [];
-  // 匹配 <li>...</li> 内容
+  // 匹配 <li>...</li> 鍐呭
   const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
   const matches = [...html.matchAll(liRegex)];
   if (matches.length > 0) {
     return matches.map((m) => m[1].replace(/<[^>]*>/g, "").trim()).filter(Boolean);
   }
-  // 无 <li> 则按 <p> 或 <br> 或换行符分段
+  // 鏃?<li> 则按 <p> 鎴?<br> 鎴栨崲琛岀鍒嗘
   const stripped = html
     .replace(/<\/?(ul|ol)[^>]*>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -58,11 +62,11 @@ function extractBullets(html: string): string[] {
 }
 
 /**
- * ATS-First 单栏专业简历 A4 预览
- * ─────────────────────────────────────────────
+ * ATS-First 鍗曟爮涓撲笟绠€鍘?A4 棰勮
+ * 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
  * 布局：全宽单栏，姓名居中，联系方式一行式
- * 段落：主色调标题 + 下划线分隔 + Bullet 格式内容
- * ATS 兼容：无表格/图形/双栏/文本框，纯文字流
+ * 娈佃惤锛氫富鑹茶皟鏍囬 + 涓嬪垝绾垮垎闅?+ Bullet 鏍煎紡鍐呭
+ * ATS 鍏煎锛氭棤琛ㄦ牸/图形/双栏/鏂囨湰妗嗭紝绾枃瀛楁祦
  */
 const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function ResumePreview(
   { userName, photoUrl, summary, contactJson, sections, styleConfig },
@@ -70,9 +74,12 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
 ) {
   const s = { ...DEFAULT_STYLE_CONFIG, ...styleConfig };
 
-  const visible = sections.filter((sec) => sec.visible).sort((a, b) => a.sort_order - b.sort_order);
+  const normalizedSections = normalizeResumeSectionsForEditor(sections as any[]);
+  const visible = normalizedSections
+    .filter((sec) => sec.visible)
+    .sort((a, b) => a.sort_order - b.sort_order);
 
-  // 联系方式 — 一行式，用 | 分隔
+  // 联系方式 鈥?涓€行式，用 | 分隔
   const contactParts: string[] = [];
   if (contactJson.phone) contactParts.push(contactJson.phone);
   if (contactJson.email) contactParts.push(contactJson.email);
@@ -80,14 +87,14 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
   if (contactJson.website) contactParts.push(contactJson.website);
   if (contactJson.github) contactParts.push(contactJson.github);
 
-  // 尺寸计算
+  // 灏哄计算
   const bs = parseFloat(s.bodySize);
   const hs = parseFloat(s.headingSize);
   const margin = `${parseFloat(s.pageMargin) * 18}px`;
   const pc = s.primaryColor;
   const gap = `${parseFloat(s.sectionGap)}pt`;
 
-  /** 段落标题样式 — 主色调 + 下划线 */
+  /** 娈佃惤鏍囬样式 鈥?涓昏壊璋?+ 涓嬪垝绾?*/
   const sectionTitleStyle: React.CSSProperties = {
     fontSize: `${hs}pt`,
     fontWeight: 700,
@@ -99,7 +106,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
     marginBottom: "4px",
   };
 
-  /** 条目标题行样式 — 左: 名称 右: 日期 */
+  /** 鏉＄洰鏍囬琛屾牱寮?鈥?宸? 鍚嶇О 鍙? 鏃ユ湡 */
   const entryHeaderStyle: React.CSSProperties = {
     display: "flex",
     justifyContent: "space-between",
@@ -132,7 +139,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
           gap,
         }}>
 
-          {/* ========= 头部：姓名 + 联系方式 ========= */}
+          {/* ========= 澶撮儴锛氬鍚?+ 联系方式 ========= */}
           <div style={{ textAlign: "center" }}>
             {/* 顶部色条 */}
             <div style={{
@@ -169,10 +176,10 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
             )}
           </div>
 
-          {/* ========= 职业概述 ========= */}
+          {/* ========= 个人简介 ========= */}
           {summary && (
             <div>
-              <div style={sectionTitleStyle}>职业概述</div>
+              <div style={sectionTitleStyle}>个人简介</div>
               <div style={{
                 fontSize: `${Math.max(7.5, bs - 0.5)}pt`,
                 color: "#444",
@@ -191,21 +198,21 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
             </div>
           )}
 
-          {/* ========= 各段落 ========= */}
+          {/* ========= 鍚勬钀?========= */}
           {visible.map((sec) => (
             <div key={sec.id}>
               <div style={sectionTitleStyle}>{sec.title}</div>
 
-              {/* 工作经历 */}
+              {/* 宸ヤ綔缁忓巻 */}
               {sec.section_type === "experience" && sec.content_json.map((item: any, j: number) => (
                 <div key={j} style={{ marginTop: j > 0 ? "8px" : "3px" }}>
                   <div style={entryHeaderStyle}>
                     <div>
                       <span style={{ fontWeight: 600, color: "#111" }}>{item.company || "Company"}</span>
-                      <span style={{ color: "#444" }}> — {item.position || "Position"}</span>
+                      <span style={{ color: "#444" }}> - {item.position || "Position"}</span>
                     </div>
                     <div style={dateStyle}>
-                      {item.startDate}{item.endDate && ` – ${item.endDate}`}
+                      {item.startDate}{item.endDate && ` - ${item.endDate}`}
                     </div>
                   </div>
                   {item.description && (
@@ -232,11 +239,11 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
                   <div style={entryHeaderStyle}>
                     <div>
                       <span style={{ fontWeight: 600, color: "#111" }}>{item.school || "School"}</span>
-                      {item.degree && <span style={{ color: "#444" }}> — {item.degree}</span>}
-                      {item.major && <span style={{ color: "#444" }}> · {item.major}</span>}
+                      {item.degree && <span style={{ color: "#444" }}> - {item.degree}</span>}
+                      {item.major && <span style={{ color: "#444" }}> - {item.major}</span>}
                     </div>
                     <div style={dateStyle}>
-                      {item.startDate}{item.endDate && ` – ${item.endDate}`}
+                      {item.startDate}{item.endDate && ` - ${item.endDate}`}
                     </div>
                   </div>
                   {item.gpa && (
@@ -262,20 +269,42 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
                 </div>
               ))}
 
-              {/* 技能 — 单栏：分类 + 逗号分隔列表 */}
-              {sec.section_type === "skill" && sec.content_json.map((group: any, j: number) => (
-                <div key={j} style={{
-                  marginTop: j > 0 ? "3px" : "2px",
-                  fontSize: `${Math.max(7.5, bs - 0.5)}pt`,
-                }}>
-                  {group.category && (
-                    <span style={{ fontWeight: 600, color: "#111" }}>{group.category}：</span>
-                  )}
-                  <span style={{ color: "#444" }}>
-                    {(group.items || []).join("、")}
-                  </span>
-                </div>
-              ))}
+              {/* 鎶€鑳?鈥?鍗曟爮锛氬垎绫?+ 逗号分隔列表 */}
+              {sec.section_type === "skill" && (() => {
+                const { skills, certificates } = splitSkillAndCertificateEntries(sec.content_json || []);
+                return (
+                  <>
+                    {skills.map((group: any, j: number) => (
+                      <div key={`skill-${j}`} style={{
+                        marginTop: j > 0 ? "3px" : "2px",
+                        fontSize: `${Math.max(7.5, bs - 0.5)}pt`,
+                      }}>
+                        {group.category && (
+                          <span style={{ fontWeight: 600, color: "#111" }}>{group.category}：</span>
+                        )}
+                        <span style={{ color: "#444" }}>
+                          {(group.items || []).join("、")}
+                        </span>
+                      </div>
+                    ))}
+                    {certificates.map((item: any, j: number) => (
+                      <div key={`cert-${j}`} style={{
+                        marginTop: "3px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                      }}>
+                        <div>
+                          <span style={{ fontWeight: 600, color: "#111" }}>{item.name}</span>
+                          {item.scoreOrLevel && <span style={{ color: "#555" }}> · {item.scoreOrLevel}</span>}
+                          {item.issuer && <span style={{ color: "#555" }}> - {item.issuer}</span>}
+                        </div>
+                        {item.date && <span style={dateStyle}>{item.date}</span>}
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
 
               {/* 项目 */}
               {sec.section_type === "project" && sec.content_json.map((item: any, j: number) => (
@@ -283,10 +312,10 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
                   <div style={entryHeaderStyle}>
                     <div>
                       <span style={{ fontWeight: 600, color: "#111" }}>{item.name || "Project"}</span>
-                      {item.role && <span style={{ color: "#444" }}> — {item.role}</span>}
+                      {item.role && <span style={{ color: "#444" }}> - {item.role}</span>}
                     </div>
                     <div style={dateStyle}>
-                      {item.startDate}{item.endDate && ` – ${item.endDate}`}
+                      {item.startDate}{item.endDate && ` - ${item.endDate}`}
                     </div>
                   </div>
                   {item.url && (
@@ -310,7 +339,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
                 </div>
               ))}
 
-              {/* 证书 */}
+              {/* 兼容历史证书模块（已迁移为技能与证书时通常不会出现） */}
               {sec.section_type === "certificate" && sec.content_json.map((item: any, j: number) => (
                 <div key={j} style={{
                   marginTop: j > 0 ? "3px" : "2px",
@@ -320,13 +349,14 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
                 }}>
                   <div>
                     <span style={{ fontWeight: 600, color: "#111" }}>{item.name}</span>
-                    {item.issuer && <span style={{ color: "#555" }}> — {item.issuer}</span>}
+                    {item.scoreOrLevel && <span style={{ color: "#555" }}> · {item.scoreOrLevel}</span>}
+                    {item.issuer && <span style={{ color: "#555" }}> - {item.issuer}</span>}
                   </div>
                   {item.date && <span style={dateStyle}>{item.date}</span>}
                 </div>
               ))}
 
-              {/* 自定义 */}
+              {/* 鑷畾涔?*/}
               {sec.section_type === "custom" && sec.content_json.map((item: any, j: number) => (
                 <div key={j} style={{ marginTop: j > 0 ? "4px" : "2px" }}>
                   {item.subtitle && (
@@ -358,3 +388,4 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
 });
 
 export default ResumePreview;
+

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -16,14 +17,14 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.paths import ensure_local_data_layout
 
 router = APIRouter()
 
-_CONFIG_FILE = ensure_local_data_layout()[0].config_path
+# backend/config.json
+_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
 _DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 _PLACEHOLDER_API_KEYS = {
-    "sk-REDACTED",
+    "sk-your-openai-key-here",
     "your-openai-api-key",
     "your-deepseek-api-key",
     "your-gemini-api-key",
@@ -31,8 +32,6 @@ _PLACEHOLDER_API_KEYS = {
     "replace-with-your-api-key",
     "api-key-here",
     "sk-your-key",
-    # 历史示例值，视为未配置
-    "aizasyc7mpmbytxt21mlxr2zt0p68er4mrunzgi",
 }
 
 PROVIDER_PRESETS: list[dict[str, Any]] = [

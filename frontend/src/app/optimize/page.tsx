@@ -29,38 +29,38 @@ export default function OptimizePage() {
       transition={{ duration: 0.28, ease: "easeOut" }}
       className="mx-auto max-w-7xl space-y-8"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Optimize Studio</span>
+            <span className="bauhaus-chip bg-[#f3ead2]">简历定制工作区</span>
             <div>
-              <p className="bauhaus-label text-black/55">Resume Factory</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Select
+              <p className="bauhaus-label text-black/55">岗位匹配与生成</p>
+              <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">
+                选岗位
                 <br />
-                Build
+                生简历
                 <br />
-                Clone
+                再打磨
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
-                从档案里抽取已确认事实，按岗位 JD 批量拼装定制简历。这里是整套求职流的“生产车间”，
-                目标是高密度筛选、高速生成、低风险复用。
+                从档案中提取已确认事实，按岗位 JD 批量拼装定制简历。这里强调稳定、可追溯、可复用，
+                让高频操作更顺手。
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm !bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Mode</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">Per Job / Combined</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/60">生成模式</p>
+              <p className="mt-3 text-2xl font-bold">逐岗位 / 综合</p>
             </div>
-            <div className="bauhaus-panel-sm !bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Rule</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">Fact Only</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/60">事实规则</p>
+              <p className="mt-3 text-2xl font-bold">仅使用已确认信息</p>
             </div>
-            <div className="bauhaus-panel-sm !bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Flow</p>
-              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">筛选 → 生成 → 编辑</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/60">流程</p>
+              <p className="mt-3 text-lg font-semibold">筛选 → 生成 → 编辑</p>
             </div>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default function OptimizePage() {
 
       <section className="flex flex-wrap gap-3">
         <Link href="/jobs" className="bauhaus-button bauhaus-button-outline">
-          去岗位池继续选岗
+          去岗位库继续选岗
           <ArrowRight size={14} />
         </Link>
         <Link href="/profile" className="bauhaus-button bauhaus-button-yellow">
@@ -77,8 +77,8 @@ export default function OptimizePage() {
         </Link>
       </section>
 
-      <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4 text-sm font-medium leading-relaxed text-black/68">
-        生成规则：仅允许使用档案中已确认事实；每次生成都会新增一份简历，不会覆盖已有版本。
+      <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-black/68">
+        生成规则：仅允许使用档案中已确认事实；每次生成都会新增一份简历，不覆盖已有版本。
       </div>
 
       <OptimizeWorkspace seedJobIds={workspaceSeedJobIds} />

@@ -83,31 +83,31 @@ const EDUCATION_OPTIONS = [
 
 const bauhausInputClassNames = {
   inputWrapper:
-    "border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-all hover:-translate-y-[1px] hover:bg-[#F0F0F0]",
+    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-all hover:bg-[var(--surface-muted)]",
   input: "font-medium text-black placeholder:text-black/45",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-black/60",
+  label: "font-semibold text-[11px] text-black/60",
 };
 
 const bauhausSelectClassNames = {
   trigger:
-    "border-2 border-black/80 bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] hover:-translate-y-[1px]",
+    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
   value: "font-medium text-black",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-black/60",
+  label: "font-semibold text-[11px] text-black/60",
 };
 
 const bauhausPaginationClassNames = {
   base: "gap-1",
-  item: "border-2 border-black/80 bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
-  cursor: "border-2 border-black bg-[#D02020] text-white shadow-[2px_2px_0_0_rgba(18,18,18,0.4)]",
-  next: "border-2 border-black/80 bg-[#F0C020] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
-  prev: "border-2 border-black/80 bg-[#F0C020] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]",
+  item: "border border-black/15 bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
+  cursor: "border border-black/20 bg-[#e8d2cd] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.12)]",
+  next: "border border-black/15 bg-[#f3ead2] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
+  prev: "border border-black/15 bg-[#f3ead2] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
 };
 
 const bauhausModalContentClassName =
-  "border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+  "border border-black/15 bg-[var(--surface)] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]";
 
 const bauhausIconButtonClassName =
-  "min-h-11 min-w-11 border-2 border-black/80 bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]";
+  "min-h-11 min-w-11 border border-black/15 bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)]";
 
 function resolveTriageTab(raw: string | null): "all" | "inbox" | "picked" | "ignored" {
   if (!raw) return "all";
@@ -243,26 +243,26 @@ export default function JobsPage() {
   const triageMeta = {
     all: {
       label: "全部岗位",
-      tone: "bg-[#F0C020] text-black",
-      accent: "bg-[#D02020]",
+      tone: "bg-[#f3ead2] text-black",
+      accent: "bg-[#e8d2cd]",
       description: "查看所有已同步职位，并通过筛选器把注意力拉回到目标范围。",
     },
     inbox: {
-      label: "未筛选池",
-      tone: "bg-[#1040C0] text-white",
-      accent: "bg-[#F0C020]",
+      label: "待筛选",
+      tone: "bg-[#e4ece6] text-black",
+      accent: "bg-[#f3ead2]",
       description: "这里承接刚抓取回来的职位，用来做第一轮判断与归档。",
     },
     picked: {
       label: "已筛选池",
-      tone: "bg-[#D02020] text-white",
-      accent: "bg-[#F0C020]",
+      tone: "bg-[#f7ece9] text-black",
+      accent: "bg-[#f3ead2]",
       description: "只保留你真正要追的岗位，再继续做简历定制和投递动作。",
     },
     ignored: {
-      label: "回收站",
-      tone: "bg-white text-black",
-      accent: "bg-[#1040C0]",
+      label: "已忽略",
+      tone: "bg-[var(--surface)] text-black",
+      accent: "bg-[#d8e2da]",
       description: "回收站保留恢复入口，也支持彻底删除，避免主列表持续膨胀。",
     },
   }[triageStatus];
@@ -560,18 +560,16 @@ export default function JobsPage() {
       animate={{ opacity: 1 }}
       className="space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 border-b-2 border-black p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+        <div className="grid gap-6 border-b border-black/15 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>
             <div>
-              <p className="bauhaus-label text-black/60">Job Command Board</p>
-              <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-6xl">
-                Match
+              <p className="bauhaus-label text-black/60">岗位操作台</p>
+              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">
+                快速筛选
                 <br />
-                Select
-                <br />
-                Route
+                稳定推进
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
                 {triageMeta.description}
@@ -581,22 +579,22 @@ export default function JobsPage() {
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <div className={`bauhaus-panel-sm p-4 ${triageMeta.tone}`}>
-              <p className="bauhaus-label opacity-70">Current Pool</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+              <p className="bauhaus-label opacity-70">当前池</p>
+              <p className="mt-2 text-4xl font-bold">
                 {data?.total ?? 0}
               </p>
               <p className="mt-2 text-sm font-medium opacity-80">当前视图下的岗位总数。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Selected</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/60">已选岗位</p>
+              <p className="mt-2 text-4xl font-bold">
                 {selectedIds.size}
               </p>
-              <p className="mt-2 text-sm font-medium text-white/80">批量操作始终作用于已选岗位。</p>
+              <p className="mt-2 text-sm font-medium text-black/70">批量操作始终作用于已选岗位。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/65">Filters</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/65">筛选条件</p>
+              <p className="mt-2 text-4xl font-bold">
                 {activeFilterCount}
               </p>
               <p className="mt-2 text-sm font-medium text-black/75">当前启用的筛选条件数量。</p>
@@ -636,15 +634,15 @@ export default function JobsPage() {
 
       <div className="space-y-4">
         {isScraperSyncing && (
-          <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-            <p className="bauhaus-label text-white/70">Sync In Progress</p>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-white/85">
+          <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+            <p className="bauhaus-label text-black/60">同步进行中</p>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-black/75">
               正在同步最新抓取结果，岗位列表会自动刷新，无需重复操作。
             </p>
           </div>
         )}
 
-        <div className="bauhaus-panel overflow-hidden bg-[#F0F0F0]">
+        <div className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)]">
           <div className="space-y-4 p-4 md:p-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0 flex-1">
@@ -671,9 +669,9 @@ export default function JobsPage() {
                   classNames={{
                     base: "w-full",
                     tabList: "gap-2 rounded-none border-0 bg-transparent p-0",
-                    cursor: "rounded-none border-2 border-black bg-[#121212] shadow-[2px_2px_0_0_rgba(18,18,18,0.4)]",
-                    tab: "h-auto rounded-none border-2 border-black/80 bg-white px-4 py-3 shadow-[2px_2px_0_0_rgba(18,18,18,0.25)] data-[hover=true]:-translate-y-[1px]",
-                    tabContent: "font-semibold tracking-[0.04em] text-[11px] text-black group-data-[selected=true]:text-white",
+                    cursor: "rounded-none border border-black/20 bg-[#f7ece9] shadow-[1px_1px_0_0_rgba(18,18,18,0.12)]",
+                    tab: "h-auto rounded-none border border-black/15 bg-[var(--surface)] px-4 py-3",
+                    tabContent: "font-semibold text-[11px] text-black/72 group-data-[selected=true]:text-black",
                   }}
                 >
                   <Tab key="all" title="全部" />
@@ -826,7 +824,7 @@ export default function JobsPage() {
                   classNames={{ wrapper: "bg-black/10" }}
                 />
                 <div>
-                  <p className="bauhaus-label text-black/55">Campus Only</p>
+                  <p className="bauhaus-label text-black/55">校招筛选</p>
                   <p className="text-sm font-medium text-black/75">仅看校招岗位</p>
                 </div>
               </div>
@@ -842,7 +840,7 @@ export default function JobsPage() {
               )}
 
               <div className="bauhaus-panel-sm ml-auto bg-white px-4 py-3 text-black">
-                <p className="bauhaus-label text-black/55">Selection Status</p>
+                <p className="bauhaus-label text-black/55">选择状态</p>
                 <p className="mt-1 text-sm font-medium text-black/75">{selectionStatusText}</p>
               </div>
             </div>
@@ -1042,7 +1040,7 @@ export default function JobsPage() {
         <>
           {/* 批量模式：全选栏 */}
           {selectedIds.size > 0 && (
-            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[#F0C020] p-4 text-black">
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[#f3ead2] p-4 text-black">
               <Checkbox
                 isSelected={totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs}
                 isIndeterminate={selectedIds.size > 0 && totalMatchingJobs > 0 && selectedIds.size < totalMatchingJobs}
@@ -1109,13 +1107,13 @@ export default function JobsPage() {
                 transition={{ type: "spring", damping: 20 }}
                 className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]"
               >
-                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border-2 border-black bg-white px-4 py-4 shadow-[4px_4px_0_0_rgba(18,18,18,0.4)]">
-                  <span className="text-sm font-semibold tracking-[0.04em] text-black/75">
-                    已选 <span className="font-black text-[#D02020]">{selectedIds.size}</span> 个岗位
+                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border border-black/15 bg-[var(--surface)] px-4 py-4 shadow-[2px_2px_0_0_rgba(18,18,18,0.12)]">
+                  <span className="text-sm font-semibold text-black/75">
+                    已选 <span className="font-bold text-[var(--primary-red)]">{selectedIds.size}</span> 个岗位
                   </span>
 
                   {actionError && (
-                    <span className="border-2 border-[#D02020] bg-[#D02020]/10 px-3 py-1 text-xs font-bold text-[#D02020]" role="alert">
+                    <span className="border border-[#c95548]/40 bg-[#f7ece9] px-3 py-1 text-xs font-semibold text-[#b7483c]" role="alert">
                       {actionError}
                     </span>
                   )}
@@ -1231,14 +1229,14 @@ export default function JobsPage() {
           </AnimatePresence>
         </>
       ) : (
-        <section className="bauhaus-panel overflow-hidden bg-white">
+        <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
           <div className="grid gap-6 p-6 md:grid-cols-[1.1fr_0.9fr] md:p-8">
             <div className="space-y-3">
-              <span className="bauhaus-chip bg-[#F0C020] text-black">No Active Jobs</span>
-              <h2 className="text-3xl font-black uppercase tracking-[-0.08em] md:text-5xl">
-                Empty
+              <span className="bauhaus-chip bg-[#f3ead2] text-black">暂无岗位结果</span>
+              <h2 className="text-3xl font-bold md:text-5xl">
+                当前筛选
                 <br />
-                Board
+                没有命中
               </h2>
               <p className="max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
                 暂无符合当前筛选条件的岗位。可以调整筛选条件，或者前往爬虫控制台继续抓取并同步最新机会。
@@ -1246,17 +1244,17 @@ export default function JobsPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="bauhaus-panel-sm bg-[#1040C0] p-5 text-white">
-                <p className="bauhaus-label text-white/70">Try This</p>
-                <p className="mt-2 text-lg font-semibold tracking-[-0.04em]">Relax Filters</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-white/80">
+              <div className="bauhaus-panel-sm bg-[#e4ece6] p-5 text-black">
+                <p className="bauhaus-label text-black/60">可先尝试</p>
+                <p className="mt-2 text-lg font-semibold">放宽筛选</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
                   清空关键词、来源与岗位类型，先看更大的岗位池。
                 </p>
               </div>
-              <div className="bauhaus-panel-sm bg-[#D02020] p-5 text-white">
-                <p className="bauhaus-label text-white/70">Next Move</p>
-                <p className="mt-2 text-lg font-semibold tracking-[-0.04em]">Fetch More</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-white/80">
+              <div className="bauhaus-panel-sm bg-[#f7ece9] p-5 text-black">
+                <p className="bauhaus-label text-black/60">下一步</p>
+                <p className="mt-2 text-lg font-semibold">继续抓取</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
                   如果列表本身为空，回到爬虫控制台触发一次新抓取会更直接。
                 </p>
               </div>
@@ -1267,7 +1265,7 @@ export default function JobsPage() {
 
       <Modal isOpen={moveToPickedOpen} onClose={closeMoveToPickedModal} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-black/15 px-6 py-5 text-xl font-semibold">
             加入已筛选池
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
@@ -1285,7 +1283,7 @@ export default function JobsPage() {
               {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
             </Select>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1313,7 +1311,7 @@ export default function JobsPage() {
 
       <Modal isOpen={moveToTrashOpen} onClose={closeMoveToTrashModal} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-black/15 bg-[#f3ead2] px-6 py-5 text-xl font-semibold">
             移入回收站
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
@@ -1321,7 +1319,7 @@ export default function JobsPage() {
               确认将选中的 {selectedIds.size} 个岗位移入回收站吗？移入后可在回收站页面恢复或永久删除。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1345,7 +1343,7 @@ export default function JobsPage() {
 
       <Modal isOpen={poolOpen} onClose={closePoolModal} size="lg">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-black/15 px-6 py-5 text-xl font-semibold">
             岗位池管理
           </ModalHeader>
           <ModalBody className="space-y-5 px-6 py-6">
@@ -1368,13 +1366,13 @@ export default function JobsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="bauhaus-panel-sm bg-[#1040C0] px-4 py-3 text-sm font-medium leading-relaxed text-white">
+              <div className="bauhaus-panel-sm bg-[#e4ece6] px-4 py-3 text-sm font-medium leading-relaxed text-black/75">
                 未筛选池仅由爬虫任务自动生成，当前仅支持重命名与删除管理。
               </div>
             )}
 
             {poolError && (
-              <p className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+              <p className="bauhaus-panel-sm bg-[#f7ece9] px-4 py-3 text-sm font-medium text-[#b7483c]">
                 {poolError}
               </p>
             )}
@@ -1424,8 +1422,8 @@ export default function JobsPage() {
                           <p className="text-base font-semibold tracking-[-0.04em] text-black">
                             {pool.name}
                           </p>
-                          <p className="text-xs font-medium tracking-[0.06em] text-black/55">
-                            Jobs {pool.job_count}
+                          <p className="text-xs font-medium text-black/55">
+                            岗位数 {pool.job_count}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1445,7 +1443,7 @@ export default function JobsPage() {
                             isIconOnly
                             size="sm"
                             aria-label="删除池"
-                            className={`${bauhausIconButtonClassName} bg-[#D02020] text-white`}
+                            className={`${bauhausIconButtonClassName} bg-[#f7ece9] text-[var(--primary-red)]`}
                             onPress={() => handleDeletePool(pool)}
                           >
                             <Trash2 size={14} />
@@ -1458,7 +1456,7 @@ export default function JobsPage() {
               )}
             </div>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1473,7 +1471,7 @@ export default function JobsPage() {
       {/* 删除确认弹窗 */}
       <Modal isOpen={confirmDeleteOpen} onClose={closeConfirmDelete} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+          <ModalHeader className="border-b border-black/15 bg-[#f7ece9] px-6 py-5 text-xl font-semibold text-[var(--primary-red)]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">
@@ -1485,7 +1483,7 @@ export default function JobsPage() {
                   : ""}
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t border-black/15 px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"

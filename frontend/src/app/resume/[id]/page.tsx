@@ -26,7 +26,7 @@ import {
 import {
   Save, FileDown, ArrowLeft, Plus, ChevronDown, ChevronUp,
   Eye, EyeOff, Trash2, Image as ImageIcon,
-  GraduationCap, Briefcase, Wrench, FolderKanban, Award, LayoutList,
+  GraduationCap, Briefcase, Wrench, FolderKanban, LayoutList,
   Wand2, Check, X, AlertTriangle, Sparkles, ArrowDownToLine, AlertCircle,
   Undo2, Redo2, GripVertical, Palette,
 } from "lucide-react";
@@ -54,6 +54,12 @@ import {
   normalizeProfileCategoryKey,
   resolveProfileCategoryLabel,
 } from "@/lib/profileSchema";
+import { buildProfileSectionsForResumeImport } from "@/lib/personalArchive";
+import {
+  RESUME_SECTION_DEFINITIONS,
+  getResumeSectionLabel,
+  normalizeResumeSectionsForEditor,
+} from "../utils/sectionNormalization";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors, DragEndEvent,
@@ -68,10 +74,9 @@ import { CSS } from "@dnd-kit/utilities";
 const SECTION_TYPES = [
   { key: "education", label: "教育经历", icon: GraduationCap, color: "text-[#1040C0]" },
   { key: "experience", label: "工作经历", icon: Briefcase, color: "text-[#D02020]" },
-  { key: "skill", label: "技能", icon: Wrench, color: "text-[#F0C020]" },
+  { key: "skill", label: "技能与证书", icon: Wrench, color: "text-[#F0C020]" },
   { key: "project", label: "项目经历", icon: FolderKanban, color: "text-[#1040C0]" },
-  { key: "certificate", label: "证书", icon: Award, color: "text-[#D02020]" },
-  { key: "custom", label: "自定义段落", icon: LayoutList, color: "text-[#121212]" },
+  { key: "custom", label: "个人经历", icon: LayoutList, color: "text-[#121212]" },
 ];
 
 const bauhausFieldClassNames = {
@@ -105,7 +110,7 @@ const bauhausSelectClassNames = {
 
 /** 根据 section_type 获取图标和颜色 */
 function getSectionMeta(type: string) {
-  return SECTION_TYPES.find((t) => t.key === type) || SECTION_TYPES[5];
+  return SECTION_TYPES.find((t) => t.key === type) || SECTION_TYPES[4];
 }
 
 // =============================================
@@ -271,10 +276,16 @@ export default function ResumeEditorPage() {
   const { data: templates } = useResumeTemplates();
   const { data: config } = useConfig();
   const profileSourceSyncEnabled = Boolean((config as any)?.profile_source_sync_enabled);
+  const serverSnapshotRef = useRef("");
+  const mergedLegacySectionIdsRef = useRef<number[]>([]);
+
+  const getProfileSectionResumeType = useCallback((section: ProfileSection) => {
+    return mapProfileSectionToResumeType(section.category_key || section.section_type);
+  }, []);
 
   const profileSections = useMemo(() => {
-    return (profileData?.sections || []).slice().sort((a, b) => a.sort_order - b.sort_order);
-  }, [profileData?.sections]);
+    return buildProfileSectionsForResumeImport(profileData).slice().sort((a, b) => a.sort_order - b.sort_order);
+  }, [profileData]);
 
   const profileSectionMap = useMemo(() => {
     return new Map<number, ProfileSection>(profileSections.map((item) => [item.id, item]));
@@ -303,9 +314,9 @@ export default function ResumeEditorPage() {
       return profileSections;
     }
     return profileSections.filter(
-      (item) => mapProfileSectionToResumeType(item.section_type) === targetSection.section_type
+      (item) => getProfileSectionResumeType(item) === targetSection.section_type
     );
-  }, [profileImportTargetSection, profileImportTargetSectionId, profileSections]);
+  }, [getProfileSectionResumeType, profileImportTargetSection, profileImportTargetSectionId, profileSections]);
 
   const staleImportedItems = useMemo(() => {
     if (!profileSourceSyncEnabled) {
@@ -455,14 +466,34 @@ export default function ResumeEditorPage() {
   /** 从服务端数据初始化本地状态 */
   useEffect(() => {
     if (!resume) return;
+    const normalizedSections = normalizeResumeSectionsForEditor(resume.sections || []);
+    const normalizedIds = new Set(normalizedSections.map((section) => section.id));
+    mergedLegacySectionIdsRef.current = (resume.sections || [])
+      .filter((section: any) =>
+        (section.section_type === "skill" || section.section_type === "certificate")
+        && !normalizedIds.has(section.id)
+      )
+      .map((section: any) => section.id);
+    const serverSnapshot = JSON.stringify({
+      userName: resume.user_name || "",
+      title: resume.title || "",
+      summary: resume.summary || "",
+      contactJson: resume.contact_json || {},
+      styleConfig: resume.style_config || {},
+      sections: normalizedSections,
+    });
+    if (serverSnapshotRef.current === serverSnapshot) {
+      return;
+    }
+    serverSnapshotRef.current = serverSnapshot;
     setUserName(resume.user_name || "");
     setTitle(resume.title || "");
     setSummary(resume.summary || "");
     setContactJson(resume.contact_json || {});
     setPhotoUrl(resume.photo_url || "");
     setStyleConfig({ ...DEFAULT_STYLE_CONFIG, ...(resume.style_config || {}) });
-    setSections(resume.sections || []);
-    setExpandedSections(new Set((resume.sections || []).map((s: any) => s.id)));
+    setSections(normalizedSections);
+    setExpandedSections(new Set(normalizedSections.map((s: any) => s.id)));
     setIgnoredSourceTokens(new Set());
     // 重置 undo/redo 历史到服务端初始状态
     resetHistory({
@@ -470,7 +501,7 @@ export default function ResumeEditorPage() {
       title: resume.title || "",
       summary: resume.summary || "",
       contactJson: resume.contact_json || {},
-      sections: resume.sections || [],
+      sections: normalizedSections,
     });
   }, [resume, resetHistory]);
 
@@ -559,6 +590,26 @@ export default function ResumeEditorPage() {
           sort_order: sec.sort_order,
         });
       }
+      if (mergedLegacySectionIdsRef.current.length > 0) {
+        const failedIds: number[] = [];
+        for (const legacySectionId of mergedLegacySectionIdsRef.current) {
+          try {
+            await deleteSection(resumeId, legacySectionId);
+          } catch (err) {
+            console.error(`Delete legacy section failed: ${legacySectionId}`, err);
+            failedIds.push(legacySectionId);
+          }
+        }
+        mergedLegacySectionIdsRef.current = failedIds;
+      }
+      serverSnapshotRef.current = JSON.stringify({
+        userName,
+        title,
+        summary,
+        contactJson,
+        styleConfig,
+        sections,
+      });
       await mutate();
     } finally {
       setSaving(false);
@@ -591,10 +642,37 @@ export default function ResumeEditorPage() {
 
   /** 添加新段落 */
   const handleAddSection = async (type: string) => {
-    const label = SECTION_TYPES.find((t) => t.key === type)?.label || type;
+    const label = getResumeSectionLabel(type);
+    const sectionType = RESUME_SECTION_DEFINITIONS.some((item) => item.key === type)
+      ? type
+      : "custom";
+    if (sectionType === "skill") {
+      const existingSkillSection = sections.find((item) => item.section_type === "skill");
+      if (existingSkillSection) {
+        setSections((prev) =>
+          prev.map((item) => {
+            if (item.id !== existingSkillSection.id) return item;
+            const current = Array.isArray(item.content_json) ? item.content_json : [];
+            return {
+              ...item,
+              content_json: [
+                ...current,
+                { _entryType: "skill", ...createEmptySectionItem("skill") },
+              ],
+            };
+          })
+        );
+        setExpandedSections((prev) => {
+          const next = new Set(prev);
+          next.add(existingSkillSection.id);
+          return next;
+        });
+        return;
+      }
+    }
     const maxOrder = sections.length > 0 ? Math.max(...sections.map((s) => s.sort_order)) : -1;
     const res = await createSection(resumeId, {
-      section_type: type,
+      section_type: sectionType,
       title: label,
       sort_order: maxOrder + 1,
       content_json: [],
@@ -615,14 +693,14 @@ export default function ResumeEditorPage() {
       const targetSection = sections.find((item) => item.id === targetSectionId);
       if (targetSection) {
         candidates = profileSections.filter(
-          (item) => mapProfileSectionToResumeType(item.section_type) === targetSection.section_type
+          (item) => getProfileSectionResumeType(item) === targetSection.section_type
         );
       }
     }
 
     setSelectedProfileSectionIds(new Set(candidates.map((item) => item.id)));
     onProfileImportOpen();
-  }, [onProfileImportOpen, profileSections, sections]);
+  }, [getProfileSectionResumeType, onProfileImportOpen, profileSections, sections]);
 
   const closeProfileImportModal = useCallback(() => {
     setProfileImportError("");
@@ -647,7 +725,12 @@ export default function ResumeEditorPage() {
         const current = Array.isArray(item.content_json) ? item.content_json : [];
         return {
           ...item,
-          content_json: [...current, createEmptySectionItem(item.section_type)],
+          content_json: [
+            ...current,
+            item.section_type === "skill"
+              ? { _entryType: "skill", ...createEmptySectionItem(item.section_type) }
+              : createEmptySectionItem(item.section_type),
+          ],
         };
       })
     );
@@ -712,14 +795,14 @@ export default function ResumeEditorPage() {
       if (profileImportTargetSectionId != null) {
         const importedItems = sourceSections.map((item) => mapProfileSectionToResumeItem(item as any));
         setSections((prev) =>
-          prev.map((section) => {
+          normalizeResumeSectionsForEditor(prev.map((section) => {
             if (section.id !== profileImportTargetSectionId) return section;
             const current = Array.isArray(section.content_json) ? section.content_json : [];
             return {
               ...section,
               content_json: [...current, ...importedItems],
             };
-          })
+          }))
         );
         setExpandedSections((prev) => {
           const next = new Set(prev);
@@ -732,16 +815,19 @@ export default function ResumeEditorPage() {
         let nextSort = sections.length > 0 ? Math.max(...sections.map((item) => item.sort_order)) + 1 : 0;
 
         for (const profileSection of sourceSections) {
-          const resumeSectionType = mapProfileSectionToResumeType(profileSection.section_type);
+          const resumeSectionType = getProfileSectionResumeType(profileSection);
           const importedItem = mapProfileSectionToResumeItem(profileSection as any);
           const existingIndex = nextSections.findIndex((item) => item.section_type === resumeSectionType);
           const normalizedCategoryKey = normalizeProfileCategoryKey(
             profileSection.category_key || profileSection.section_type
           );
-          const moduleTitle = resolveProfileCategoryLabel(
-            normalizedCategoryKey,
-            profileSection.category_label
-          );
+          const moduleTitle =
+            resumeSectionType === "skill"
+              ? getResumeSectionLabel("skill")
+              : resolveProfileCategoryLabel(
+                  normalizedCategoryKey,
+                  profileSection.category_label
+                );
 
           if (existingIndex >= 0) {
             const current = Array.isArray(nextSections[existingIndex].content_json)
@@ -770,10 +856,11 @@ export default function ResumeEditorPage() {
           }
         }
 
-        setSections(nextSections);
+        const normalizedSections = normalizeResumeSectionsForEditor(nextSections as any[]);
+        setSections(normalizedSections);
         setExpandedSections((prev) => {
           const next = new Set(prev);
-          for (const section of nextSections) {
+          for (const section of normalizedSections) {
             next.add(section.id);
           }
           return next;
@@ -788,6 +875,7 @@ export default function ResumeEditorPage() {
     }
   }, [
     closeProfileImportModal,
+    getProfileSectionResumeType,
     profileImportTargetSectionId,
     profileSections,
     resumeId,
@@ -1073,7 +1161,7 @@ export default function ResumeEditorPage() {
       {/* ========== 主体区域：编辑面板 + 预览画布 ========== */}
       <div className="flex flex-1 min-h-0">
         {/* ---- 左侧编辑面板（固定360px宽度，可滚动） ---- */}
-        <div className="custom-scrollbar w-[360px] flex-shrink-0 overflow-y-auto border-r-2 border-black bg-[#E7E7E2]">
+        <div className="custom-scrollbar w-[480px] flex-shrink-0 overflow-y-auto border-r-2 border-black bg-[#E7E7E2]">
           <div className="p-4 space-y-4">
             {staleImportedItems.length > 0 && (
               <div className="bauhaus-panel-sm bg-[#F0C020] px-3 py-3 text-black" data-testid="resume-source-sync-banner">
@@ -1194,9 +1282,10 @@ export default function ResumeEditorPage() {
                   const sourceCategoryKey = Array.isArray(sec.content_json)
                     ? sec.content_json.find((item: any) => item?._source_profile_category_key)?._source_profile_category_key
                     : "";
-                  const sectionDisplayTitle = sourceCategoryKey
-                    ? resolveProfileCategoryLabel(sourceCategoryKey)
-                    : (SECTION_TYPES.find((item) => item.key === sec.section_type)?.label || sec.title || "未命名模块");
+                  const sectionDisplayTitle =
+                    sec.section_type === "custom" && sourceCategoryKey
+                      ? resolveProfileCategoryLabel(sourceCategoryKey)
+                      : (getResumeSectionLabel(sec.section_type) || sec.title || "未命名模块");
                   return (
                     <SortableSectionItem key={sec.id} id={sec.id}>
                     <div
@@ -1321,10 +1410,11 @@ export default function ResumeEditorPage() {
                     </Button>
                   </DropdownTrigger>
                   <DropdownMenu onAction={(key) => handleAddSection(key as string)}>
-                    {SECTION_TYPES.map((t) => {
-                      const Icon = t.icon;
+                    {RESUME_SECTION_DEFINITIONS.map((t) => {
+                      const meta = getSectionMeta(t.key);
+                      const Icon = meta.icon;
                       return (
-                        <DropdownItem key={t.key} startContent={<Icon size={14} className={t.color} />}>
+                        <DropdownItem key={t.key} startContent={<Icon size={14} className={meta.color} />}>
                           {t.label}
                         </DropdownItem>
                       );
@@ -1724,7 +1814,7 @@ export default function ResumeEditorPage() {
             ) : (
               visibleProfileSections.map((section) => {
                 const checked = selectedProfileSectionIds.has(section.id);
-                const mappedType = mapProfileSectionToResumeType(section.section_type);
+                const mappedType = getProfileSectionResumeType(section);
                 return (
                   <button
                     key={section.id}

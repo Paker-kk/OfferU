@@ -110,7 +110,7 @@ export default function ScraperPage() {
     setBossError(null);
     try {
       if (!bossCookie.includes("wt2")) {
-        setBossError("Cookie 中未找到 wt2 字段，请确认已登录 BOSS直聘后完整复制");
+        setBossError("登录凭证中未找到 wt2 字段，请确认已登录 BOSS直聘后完整复制");
         setBossSaving(false);
         return;
       }
@@ -130,15 +130,15 @@ export default function ScraperPage() {
       <section className="bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Scraper Console</span>
+            <span className="bauhaus-chip bg-[#f3ead2]">抓取控制台</span>
             <div>
-              <p className="bauhaus-label text-black/55">Source Control</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Search
+              <p className="bauhaus-label text-black/55">来源控制</p>
+              <h1 className="mt-3 text-5xl font-bold leading-[0.92] sm:text-6xl">
+                搜索
                 <br />
-                Capture
+                抓取
                 <br />
-                Queue
+                入池
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
                 在这里统一配置关键词、城市和数据源，把抓取任务压成清晰的几何工作流，
@@ -148,17 +148,17 @@ export default function ScraperPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Sources</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{sources?.length ?? 0}</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/60">来源数</p>
+              <p className="mt-3 text-4xl font-bold">{sources?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Tasks</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{tasks?.length ?? 0}</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/60">任务数</p>
+              <p className="mt-3 text-4xl font-bold">{tasks?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">BOSS Cookie</p>
-              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">{bossStatus?.configured ? "Ready" : "Required"}</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/60">BOSS 凭证</p>
+              <p className="mt-3 text-lg font-bold">{bossStatus?.configured ? "已配置" : "待配置"}</p>
             </div>
           </div>
         </div>
@@ -173,7 +173,7 @@ export default function ScraperPage() {
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5">
-          <h2 className="text-2xl font-black uppercase tracking-[-0.05em] text-black">爬取配置</h2>
+          <h2 className="text-2xl font-bold text-black">爬取配置</h2>
           <div className="flex flex-wrap gap-4">
             <Input
               label="搜索关键词"
@@ -208,7 +208,7 @@ export default function ScraperPage() {
       </Card>
 
       <section>
-        <h2 className="mb-4 text-2xl font-black uppercase tracking-[-0.05em] text-black">数据源</h2>
+        <h2 className="mb-4 text-2xl font-bold text-black">数据源</h2>
         {sourcesLoading ? (
           <div className="flex justify-center py-10">
             <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-5 py-4">
@@ -248,10 +248,10 @@ export default function ScraperPage() {
                             }`}
                           >
                             <Key size={10} className="mr-1" />
-                            {bossStatus?.configured ? "Cookie 已配置" : "需配置 Cookie"}
+                            {bossStatus?.configured ? "凭证已配置" : "待配置凭证"}
                           </Chip>
                           <Button onPress={onBossOpen} className="bauhaus-button bauhaus-button-outline !min-h-8 !px-3 !py-2 !text-[11px]">
-                            {bossStatus?.configured ? "更新 Cookie" : "配置 Cookie"}
+                            {bossStatus?.configured ? "更新凭证" : "配置凭证"}
                           </Button>
                         </div>
                       )}
@@ -283,12 +283,12 @@ export default function ScraperPage() {
       </section>
 
       <section>
-        <h2 className="mb-4 text-2xl font-black uppercase tracking-[-0.05em] text-black">任务记录</h2>
+        <h2 className="mb-4 text-2xl font-bold text-black">任务记录</h2>
         {!tasks || tasks.length === 0 ? (
           <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
             <CardBody className="p-8 text-center">
               <Search size={48} className="mx-auto" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Tasks Yet</p>
+              <p className="mt-4 text-2xl font-bold">暂无任务</p>
               <p className="mt-3 text-sm font-medium text-white/80">选择一个数据源并点击开始爬取，任务记录会出现在这里。</p>
             </CardBody>
           </Card>
@@ -341,7 +341,7 @@ export default function ScraperPage() {
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="flex items-center gap-2 border-b-2 border-black bg-[#1040C0] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
             <Key size={18} />
-            配置 BOSS 直聘 Cookie
+            配置 BOSS 直聘登录凭证
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm bg-[#F0C020] p-4">
@@ -349,28 +349,28 @@ export default function ScraperPage() {
                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-black" />
                 <div className="text-sm font-medium leading-relaxed text-black/78">
                   <p className="mb-1 font-black tracking-[0.04em]">免责声明</p>
-                  <p>此功能通过你提供的 Cookie 访问 BOSS直聘接口，可能违反其用户协议。Cookie 仅存储在本地，请自行承担相关风险。</p>
+                  <p>此功能通过你提供的登录凭证（Cookie）访问 BOSS直聘接口，可能违反其用户协议。凭证仅存储在本地，请自行承担相关风险。</p>
                 </div>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-sm font-black tracking-[0.04em] text-black">获取 Cookie 步骤</h3>
+              <h3 className="text-sm font-black tracking-[0.04em] text-black">获取登录凭证步骤</h3>
               <div className="space-y-2 text-sm font-medium leading-relaxed text-black/72">
                 <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">1</span><span>打开 <a href="https://www.zhipin.com" target="_blank" rel="noopener noreferrer" className="underline">zhipin.com</a> 并确保已登录。</span></div>
-                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">2</span><span>按 F12 打开开发者工具，切到 Network 标签页。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">2</span><span>按 F12 打开开发者工具，切到网络（Network）标签页。</span></div>
                 <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">3</span><span>在页面任意搜索一个职位，让请求列表刷新出来。</span></div>
-                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">4</span><span>点开任一请求，在 Headers 中找到 Cookie 并复制完整值。</span></div>
+                <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">4</span><span>点开任一请求，在请求头（Headers）中找到 Cookie 并复制完整值。</span></div>
                 <div className="flex gap-3"><span className="bauhaus-panel-sm flex h-6 w-6 items-center justify-center bg-[#1040C0] text-xs font-black text-white">5</span><span>把复制结果粘贴到下面文本框并保存。</span></div>
               </div>
               <div className="bauhaus-panel-sm bg-white px-4 py-3 text-xs font-medium text-black/60">
-                提示：如果 Chrome / Edge 的 DevTools 导致页面闪退，可以改用 Firefox 操作。
+                提示：如果 Chrome / Edge 的开发者工具导致页面闪退，可以改用 Firefox 操作。
               </div>
             </div>
 
             <Textarea
-              label="BOSS 直聘 Cookie"
-              placeholder="粘贴完整 Cookie 字符串（应包含 wt2=... 和 zp_token=... 等字段）"
+              label="BOSS 直聘登录凭证"
+              placeholder="粘贴完整凭证字符串（Cookie，应包含 wt2=... 和 zp_token=... 等字段）"
               value={bossCookie}
               onValueChange={setBossCookie}
               minRows={4}
@@ -417,7 +417,7 @@ export default function ScraperPage() {
               isDisabled={!bossCookie.trim()}
               className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
             >
-              保存 Cookie
+              保存凭证
             </Button>
           </ModalFooter>
         </ModalContent>

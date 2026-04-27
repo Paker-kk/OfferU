@@ -25,6 +25,7 @@
     "@tiptap/extension-underline": "^2.6.0",
     "@tiptap/react": "^2.6.0",
     "@tiptap/starter-kit": "^2.6.0",
+    "china-area-data": "^5.0.1",
     "framer-motion": "^11.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

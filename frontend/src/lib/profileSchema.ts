@@ -67,9 +67,10 @@ export const PROFILE_CATEGORY_DEFINITIONS = {
   },
   certificate: {
     label: "证书资质",
-    resumeSectionType: "certificate",
+    resumeSectionType: "skill",
     fieldIds: {
       name: "certificate.name",
+      scoreOrLevel: "certificate.score_or_level",
       issuer: "certificate.issuer",
       date: "certificate.date",
       url: "certificate.url",
@@ -132,6 +133,7 @@ export type ProfileSectionDraft =
     }
   | {
       name: string;
+      scoreOrLevel: string;
       issuer: string;
       date: string;
       url: string;
@@ -226,10 +228,18 @@ export function buildCustomCategoryKey(label: string): string {
 
 export function resolveProfileCategoryLabel(categoryKey: string, fromSection?: string): string {
   const normalizedKey = normalizeProfileCategoryKey(categoryKey);
+  const specialCustomLabels: Record<string, string> = {
+    "custom:c_personal": "个人经历",
+    "custom:c_awards": "获奖经历",
+    "custom:c_internship": "实习经历",
+  };
+  if (specialCustomLabels[normalizedKey]) {
+    return specialCustomLabels[normalizedKey];
+  }
   if (normalizedKey in PROFILE_CATEGORY_DEFINITIONS) {
     return PROFILE_CATEGORY_DEFINITIONS[normalizedKey as BuiltinProfileCategoryKey].label;
   }
-  return asString(fromSection) || "自定义分类";
+  return asString(fromSection) || "个人经历";
 }
 
 export function getBuiltinCategoryOptions(): ProfileCategoryOption[] {
@@ -411,10 +421,11 @@ export function buildProfileSectionContent(
   }
 
   if (key === "certificate") {
-    const d = draft as Extract<ProfileSectionDraft, { issuer: string; date: string }>;
+    const d = draft as Extract<ProfileSectionDraft, { issuer: string; date: string; scoreOrLevel: string }>;
     const fieldIds = PROFILE_CATEGORY_DEFINITIONS.certificate.fieldIds;
     const normalized = {
       name: asString(d.name),
+      score_or_level: asString(d.scoreOrLevel),
       issuer: asString(d.issuer),
       date: asString(d.date),
       url: asString(d.url),
@@ -427,11 +438,12 @@ export function buildProfileSectionContent(
       normalized,
       field_values: {
         [fieldIds.name]: normalized.name,
+        [fieldIds.scoreOrLevel]: normalized.score_or_level,
         [fieldIds.issuer]: normalized.issuer,
         [fieldIds.date]: normalized.date,
         [fieldIds.url]: normalized.url,
       },
-      bullet: [normalized.name, normalized.issuer, normalized.date].filter(Boolean).join(" | "),
+      bullet: [normalized.name, normalized.score_or_level, normalized.issuer, normalized.date].filter(Boolean).join(" | "),
     };
   }
 
@@ -536,6 +548,7 @@ export function parseProfileSectionDraft(section: ProfileSectionLike): ProfileSe
     const fieldIds = PROFILE_CATEGORY_DEFINITIONS.certificate.fieldIds;
     return {
       name: readField(content, fieldIds.name, ["name", "certificate_name", "certificateName"]) as string,
+      scoreOrLevel: readField(content, fieldIds.scoreOrLevel, ["score_or_level", "scoreOrLevel", "score", "level"]) as string,
       issuer: readField(content, fieldIds.issuer, ["issuer", "organization"]) as string,
       date: readField(content, fieldIds.date, ["date", "issued_date", "issuedDate"]) as string,
       url: readField(content, fieldIds.url, ["url", "link"]) as string,
@@ -557,7 +570,6 @@ export function mapProfileSectionToResumeType(sectionType: string):
   | "experience"
   | "project"
   | "skill"
-  | "certificate"
   | "custom" {
   const key = normalizeProfileCategoryKey(sectionType);
   if (key in PROFILE_CATEGORY_DEFINITIONS) {
@@ -565,8 +577,7 @@ export function mapProfileSectionToResumeType(sectionType: string):
       | "education"
       | "experience"
       | "project"
-      | "skill"
-      | "certificate";
+      | "skill";
   }
   return "custom";
 }
@@ -623,6 +634,7 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
   if (key === "skill") {
     const d = draft as Extract<ProfileSectionDraft, { itemsText: string }>;
     return {
+      _entryType: "skill",
       category: asString(d.category || section.title || "技能"),
       items: asStringList(d.itemsText),
       _source_profile_section_id: section.id,
@@ -632,9 +644,11 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
   }
 
   if (key === "certificate") {
-    const d = draft as Extract<ProfileSectionDraft, { issuer: string; date: string }>;
+    const d = draft as Extract<ProfileSectionDraft, { issuer: string; date: string; scoreOrLevel: string }>;
     return {
+      _entryType: "certificate",
       name: asString(d.name || section.title),
+      scoreOrLevel: asString(d.scoreOrLevel),
       issuer: asString(d.issuer),
       date: asString(d.date),
       url: asString(d.url),
@@ -676,3 +690,5 @@ export function getProfileSectionEndDate(section: ProfileSectionLike): string {
   }
   return asString(section.updated_at);
 }
+
+

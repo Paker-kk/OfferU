@@ -337,78 +337,6 @@ export async function updateConfig(data: any) {
   return res.json();
 }
 
-// ---- Local data management ----
-
-export interface LocalFileSummary {
-  path: string;
-  exists: boolean;
-  size: number;
-}
-
-export interface LocalStatus {
-  app: string;
-  version: string;
-  api_version: number;
-  data_dir: string;
-  database_url: string;
-  database: LocalFileSummary;
-  config: LocalFileSummary;
-  uploads: LocalFileSummary;
-  backups: LocalFileSummary;
-  imports: LocalFileSummary;
-  capabilities: string[];
-}
-
-export interface LocalImportResult {
-  message: string;
-  imported: string[];
-  saved_import: string;
-  backup_path: string;
-  restart_recommended: boolean;
-}
-
-export interface LocalCleanupResult {
-  message: string;
-  files: number;
-  bytes: number;
-  scopes: string[];
-}
-
-export function useLocalStatus() {
-  return useSWR<LocalStatus>(`${API_BASE}/api/local/status`, fetcher);
-}
-
-export function getLocalExportUrl() {
-  return `${API_BASE}/api/local/export`;
-}
-
-export async function importLocalData(file: File): Promise<LocalImportResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/local/import`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `导入数据包失败 (${res.status})`);
-  }
-  return res.json();
-}
-
-export async function cleanupLocalData(): Promise<LocalCleanupResult> {
-  const res = await fetch(`${API_BASE}/api/local/cleanup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imports: true, temp: true, backups: false }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `清理临时数据失败 (${res.status})`);
-  }
-  return res.json();
-}
-
 /** 创建日历事件 */
 export async function createCalendarEvent(data: any) {
   const res = await fetch(`${API_BASE}/api/calendar/events`, {
@@ -1240,11 +1168,15 @@ export function useApplicationStats() {
 
 /** 创建投递记录 */
 export async function createApplication(jobId: number, notes = "") {
-  const res = await fetch(`${API_BASE}/api/applications/`, {
+  const res = await fetch(`${API_BASE}/api/applications/auto-write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_id: jobId, notes }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建投递记录失败 (${res.status})`);
+  }
   return res.json();
 }
 
@@ -1265,6 +1197,316 @@ export async function generateCoverLetter(jobId: number, resumeId: number) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_id: jobId, resume_id: resumeId }),
   });
+  return res.json();
+}
+
+export type ApplicationFieldType =
+  | "text"
+  | "long_text"
+  | "single_select"
+  | "multi_select"
+  | "date"
+  | "datetime"
+  | "number"
+  | "boolean"
+  | "link";
+
+export interface ApplicationFieldSchema {
+  field_key: string;
+  label: string;
+  type: ApplicationFieldType;
+  fixed: boolean;
+  visible: boolean;
+  width: number;
+  options: string[];
+  order: number;
+}
+
+export interface ApplicationWorkspaceTable {
+  id: number;
+  name: string;
+  is_total: boolean;
+  record_count: number;
+  schema: ApplicationFieldSchema[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplicationWorkspaceSettings {
+  auto_row_height: boolean;
+  auto_column_width: boolean;
+  delete_subtable_sync_total_default: boolean;
+  updated_at: string;
+}
+
+export interface ApplicationWorkspacePayload {
+  tables: ApplicationWorkspaceTable[];
+  current_table_id: number;
+  settings: ApplicationWorkspaceSettings;
+  template_schema: ApplicationFieldSchema[];
+  stats: {
+    total_records: number;
+    duplicate_records: number;
+  };
+}
+
+export interface ApplicationTableRecordItem {
+  id: number;
+  values: Record<string, any>;
+  is_duplicate: boolean;
+  duplicate_group: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplicationTableRecordsPayload {
+  table: ApplicationWorkspaceTable;
+  records: ApplicationTableRecordItem[];
+}
+
+export function useApplicationWorkspace() {
+  return useSWR<ApplicationWorkspacePayload>(`${API_BASE}/api/applications/workspace`, fetcher);
+}
+
+export function useApplicationTableRecords(tableId: number | null, keyword = "") {
+  const params = new URLSearchParams();
+  if (keyword.trim()) params.set("keyword", keyword.trim());
+  return useSWR<ApplicationTableRecordsPayload>(
+    tableId ? `${API_BASE}/api/applications/tables/${tableId}/records?${params}` : null,
+    fetcher
+  );
+}
+
+export function useApplicationTemplate() {
+  return useSWR<{ schema: ApplicationFieldSchema[] }>(`${API_BASE}/api/applications/template`, fetcher);
+}
+
+export function useApplicationSettings() {
+  return useSWR<ApplicationWorkspaceSettings>(`${API_BASE}/api/applications/settings`, fetcher);
+}
+
+export async function createApplicationTable(name: string) {
+  const res = await fetch(`${API_BASE}/api/applications/tables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建表失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function renameApplicationTable(tableId: number, name: string) {
+  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `重命名表失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function deleteApplicationTable(tableId: number) {
+  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `删除表失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function importJobsToApplicationTable(tableId: number, jobIds: number[]) {
+  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/import-jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `快捷导入失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function createApplicationRecord(tableId: number, values: Record<string, any>, jobRefId?: number) {
+  const res = await fetch(`${API_BASE}/api/applications/records`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table_id: tableId, values, job_ref_id: jobRefId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `新增记录失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+function toSerializableApplicationValue(value: any, seen = new WeakSet<object>()): any {
+  if (value == null) return value;
+
+  const primitiveType = typeof value;
+  if (primitiveType === "string" || primitiveType === "number" || primitiveType === "boolean") {
+    return value;
+  }
+  if (primitiveType === "undefined") {
+    return null;
+  }
+  if (primitiveType === "bigint" || primitiveType === "symbol" || primitiveType === "function") {
+    return String(value);
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === "object") {
+    const target = (value as any)?.target ?? (value as any)?.currentTarget;
+    if (target && typeof target === "object" && "value" in target) {
+      return toSerializableApplicationValue((target as any).value, seen);
+    }
+
+    if (typeof Node !== "undefined" && value instanceof Node) {
+      return (value as any).value ?? (value as any).textContent ?? "";
+    }
+
+    if (seen.has(value)) {
+      return null;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      return value.map((item) => toSerializableApplicationValue(item, seen));
+    }
+
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      if (typeof (value as any).toJSON === "function") {
+        return toSerializableApplicationValue((value as any).toJSON(), seen);
+      }
+      return String(value);
+    }
+
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = toSerializableApplicationValue(v, seen);
+    }
+    return out;
+  }
+
+  return String(value);
+}
+
+export async function updateApplicationRecordCell(recordId: number, fieldKey: string, value: any) {
+  const normalizedValue = toSerializableApplicationValue(value);
+  const res = await fetch(`${API_BASE}/api/applications/records/${recordId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field_key: fieldKey, value: normalizedValue }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新记录失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function moveApplicationRecords(sourceTableId: number, targetTableId: number, recordIds: number[]) {
+  const res = await fetch(`${API_BASE}/api/applications/records/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_table_id: sourceTableId,
+      target_table_id: targetTableId,
+      record_ids: recordIds,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `批量移动失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function deleteApplicationRecords(tableId: number, recordIds: number[], deleteFromTotal = false) {
+  const res = await fetch(`${API_BASE}/api/applications/records/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      table_id: tableId,
+      record_ids: recordIds,
+      delete_from_total: deleteFromTotal,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `批量删除失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function updateApplicationTableSchema(tableId: number, schema: ApplicationFieldSchema[]) {
+  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/schema`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新表结构失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function updateApplicationTemplate(
+  schema: ApplicationFieldSchema[],
+  purgeNonTemplateFields = false
+) {
+  const res = await fetch(`${API_BASE}/api/applications/template`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema, purge_non_template_fields: purgeNonTemplateFields }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新默认模板失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function applyApplicationTemplateToAll(purgeNonTemplateFields = false) {
+  const res = await fetch(`${API_BASE}/api/applications/template/apply-to-all`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ purge_non_template_fields: purgeNonTemplateFields }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `覆盖全部表结构失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function updateApplicationWorkspaceSettings(data: {
+  auto_row_height?: boolean;
+  auto_column_width?: boolean;
+  delete_subtable_sync_total_default?: boolean;
+}) {
+  const res = await fetch(`${API_BASE}/api/applications/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `更新投递设置失败 (${res.status})`);
+  }
   return res.json();
 }
 

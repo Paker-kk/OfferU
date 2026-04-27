@@ -14,7 +14,6 @@ import {
 import {
   Sparkles,
   Key,
-  FileText,
   Upload,
   Briefcase,
   ArrowRight,
@@ -55,7 +54,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "openai",
     name: "OpenAI",
-    description: "Mainstream global provider",
+    description: "国际主流服务",
     default_base_url: "https://api.openai.com/v1",
     models: [
       { id: "gpt-4.1-mini", name: "GPT-4.1 Mini" },
@@ -67,7 +66,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "deepseek",
     name: "DeepSeek",
-    description: "Cost-effective Chinese model",
+    description: "成本友好的中文模型",
     default_base_url: "https://api.deepseek.com",
     models: [
       { id: "deepseek-chat", name: "DeepSeek Chat" },
@@ -78,7 +77,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "qwen",
     name: "通义千问",
-    description: "Alibaba DashScope",
+    description: "阿里云百炼",
     default_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     models: [
       { id: "qwen-plus", name: "Qwen Plus" },
@@ -90,7 +89,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "siliconflow",
     name: "硅基流动",
-    description: "Model aggregation provider",
+    description: "聚合模型服务",
     default_base_url: "https://api.siliconflow.com/v1",
     models: [
       { id: "deepseek-ai/DeepSeek-V3.2", name: "DeepSeek-V3.2" },
@@ -101,7 +100,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "gemini",
     name: "Google Gemini",
-    description: "Gemini OpenAI-compatible endpoint",
+    description: "Gemini 兼容接口",
     default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
     models: [
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
@@ -112,7 +111,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "zhipu",
     name: "智谱",
-    description: "BigModel Open Platform",
+    description: "智谱开放平台",
     default_base_url: "https://open.bigmodel.cn/api/paas/v4",
     models: [
       { id: "glm-5.1", name: "GLM-5.1" },
@@ -123,7 +122,7 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "ollama",
     name: "Ollama",
-    description: "Local inference",
+    description: "本地推理服务",
     default_base_url: "http://localhost:11434/v1",
     models: [
       { id: "qwen2.5:7b", name: "Qwen2.5 7B" },
@@ -137,14 +136,14 @@ const DEFAULT_PROVIDER_PRESET =
   FALLBACK_PROVIDER_PRESETS.find((preset) => preset.id === "deepseek") || FALLBACK_PROVIDER_PRESETS[0];
 
 const RESUME_TEMPLATES = [
-  { id: "tech", label: "Tech Focus" },
-  { id: "business", label: "Business Focus" },
-  { id: "general", label: "General Use" },
+  { id: "tech", label: "技术求职" },
+  { id: "business", label: "商科求职" },
+  { id: "general", label: "通用模板" },
 ];
 
 const bauhausAutocompleteClassNames = {
   popoverContent:
-    "rounded-none border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]",
+    "rounded-none border border-black/20 bg-[var(--surface)] text-black shadow-[0_10px_24px_rgba(18,18,18,0.08)]",
   listboxWrapper: "max-h-56 bg-[#F0F0F0] p-1",
 };
 
@@ -238,7 +237,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     if (!currentFormPreset?.default_base_url) {
       return [] as { id: string; name: string }[];
     }
-    return [{ id: currentFormPreset.default_base_url, name: `Default URL · ${currentFormPreset.default_base_url}` }];
+    return [{ id: currentFormPreset.default_base_url, name: `默认地址 · ${currentFormPreset.default_base_url}` }];
   }, [currentFormPreset]);
 
   const resolvedFormServiceName = useMemo(() => {
@@ -272,15 +271,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
   const validateAiForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
-    if (!resolvedFormServiceName) errors.service_name = "服务名不能为空";
-    if (!resolvedFormModel) errors.model = "模型名不能为空";
+    if (!resolvedFormServiceName) errors.service_name = "服务商不能为空";
+    if (!resolvedFormModel) errors.model = "模型不能为空";
     if (!resolvedFormBaseUrl) {
-      errors.base_url = "API URL 不能为空";
+      errors.base_url = "接口地址不能为空";
     } else if (!/^https?:\/\//i.test(resolvedFormBaseUrl)) {
-      errors.base_url = "API URL 需要以 http:// 或 https:// 开头";
+      errors.base_url = "接口地址需以 http:// 或 https:// 开头";
     }
     if (resolvedFormProviderId !== "ollama") {
-      if (!formApiKey.trim()) errors.api_key = "API Key 不能为空";
+      if (!formApiKey.trim()) errors.api_key = "访问密钥不能为空";
       if (formApiKey.includes("*")) errors.api_key = "请填写完整密钥，不能使用脱敏值";
       const prefix = currentFormPreset?.key_prefix || "";
       if (prefix && formApiKey.trim() && !formApiKey.trim().startsWith(prefix)) {
@@ -542,31 +541,31 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const stepDetails = [
     {
       id: "01",
-      label: "Welcome",
-      headline: ["Meet", "OfferU"],
-      note: "先用几步把 AI、简历与职位流转入口接通。",
-      activePanel: "bg-[#F0C020] text-black",
+      label: "欢迎",
+      headline: ["你好", "OfferU"],
+      note: "先用几步把智能能力、简历与职位流转入口接通。",
+      activePanel: "bg-[#efe3bc] text-black",
     },
     {
       id: "02",
-      label: "AI Config",
-      headline: ["Connect", "Model"],
-      note: "把模型、密钥和 endpoint 接好，后续所有智能能力都会用到。",
-      activePanel: "bg-white text-black",
+      label: "模型配置",
+      headline: ["连接", "模型"],
+      note: "把模型、密钥和接口地址接好，后续所有智能能力都会用到。",
+      activePanel: "bg-[#fdfbf7] text-black",
     },
     {
       id: "03",
-      label: "Resume",
-      headline: ["Make", "Base"],
+      label: "简历底稿",
+      headline: ["创建", "底稿"],
       note: "创建第一份基础简历，之后再为不同岗位克隆和定制。",
-      activePanel: "bg-[#D02020] text-white",
+      activePanel: "bg-[#f7ece9] text-black",
     },
     {
       id: "04",
-      label: "Launch",
-      headline: ["Fetch", "Jobs"],
+      label: "开始使用",
+      headline: ["进入", "岗位"],
       note: "准备完成后，直接进入职位采集和筛选工作台。",
-      activePanel: "bg-[#F0C020] text-black",
+      activePanel: "bg-[#e4ece6] text-black",
     },
   ] as const;
 
@@ -577,48 +576,48 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] overflow-y-auto bg-[#F0F0F0] text-black"
+      className="fixed inset-0 z-[9999] overflow-y-auto bg-[var(--surface-muted)] text-black"
     >
       <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute left-[-3rem] top-12 h-28 w-28 rounded-full border-4 border-black bg-[#F0C020]/80" />
-        <div className="absolute right-[10%] top-20 h-24 w-24 rotate-45 border-4 border-black bg-[#D02020]/80" />
-        <div className="bauhaus-triangle absolute bottom-8 right-8 h-32 w-32 border-4 border-black bg-[#1040C0]/80" />
+        <div className="absolute left-[-3rem] top-12 h-28 w-28 rounded-full border border-black/20 bg-[#efe3bc]/65" />
+        <div className="absolute right-[10%] top-20 h-24 w-24 rotate-45 border border-black/20 bg-[#e8d2cd]/65" />
+        <div className="bauhaus-triangle absolute bottom-8 right-8 h-32 w-32 border border-black/20 bg-[#d8e2da]/65" />
       </div>
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-6 md:px-8 md:py-10">
         <div className="bauhaus-panel relative w-full overflow-hidden bg-white">
           <div className="grid lg:grid-cols-[0.84fr_1.16fr]">
-            <aside className="relative overflow-hidden border-b-2 border-black bg-[#1040C0] text-white lg:border-b-0 lg:border-r-2">
-              <div aria-hidden className="absolute inset-0 bauhaus-dot-pattern opacity-20" />
-              <div className="absolute left-6 top-8 h-14 w-14 rounded-full border-4 border-black bg-[#F0C020]" />
-              <div className="absolute right-20 top-20 h-12 w-12 rotate-45 border-4 border-black bg-[#D02020]" />
-              <div className="bauhaus-triangle absolute bottom-10 left-8 h-16 w-16 border-4 border-black bg-white" />
+            <aside className="relative overflow-hidden border-b border-black/15 bg-[var(--surface)] text-black lg:border-b-0 lg:border-r">
+              <div aria-hidden className="absolute inset-0 bauhaus-dot-pattern opacity-10" />
+              <div className="absolute left-6 top-8 h-14 w-14 rounded-full border border-black/20 bg-[#efe3bc]" />
+              <div className="absolute right-20 top-20 h-12 w-12 rotate-45 border border-black/20 bg-[#e8d2cd]" />
+              <div className="bauhaus-triangle absolute bottom-10 left-8 h-16 w-16 border border-black/20 bg-[#d8e2da]" />
 
               <button
                 type="button"
                 onClick={onSkip}
-                className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center border-2 border-black bg-white text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-transform hover:-translate-y-[1px]"
+                className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center border border-black/20 bg-white text-black shadow-[0_6px_16px_rgba(18,18,18,0.08)] transition-transform hover:-translate-y-[1px]"
               >
                 <X size={18} strokeWidth={2.8} />
               </button>
 
               <div className="relative z-[1] space-y-6 p-6 md:p-8">
                 <div className="flex items-center gap-3">
-                  <span className="h-5 w-5 rounded-full border-2 border-black bg-[#F0C020]" />
-                  <span className="h-5 w-5 border-2 border-black bg-[#D02020]" />
-                  <span className="bauhaus-triangle h-5 w-5 border-2 border-black bg-white" />
+                  <span className="h-5 w-5 rounded-full border border-black/25 bg-[#efe3bc]" />
+                  <span className="h-5 w-5 border border-black/25 bg-[#e8d2cd]" />
+                  <span className="bauhaus-triangle h-5 w-5 border border-black/25 bg-white" />
                 </div>
 
                 <div className="space-y-4">
-                  <span className="bauhaus-chip bg-white text-black">OfferU Setup</span>
+                  <span className="bauhaus-chip bg-white text-black">OfferU 初始化</span>
                   <div>
-                    <p className="bauhaus-label text-white/70">{currentStep.label}</p>
-                    <h1 className="mt-3 text-5xl font-black uppercase leading-[0.86] tracking-[-0.09em] md:text-6xl">
+                    <p className="bauhaus-label text-black/55">{currentStep.label}</p>
+                    <h1 className="mt-3 text-4xl font-bold leading-tight md:text-5xl">
                       {currentStep.headline[0]}
                       <br />
                       {currentStep.headline[1]}
                     </h1>
-                    <p className="mt-4 max-w-md text-sm font-medium leading-relaxed text-white/82 md:text-base">
+                    <p className="mt-4 max-w-md text-sm font-medium leading-relaxed text-black/72 md:text-base">
                       {currentStep.note}
                     </p>
                   </div>
@@ -634,12 +633,12 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="bauhaus-label opacity-75">Step {item.id}</p>
-                          <p className="mt-2 text-lg font-black uppercase tracking-[-0.05em]">
+                          <p className="bauhaus-label opacity-65">步骤 {item.id}</p>
+                          <p className="mt-2 text-lg font-semibold">
                             {item.label}
                           </p>
                         </div>
-                        <span className="text-2xl font-black uppercase tracking-[-0.08em]">
+                        <span className="text-2xl font-bold">
                           {index + 1}
                         </span>
                       </div>
@@ -649,8 +648,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
                 <div className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium leading-relaxed text-black">
                   进度 {step + 1} / {TOTAL_STEPS}
-                  <div className="mt-3 h-3 border-2 border-black bg-[#F0F0F0]">
-                    <div className="h-full bg-[#D02020]" style={{ width: `${progressPercent}%` }} />
+                  <div className="mt-3 h-3 border border-black/20 bg-[var(--surface-muted)]">
+                    <div className="h-full bg-[#e8d2cd]" style={{ width: `${progressPercent}%` }} />
                   </div>
                 </div>
 
@@ -658,9 +657,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                   <button
                     type="button"
                     onClick={onSkip}
-                    className="text-sm font-semibold tracking-[0.06em] text-white/82 underline underline-offset-4"
+                    className="text-sm font-semibold text-black/60 underline underline-offset-4"
                   >
-                    Skip Setup
+                    暂不设置
                   </button>
                 )}
               </div>
@@ -668,9 +667,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
             <div className="bg-[#F0F0F0] p-5 md:p-8">
               <div className="mb-6 space-y-3">
-                <div className="overflow-hidden border-2 border-black bg-white">
+                <div className="overflow-hidden border border-black/20 bg-white">
                   <motion.div
-                    className="h-4 border-r-2 border-black bg-[#D02020]"
+                    className="h-4 border-r border-black/20 bg-[#e8d2cd]"
                     animate={{ width: `${progressPercent}%` }}
                     transition={{ type: "spring", damping: 20 }}
                   />
@@ -702,33 +701,31 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     className="space-y-6"
                   >
                     <div className="space-y-4">
-                      <span className="bauhaus-chip bg-[#F0C020] text-black">Start Here</span>
+                      <span className="bauhaus-chip bg-[#efe3bc] text-black">从这里开始</span>
                       <div>
-                        <h2 className="text-5xl font-black uppercase leading-[0.86] tracking-[-0.09em] md:text-7xl">
-                          Build
+                        <h2 className="text-4xl font-bold leading-tight md:text-6xl">
+                          搭建你的
                           <br />
-                          Your
-                          <br />
-                          Job OS
+                          求职中枢
                         </h2>
                         <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
-                          OfferU 会在几步内配置 AI 能力、建立第一份基础简历，并把你送进岗位抓取与筛选工作流。
+                          OfferU 会在几步内配置智能能力、建立第一份基础简历，并把你送进岗位抓取与筛选工作流。
                         </p>
                       </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-3">
-                      <div className="bauhaus-panel-sm bg-[#F0C020] p-4">
+                      <div className="bauhaus-panel-sm bg-[#efe3bc] p-4">
                         <p className="bauhaus-label text-black/55">1</p>
-                        <p className="mt-3 text-xl font-black uppercase tracking-[-0.05em]">Connect AI</p>
+                        <p className="mt-3 text-xl font-semibold">连接模型</p>
                       </div>
-                      <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-                        <p className="bauhaus-label text-white/70">2</p>
-                        <p className="mt-3 text-xl font-black uppercase tracking-[-0.05em]">Create Base</p>
+                      <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
+                        <p className="bauhaus-label text-black/55">2</p>
+                        <p className="mt-3 text-xl font-semibold">创建底稿</p>
                       </div>
-                      <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-                        <p className="bauhaus-label text-white/70">3</p>
-                        <p className="mt-3 text-xl font-black uppercase tracking-[-0.05em]">Launch Flow</p>
+                      <div className="bauhaus-panel-sm bg-[#e8d2cd] p-4 text-black">
+                        <p className="bauhaus-label text-black/55">3</p>
+                        <p className="mt-3 text-xl font-semibold">进入流程</p>
                       </div>
                     </div>
 
@@ -738,13 +735,13 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         endContent={<ArrowRight size={16} />}
                         onPress={goNext}
                       >
-                        Begin Setup
+                        开始设置
                       </Button>
                       <Button
                         className="bauhaus-button bauhaus-button-outline"
                         onPress={onSkip}
                       >
-                        Skip For Now
+                        稍后再说
                       </Button>
                     </div>
                   </motion.div>
@@ -762,23 +759,23 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     className="space-y-6"
                   >
                     <div className="space-y-3">
-                      <span className="bauhaus-chip bg-[#F0C020] text-black">AI Power</span>
-                      <h2 className="text-4xl font-black uppercase leading-[0.9] tracking-[-0.08em] md:text-6xl">
-                        Connect
+                      <span className="bauhaus-chip bg-[#efe3bc] text-black">模型能力</span>
+                      <h2 className="text-4xl font-bold leading-tight md:text-5xl">
+                        连接
                         <br />
-                        Provider
+                        服务
                       </h2>
                       <p className="max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
-                        选择服务商、模型和 API 地址。保存后会同步到设置页，后续页面都将直接复用这套配置。
+                        选择服务商、模型和接口地址。保存后会同步到设置页，后续页面都将直接复用这套配置。
                       </p>
                     </div>
 
                     <div className="grid gap-6 xl:grid-cols-[1.14fr_0.86fr]">
-                      <Card className="rounded-none border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]">
+                      <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
                         <CardBody className="space-y-4 p-5 md:p-6">
                           <div className="grid gap-4 sm:grid-cols-2">
                             <Autocomplete
-                              label="Service"
+                              label="服务商"
                               variant="bordered"
                               allowsCustomValue
                               menuTrigger="manual"
@@ -815,7 +812,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             </Autocomplete>
 
                             <Autocomplete
-                              label="Model"
+                              label="模型"
                               variant="bordered"
                               allowsCustomValue
                               menuTrigger="manual"
@@ -854,7 +851,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             </Autocomplete>
 
                             <Autocomplete
-                              label="API URL"
+                              label="接口地址"
                               variant="bordered"
                               allowsCustomValue
                               menuTrigger="manual"
@@ -890,8 +887,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             </Autocomplete>
 
                             <Input
-                              label="API Key"
-                              placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "sk-..."}
+                              label="访问密钥"
+                              placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "请输入密钥"}
                               variant="bordered"
                               type={showKey ? "text" : "password"}
                               value={formApiKey}
@@ -920,11 +917,11 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                           </div>
 
                           <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
-                            这一步可以稍后补充；如果先跳过，之后仍可在设置页新增或切换多套 API 配置。
+                            这一步可以稍后补充；如果先跳过，之后仍可在设置页新增或切换多套模型配置。
                           </div>
 
                           {configSaveError && (
-                            <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-4 text-sm font-medium leading-relaxed text-white">
+                            <div className="bauhaus-panel-sm bg-[#e8d2cd] px-4 py-4 text-sm font-medium leading-relaxed text-black">
                               {configSaveError}
                             </div>
                           )}
@@ -936,38 +933,38 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                               className="bauhaus-panel-sm flex items-center gap-2 bg-[#F0C020] px-4 py-4 text-sm font-medium text-black"
                             >
                               <CheckCircle2 size={18} strokeWidth={2.6} />
-                              <span>AI 配置已保存并同步。</span>
+                              <span>模型配置已保存并同步。</span>
                             </motion.div>
                           )}
                         </CardBody>
                       </Card>
 
                       <div className="space-y-4">
-                        <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-                          <p className="bauhaus-label text-black/55">Recommended</p>
-                          <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">
+                        <div className="bauhaus-panel-sm bg-[#efe3bc] p-4 text-black">
+                          <p className="bauhaus-label text-black/55">推荐服务</p>
+                          <p className="mt-3 text-2xl font-semibold">
                             {DEFAULT_PROVIDER_PRESET.name}
                           </p>
                           <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
-                            默认推荐先接入稳定且响应快的模型，等工作流跑顺后再扩展更多 provider。
+                            建议先接入稳定且响应快的模型，等工作流跑顺后再扩展更多服务。
                           </p>
                         </div>
                         <div className="bauhaus-panel-sm bg-white p-4 text-black">
-                          <p className="bauhaus-label text-black/55">Support</p>
-                          <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">
-                            Custom Service
+                          <p className="bauhaus-label text-black/55">自定义接入</p>
+                          <p className="mt-3 text-lg font-semibold">
+                            自定义服务
                           </p>
                           <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
-                            输入自定义服务名、模型和 URL 即可接入 OpenAI 兼容接口。
+                            输入自定义服务名、模型和接口地址即可接入 OpenAI 兼容接口。
                           </p>
                         </div>
-                        <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-                          <p className="bauhaus-label text-white/70">Security</p>
-                          <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">
-                            Store Once
+                        <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+                          <p className="bauhaus-label text-black/55">安全说明</p>
+                          <p className="mt-3 text-lg font-semibold">
+                            安全存储
                           </p>
-                          <p className="mt-2 text-sm font-medium leading-relaxed text-white/82">
-                            API Key 只在保存时写入配置，平时可以继续切换展示或隐藏输入内容。
+                          <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                            访问密钥只在保存时写入配置，平时可以继续切换展示或隐藏输入内容。
                           </p>
                         </div>
                       </div>
@@ -979,15 +976,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         startContent={<ArrowLeft size={16} />}
                         onPress={goBack}
                       >
-                        Back
+                        上一步
                       </Button>
                       <div className="flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           onClick={goNext}
-                          className="text-sm font-semibold tracking-[0.06em] text-black/55 underline underline-offset-4"
+                          className="text-sm font-semibold text-black/55 underline underline-offset-4"
                         >
-                          Skip
+                          跳过
                         </button>
                         <Button
                           className="bauhaus-button bauhaus-button-red"
@@ -995,7 +992,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                           isLoading={savingConfig}
                           onPress={handleSaveAiConfig}
                         >
-                          {configSaved ? "Saved" : "Save & Continue"}
+                          {configSaved ? "已保存" : "保存并继续"}
                         </Button>
                       </div>
                     </div>
@@ -1014,11 +1011,11 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     className="space-y-6"
                   >
                     <div className="space-y-3">
-                      <span className="bauhaus-chip bg-[#F0C020] text-black">Resume Base</span>
-                      <h2 className="text-4xl font-black uppercase leading-[0.9] tracking-[-0.08em] md:text-6xl">
-                        Create
+                      <span className="bauhaus-chip bg-[#efe3bc] text-black">简历底稿</span>
+                      <h2 className="text-4xl font-bold leading-tight md:text-5xl">
+                        创建
                         <br />
-                        First Draft
+                        首份底稿
                       </h2>
                       <p className="max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
                         先有一份基础简历，后面的岗位定制和批量生成才有稳定底板。
@@ -1029,11 +1026,11 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                       <motion.div
                         initial={{ scale: 0.94, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="bauhaus-panel bg-[#F0C020] p-8 text-center text-black"
+                        className="bauhaus-panel bg-[#efe3bc] p-8 text-center text-black"
                       >
                         <CheckCircle2 size={54} strokeWidth={2.4} className="mx-auto" />
-                        <p className="mt-4 text-3xl font-black uppercase tracking-[-0.06em]">
-                          Resume Ready
+                        <p className="mt-4 text-3xl font-bold">
+                          简历已就绪
                         </p>
                         <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
                           基础简历已经创建，正在进入下一步。
@@ -1044,17 +1041,17 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         <div className="grid gap-4 md:grid-cols-2">
                           <Card
                             isPressable
-                            className="rounded-none border-2 border-black bg-[#1040C0] text-white shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]"
+                            className="rounded-none border border-black/20 bg-[#d8e2da] text-black shadow-[0_8px_22px_rgba(18,18,18,0.08)]"
                             onPress={() => setResumeMode("create")}
                           >
                             <CardBody className="flex min-h-[220px] flex-col justify-between p-5">
                               <PenTool size={34} strokeWidth={2.4} />
                               <div>
-                                <p className="bauhaus-label text-white/70">Option A</p>
-                                <p className="mt-3 text-3xl font-black uppercase tracking-[-0.06em]">
-                                  Quick Create
+                                <p className="bauhaus-label text-black/55">方案一</p>
+                                <p className="mt-3 text-3xl font-bold">
+                                  快速创建
                                 </p>
-                                <p className="mt-3 text-sm font-medium leading-relaxed text-white/82">
+                                <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
                                   回答几个基础问题，快速生成第一份可编辑简历。
                                 </p>
                               </div>
@@ -1063,15 +1060,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
                           <Card
                             isPressable
-                            className="rounded-none border-2 border-black bg-[#F0C020] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]"
+                            className="rounded-none border border-black/20 bg-[#efe3bc] text-black shadow-[0_8px_22px_rgba(18,18,18,0.08)]"
                             onPress={() => setResumeMode("upload")}
                           >
                             <CardBody className="flex min-h-[220px] flex-col justify-between p-5">
                               <Upload size={34} strokeWidth={2.4} />
                               <div>
-                                <p className="bauhaus-label text-black/55">Option B</p>
-                                <p className="mt-3 text-3xl font-black uppercase tracking-[-0.06em]">
-                                  Upload Parse
+                                <p className="bauhaus-label text-black/55">方案二</p>
+                                <p className="mt-3 text-3xl font-bold">
+                                  上传解析
                                 </p>
                                 <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
                                   导入现有 PDF 或 Word 简历，自动解析为可继续优化的初稿。
@@ -1087,24 +1084,24 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             startContent={<ArrowLeft size={16} />}
                             onPress={goBack}
                           >
-                            Back
+                            上一步
                           </Button>
                           <button
                             type="button"
                             onClick={goNext}
-                            className="text-sm font-semibold tracking-[0.06em] text-black/55 underline underline-offset-4"
+                            className="text-sm font-semibold text-black/55 underline underline-offset-4"
                           >
-                            Skip
+                            跳过
                           </button>
                         </div>
                       </>
                     ) : resumeMode === "create" ? (
                       <div className="space-y-6">
                         <div className="grid gap-6 xl:grid-cols-[1fr_0.88fr]">
-                          <Card className="rounded-none border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]">
+                          <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
                             <CardBody className="space-y-4 p-5 md:p-6">
                               <Input
-                                label="Name"
+                                label="姓名"
                                 placeholder="输入你的姓名"
                                 variant="bordered"
                                 size="sm"
@@ -1115,7 +1112,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                               />
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <Input
-                                  label="School"
+                                  label="学校"
                                   placeholder="例如 浙江大学"
                                   variant="bordered"
                                   size="sm"
@@ -1124,7 +1121,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                   classNames={bauhausFieldClassNames}
                                 />
                                 <Input
-                                  label="Major"
+                                  label="专业"
                                   placeholder="例如 计算机科学"
                                   variant="bordered"
                                   size="sm"
@@ -1137,10 +1134,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                           </Card>
 
                           <div className="space-y-4">
-                            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-                              <p className="bauhaus-label text-white/70">Template</p>
-                              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">
-                                Choose Direction
+                            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+                              <p className="bauhaus-label text-black/55">模板类型</p>
+                              <p className="mt-3 text-2xl font-semibold">
+                                选择方向
                               </p>
                             </div>
 
@@ -1153,15 +1150,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                   className={`bauhaus-panel-sm p-4 text-left transition-transform hover:-translate-y-[1px] ${
                                     selectedTemplate === template.id
                                       ? index === 0
-                                        ? "bg-[#1040C0] text-white"
+                                        ? "bg-[#d8e2da] text-black"
                                         : index === 1
-                                          ? "bg-[#F0C020] text-black"
-                                          : "bg-[#D02020] text-white"
+                                          ? "bg-[#efe3bc] text-black"
+                                          : "bg-[#f7ece9] text-black"
                                       : "bg-white text-black"
                                   }`}
                                 >
-                                  <p className="bauhaus-label opacity-70">Template {index + 1}</p>
-                                  <p className="mt-2 text-xl font-black uppercase tracking-[-0.05em]">
+                                  <p className="bauhaus-label opacity-70">模板 {index + 1}</p>
+                                  <p className="mt-2 text-xl font-semibold">
                                     {template.label}
                                   </p>
                                 </button>
@@ -1175,7 +1172,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             className="bauhaus-button bauhaus-button-outline"
                             onPress={() => setResumeMode("choose")}
                           >
-                            Back To Options
+                            返回方式选择
                           </Button>
                           <Button
                             className="bauhaus-button bauhaus-button-red"
@@ -1183,18 +1180,18 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             isDisabled={!userName.trim()}
                             onPress={handleQuickCreate}
                           >
-                            Create Resume
+                            创建简历
                           </Button>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        <Card className="rounded-none border-2 border-black bg-white shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]">
+                        <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
                           <CardBody className="space-y-4 p-6 text-center">
                             <Upload size={44} strokeWidth={2.4} className="mx-auto" />
                             <div>
-                              <p className="text-3xl font-black uppercase tracking-[-0.06em]">
-                                Upload Resume
+                              <p className="text-3xl font-bold">
+                                上传简历
                               </p>
                               <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
                                 支持 PDF 和 Word。系统会自动解析文本并创建一份可继续编辑的草稿。
@@ -1205,8 +1202,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                               <div
                                 className={`bauhaus-panel-sm px-4 py-4 text-sm font-medium leading-relaxed ${
                                   resumeCreated
-                                    ? "bg-[#F0C020] text-black"
-                                    : "bg-[#D02020] text-white"
+                                    ? "bg-[#efe3bc] text-black"
+                                    : "bg-[#e8d2cd] text-black"
                                 }`}
                               >
                                 {uploadResult}
@@ -1226,7 +1223,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                 className="bauhaus-button bauhaus-button-blue pointer-events-none"
                                 isLoading={uploadingFile}
                               >
-                                {uploadingFile ? "Parsing..." : "Select File"}
+                                {uploadingFile ? "解析中..." : "选择文件"}
                               </Button>
                             </label>
                           </CardBody>
@@ -1237,14 +1234,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             className="bauhaus-button bauhaus-button-outline"
                             onPress={() => setResumeMode("choose")}
                           >
-                            Back To Options
+                            返回方式选择
                           </Button>
                           <button
                             type="button"
                             onClick={goNext}
-                            className="text-sm font-semibold tracking-[0.06em] text-black/55 underline underline-offset-4"
+                            className="text-sm font-semibold text-black/55 underline underline-offset-4"
                           >
-                            Skip For Now
+                            暂时跳过
                           </button>
                         </div>
                       </div>
@@ -1264,31 +1261,31 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     className="space-y-6"
                   >
                     <div className="space-y-3">
-                      <span className="bauhaus-chip bg-[#F0C020] text-black">Launch</span>
-                      <h2 className="text-5xl font-black uppercase leading-[0.86] tracking-[-0.09em] md:text-7xl">
-                        Fetch
+                      <span className="bauhaus-chip bg-[#efe3bc] text-black">开始使用</span>
+                      <h2 className="text-4xl font-bold leading-tight md:text-6xl">
+                        采集
                         <br />
-                        Match
+                        匹配
                         <br />
-                        Move
+                        推进
                       </h2>
                       <p className="max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
-                        现在去采集你感兴趣的岗位，OfferU 会用 AI 帮你做匹配、定制简历并继续推进投递节奏。
+                        现在去采集你感兴趣的岗位，OfferU 会用智能分析帮你做匹配、定制简历并继续推进投递节奏。
                       </p>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-3">
-                      <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-                        <p className="bauhaus-label text-white/70">Collect</p>
-                        <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">Scraper</p>
+                      <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
+                        <p className="bauhaus-label text-black/55">采集</p>
+                        <p className="mt-3 text-2xl font-semibold">抓取器</p>
                       </div>
-                      <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">Review</p>
-                        <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">Job Pool</p>
+                      <div className="bauhaus-panel-sm bg-[#efe3bc] p-4 text-black">
+                        <p className="bauhaus-label text-black/55">筛选</p>
+                        <p className="mt-3 text-2xl font-semibold">岗位池</p>
                       </div>
-                      <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-                        <p className="bauhaus-label text-white/70">Optimize</p>
-                        <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">Resume Loop</p>
+                      <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+                        <p className="bauhaus-label text-black/55">优化</p>
+                        <p className="mt-3 text-2xl font-semibold">简历循环</p>
                       </div>
                     </div>
 
@@ -1298,20 +1295,20 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         endContent={<Briefcase size={16} />}
                         onPress={() => handleFinish("/scraper")}
                       >
-                        Collect Jobs
+                        去采集岗位
                       </Button>
                       <Button
                         className="bauhaus-button bauhaus-button-blue"
                         endContent={<Sparkles size={16} />}
                         onPress={() => handleFinish("/jobs")}
                       >
-                        Open Jobs
+                        查看岗位池
                       </Button>
                       <Button
                         className="bauhaus-button bauhaus-button-outline"
                         onPress={() => handleFinish()}
                       >
-                        Go Dashboard
+                        返回仪表盘
                       </Button>
                     </div>
 
@@ -1320,7 +1317,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                       startContent={<ArrowLeft size={16} />}
                       onPress={goBack}
                     >
-                      Back
+                      上一步
                     </Button>
                   </motion.div>
                 )}

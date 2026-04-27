@@ -5,23 +5,15 @@
 # 使用 pydantic-settings 自动从 .env / 环境变量加载
 # =============================================
 
-from functools import lru_cache
-
-from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings
-
-from app.paths import ensure_local_data_layout
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """应用全局配置，字段自动绑定同名环境变量"""
 
     # ---- 数据库 ----
-    app_data_dir: str = Field(
-        default="",
-        validation_alias=AliasChoices("OFFERU_DATA_DIR", "APP_DATA_DIR"),
-    )
-    database_url: str = ""
+    database_url: str = "sqlite+aiosqlite:///./djm.db"
 
     # ---- API Keys（多 LLM 提供商） ----
     openai_api_key: str = ""
@@ -77,13 +69,6 @@ class Settings(BaseSettings):
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
-
-    @model_validator(mode="after")
-    def resolve_local_paths(self):
-        paths, database_url = ensure_local_data_layout(self.app_data_dir, self.database_url)
-        self.app_data_dir = str(paths.data_dir)
-        self.database_url = database_url
-        return self
 
 
 @lru_cache

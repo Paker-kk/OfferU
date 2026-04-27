@@ -16,6 +16,10 @@ import {
 } from "@react-pdf/renderer";
 import { registerFonts } from "@/lib/fonts";
 import { DEFAULT_STYLE_CONFIG } from "@/app/resume/components/StyleToolbar";
+import {
+  normalizeResumeSectionsForEditor,
+  splitSkillAndCertificateEntries,
+} from "../utils/sectionNormalization";
 
 // 注册字体（幂等）
 registerFonts();
@@ -77,7 +81,8 @@ export default function ResumePDF({
   const gap = parseFloat(s.sectionGap);
   const lh = parseFloat(s.lineHeight);
 
-  const visible = sections
+  const normalizedSections = normalizeResumeSectionsForEditor(sections as any[]);
+  const visible = normalizedSections
     .filter((sec) => sec.visible)
     .sort((a, b) => a.sort_order - b.sort_order);
 
@@ -320,20 +325,43 @@ export default function ResumePDF({
 
             {/* 技能 */}
             {sec.section_type === "skill" &&
-              sec.content_json.map((group: any, j: number) => (
-                <View key={j} style={styles.skillLine}>
-                  <Text>
-                    {group.category && (
-                      <Text style={styles.skillCategory}>
-                        {group.category}：
-                      </Text>
-                    )}
-                    <Text style={styles.skillItems}>
-                      {(group.items || []).join("、")}
-                    </Text>
-                  </Text>
-                </View>
-              ))}
+              (() => {
+                const { skills, certificates } = splitSkillAndCertificateEntries(sec.content_json || []);
+                return (
+                  <>
+                    {skills.map((group: any, j: number) => (
+                      <View key={`skill-${j}`} style={styles.skillLine}>
+                        <Text>
+                          {group.category && (
+                            <Text style={styles.skillCategory}>
+                              {group.category}：
+                            </Text>
+                          )}
+                          <Text style={styles.skillItems}>
+                            {(group.items || []).join("、")}
+                          </Text>
+                        </Text>
+                      </View>
+                    ))}
+                    {certificates.map((item: any, j: number) => (
+                      <View key={`cert-${j}`} style={styles.certRow}>
+                        <View style={{ flexDirection: "row" }}>
+                          <Text style={styles.certName}>{item.name}</Text>
+                          {item.issuer && (
+                            <Text style={styles.certIssuer}>
+                              {" — "}
+                              {item.issuer}
+                            </Text>
+                          )}
+                        </View>
+                        {item.date && (
+                          <Text style={styles.dateText}>{item.date}</Text>
+                        )}
+                      </View>
+                    ))}
+                  </>
+                );
+              })()}
 
             {/* 项目 */}
             {sec.section_type === "project" &&

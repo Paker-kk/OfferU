@@ -90,8 +90,8 @@ export default function RichTextEditor({
   const btnClass = (active: boolean) =>
     `inline-flex items-center justify-center w-6 h-6 rounded-md transition-all ${
       active
-        ? "bg-blue-500/20 text-blue-400"
-        : "text-white/40 hover:bg-white/[0.08] hover:text-white/70"
+        ? "bg-black text-white"
+        : "text-black/65 hover:bg-black/10 hover:text-black"
     }`;
 
   /** 插入/编辑链接 — 选中文字后 prompt 输入 URL */
@@ -112,9 +112,9 @@ export default function RichTextEditor({
   };
 
   return (
-    <div className="rounded-lg border border-white/[0.08] bg-black/30 overflow-hidden transition-colors focus-within:border-white/15">
+    <div className="overflow-hidden rounded-lg border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-colors focus-within:border-black/35">
       {/* 工具栏 — 紧凑分组排列 */}
-      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-white/[0.06] bg-white/[0.02]">
+      <div className="flex items-center gap-0.5 border-b border-black/10 bg-[color:color-mix(in_srgb,var(--surface)_78%,#e8ecef_22%)] px-1.5 py-1">
         {/* 文字格式组 */}
         <button type="button" className={btnClass(editor.isActive("bold"))}
           onClick={() => editor.chain().focus().toggleBold().run()} title="加粗 (Ctrl+B)">
@@ -133,7 +133,7 @@ export default function RichTextEditor({
           <Strikethrough size={12} />
         </button>
 
-        <div className="w-px h-3.5 bg-white/[0.08] mx-0.5" />
+        <div className="mx-0.5 h-3.5 w-px bg-black/12" />
 
         {/* 列表组 */}
         <button type="button" className={btnClass(editor.isActive("bulletList"))}
@@ -145,7 +145,7 @@ export default function RichTextEditor({
           <ListOrdered size={12} />
         </button>
 
-        <div className="w-px h-3.5 bg-white/[0.08] mx-0.5" />
+        <div className="mx-0.5 h-3.5 w-px bg-black/12" />
 
         {/* 对齐组 */}
         <button type="button" className={btnClass(editor.isActive({ textAlign: "left" }))}
@@ -157,7 +157,7 @@ export default function RichTextEditor({
           <AlignCenter size={12} />
         </button>
 
-        <div className="w-px h-3.5 bg-white/[0.08] mx-0.5" />
+        <div className="mx-0.5 h-3.5 w-px bg-black/12" />
 
         {/* 链接 + 清除格式 */}
         <button type="button" className={btnClass(editor.isActive("link"))}
@@ -172,7 +172,7 @@ export default function RichTextEditor({
       {/* 编辑区 */}
       <EditorContent
         editor={editor}
-        className="prose prose-invert prose-sm max-w-none px-3 py-2"
+        className="prose prose-sm max-w-none px-3 py-2 text-black"
         style={{ minHeight }}
       />
     </div>

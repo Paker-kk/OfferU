@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.models import Job, Profile, ProfileSection, Resume, ResumeSection
+from app.services.application_workspace import auto_write_job_to_total
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -590,6 +591,19 @@ async def optimize_generate(
                         "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
                     },
                 )
+                for related_job in ordered_jobs:
+                    try:
+                        await auto_write_job_to_total(db, job_id=related_job.id)
+                    except Exception as exc:
+                        _logger.warning("auto write failed for job %s: %s", related_job.id, exc)
+                        yield _sse(
+                            "warning",
+                            {
+                                "mode": "combined",
+                                "job_id": related_job.id,
+                                "message": "自动写入投递总表失败，请稍后在投递页手动导入",
+                            },
+                        )
             except Exception as exc:
                 await db.rollback()
                 failed += 1
@@ -694,6 +708,17 @@ async def optimize_generate(
                         "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
                     },
                 )
+                try:
+                    await auto_write_job_to_total(db, job_id=job.id)
+                except Exception as exc:
+                    _logger.warning("auto write failed for job %s: %s", job.id, exc)
+                    yield _sse(
+                        "warning",
+                        {
+                            "job_id": job.id,
+                            "message": "自动写入投递总表失败，请稍后在投递页手动导入",
+                        },
+                    )
             except Exception as exc:
                 await db.rollback()
                 failed += 1

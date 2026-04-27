@@ -18,7 +18,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-offeru}"]
       interval: 5s
@@ -34,11 +34,11 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql+asyncpg://${DB_USER:-offeru}:${DB_PASSWORD:-offeru_secret}@db:5432/${DB_NAME:-offeru}
-      - OFFERU_DATA_DIR=/app/data
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3011,http://127.0.0.1:3011,http://localhost:3000,http://127.0.0.1:3000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
     ports:
       - "8000:8000"
     depends_on:
@@ -46,21 +46,31 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-      - ./backend/data:/app/data
 
   # ---- Next.js 前端 ----
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: builder
     container_name: offeru-frontend
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+      - WATCHPACK_POLLING=false
+      - CHOKIDAR_USEPOLLING=false
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3011"
     ports:
-      - "3000:3000"
+      - "3011:3011"
     depends_on:
       - backend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      # 如需使用 SteamTools 代理，请取消注释并确保证书存在
+      # - ./frontend/certs/steamtools-ca.pem:/etc/ssl/certs/steamtools-ca.crt:ro
 
 volumes:
   pgdata:
+  frontend_node_modules:

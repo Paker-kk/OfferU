@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Autocomplete,
@@ -25,26 +25,15 @@ import {
   AlertCircle,
   Check,
   Cookie,
-  Database,
-  Download,
   Eye,
   EyeOff,
   Key,
   Plus,
-  RefreshCw,
   Save,
   SquarePen,
   Trash2,
-  Upload,
 } from "lucide-react";
-import {
-  cleanupLocalData,
-  getLocalExportUrl,
-  importLocalData,
-  useConfig,
-  useLocalStatus,
-  updateConfig,
-} from "@/lib/hooks";
+import { useConfig, updateConfig } from "@/lib/hooks";
 
 interface ProviderModelPreset {
   id: string;
@@ -255,14 +244,6 @@ function displayMaskedKey(value: string): string {
   return `${value.slice(0, 4)}${"*".repeat(value.length - 8)}${value.slice(-4)}`;
 }
 
-function formatBytes(value?: number): string {
-  const bytes = value || 0;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
-
 function toLegacyOllamaBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/v1")) {
@@ -301,7 +282,6 @@ function normalizeApiConfigsForSave(apiConfigs: LlmApiConfig[]) {
 
 export default function SettingsPage() {
   const { data, mutate } = useConfig();
-  const { data: localStatus, mutate: refreshLocalStatus } = useLocalStatus();
   const config = data as SettingsConfigPayload | undefined;
 
   const [apiSaving, setApiSaving] = useState(false);
@@ -313,10 +293,6 @@ export default function SettingsPage() {
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [dataImporting, setDataImporting] = useState(false);
-  const [dataCleaning, setDataCleaning] = useState(false);
-  const [dataFeedback, setDataFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const dataFileInputRef = useRef<HTMLInputElement>(null);
 
   const [searchKeywords, setSearchKeywords] = useState("");
   const [searchLocations, setSearchLocations] = useState("");
@@ -445,14 +421,14 @@ export default function SettingsPage() {
     }
 
     if (!resolvedFormBaseUrl) {
-      errors.base_url = "API URL 不能为空";
+      errors.base_url = "接口地址不能为空";
     } else if (!/^https?:\/\//i.test(resolvedFormBaseUrl)) {
-      errors.base_url = "API URL 需以 http:// 或 https:// 开头";
+      errors.base_url = "接口地址需以 http:// 或 https:// 开头";
     }
 
     if (providerId !== "ollama") {
       if (!formApiKey.trim()) {
-        errors.api_key = "API 密钥不能为空";
+        errors.api_key = "访问密钥不能为空";
       }
 
       if (!editingConfigId && formApiKey.includes("*")) {
@@ -713,7 +689,7 @@ export default function SettingsPage() {
     setApiConfigs((prev) => prev.map((item) => ({ ...item, is_active: item.id === targetId })));
     setSelectedConfigId(targetId);
     markApiDirty();
-    setListFeedback({ type: "success", message: "已切换激活配置，请点击“保存 API 配置”提交" });
+    setListFeedback({ type: "success", message: "已切换激活配置，请点击“保存模型配置”提交" });
   };
 
   const handleRowClick = (targetId: string) => {
@@ -762,7 +738,7 @@ export default function SettingsPage() {
     markApiDirty();
     setListFeedback({
       type: "success",
-      message: `${editingConfigId ? "配置已更新" : "配置已新增"}，请点击“保存 API 配置”提交`,
+      message: `${editingConfigId ? "配置已更新" : "配置已新增"}，请点击“保存模型配置”提交`,
     });
   };
 
@@ -785,7 +761,7 @@ export default function SettingsPage() {
 
     onDeleteClose();
     markApiDirty();
-    setListFeedback({ type: "success", message: "配置已删除，请点击“保存 API 配置”提交" });
+    setListFeedback({ type: "success", message: "配置已删除，请点击“保存模型配置”提交" });
   };
 
   const handleSaveApiSettings = async () => {
@@ -832,10 +808,10 @@ export default function SettingsPage() {
       setTimeout(() => setApiSaved(false), 2000);
       setListFeedback({
         type: "success",
-        message: normalizedConfigs.length > 0 ? "API 配置已保存" : "API 配置已清空并保存",
+        message: normalizedConfigs.length > 0 ? "模型配置已保存" : "模型配置已清空并保存",
       });
     } catch (error) {
-      setApiSaveError(error instanceof Error ? error.message : "API 配置保存失败，请稍后重试");
+      setApiSaveError(error instanceof Error ? error.message : "模型配置保存失败，请稍后重试");
     } finally {
       setApiSaving(false);
     }
@@ -869,64 +845,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleExportLocalData = () => {
-    setDataFeedback({ type: "success", message: "正在生成数据包，浏览器会自动下载。" });
-    window.location.href = getLocalExportUrl();
-    window.setTimeout(() => {
-      void refreshLocalStatus();
-    }, 1200);
-  };
-
-  const handleImportLocalDataFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    setDataImporting(true);
-    setDataFeedback(null);
-    try {
-      const result = await importLocalData(file);
-      await refreshLocalStatus();
-      const imported = result.imported.length > 0 ? result.imported.join(", ") : "无可导入内容";
-      setDataFeedback({
-        type: "success",
-        message: result.restart_recommended
-          ? `已导入：${imported}。当前数据已自动备份，建议重启本地服务后继续使用。`
-          : `已导入：${imported}。`,
-      });
-    } catch (error) {
-      setDataFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "导入数据包失败",
-      });
-    } finally {
-      setDataImporting(false);
-    }
-  };
-
-  const handleCleanupLocalData = async () => {
-    const ok = window.confirm("只会清理临时导入包和临时文件，不会删除简历、岗位和配置。继续吗？");
-    if (!ok) return;
-
-    setDataCleaning(true);
-    setDataFeedback(null);
-    try {
-      const result = await cleanupLocalData();
-      await refreshLocalStatus();
-      setDataFeedback({
-        type: "success",
-        message: `已清理 ${result.files} 个文件，释放 ${formatBytes(result.bytes)}。`,
-      });
-    } catch (error) {
-      setDataFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "清理临时数据失败",
-      });
-    } finally {
-      setDataCleaning(false);
-    }
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -934,19 +852,13 @@ export default function SettingsPage() {
       transition={{ type: "spring", damping: 15 }}
       className="space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 border-b-2 border-black p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+        <div className="grid gap-6 border-b border-black/12 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#1040C0] text-white">System Controls</span>
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">系统配置</span>
             <div>
-              <p className="bauhaus-label text-black/60">Search, Sources, Models</p>
-              <h1 className="mt-2 text-4xl font-black uppercase tracking-[-0.08em] md:text-6xl">
-                Tune
-                <br />
-                Route
-                <br />
-                Save
-              </h1>
+              <p className="bauhaus-label text-black/60">搜索、来源与模型</p>
+              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">统一配置工作台</h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
                 在这里配置模型供应商、搜索规则、数据源和同步策略。所有模块延续同一套 Bauhaus 视觉规范，但保持原有配置逻辑不变。
               </p>
@@ -954,118 +866,26 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">API Configs</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">{apiConfigs.length}</p>
-              <p className="mt-2 text-sm font-medium text-white/80">当前已维护的模型供应商配置数量。</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/60">模型配置数</p>
+              <p className="mt-2 text-4xl font-bold">{apiConfigs.length}</p>
+              <p className="mt-2 text-sm font-medium text-black/75">当前已维护的模型供应商配置数量。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Sources</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">{sourcesEnabled.length}</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/60">启用来源</p>
+              <p className="mt-2 text-4xl font-bold">{sourcesEnabled.length}</p>
               <p className="mt-2 text-sm font-medium text-black/75">当前启用的数据抓取来源数。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Unsaved</p>
-              <p className="mt-2 text-4xl font-black uppercase tracking-[-0.08em]">
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/60">待保存</p>
+              <p className="mt-2 text-4xl font-bold">
                 {Number(apiDirty) + Number(settingsDirty)}
               </p>
-              <p className="mt-2 text-sm font-medium text-white/80">需要提交到本地配置文件的待保存模块数。</p>
+              <p className="mt-2 text-sm font-medium text-black/75">需要提交到本地配置文件的待保存模块数。</p>
             </div>
           </div>
         </div>
       </section>
-
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-5 p-5 md:p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#1040C0] text-white">
-                <Database size={18} />
-              </div>
-              <div>
-                <p className="bauhaus-label text-black/55">Local Data</p>
-                <h3 className="text-2xl font-black uppercase tracking-[-0.06em] text-black">本地数据中心</h3>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              startContent={<RefreshCw size={14} />}
-              onPress={() => refreshLocalStatus()}
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-            >
-              刷新状态
-            </Button>
-          </div>
-
-          <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-black/45">数据目录</p>
-            <p className="mt-1 break-all text-sm font-medium text-black">
-              {localStatus?.data_dir || "正在读取本地数据目录..."}
-            </p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            {[
-              { label: "数据库", value: formatBytes(localStatus?.database.size), ok: localStatus?.database.exists },
-              { label: "配置文件", value: formatBytes(localStatus?.config.size), ok: localStatus?.config.exists },
-              { label: "上传文件", value: formatBytes(localStatus?.uploads.size), ok: localStatus?.uploads.exists },
-              { label: "备份包", value: formatBytes(localStatus?.backups.size), ok: true },
-            ].map((item) => (
-              <div key={item.label} className="bauhaus-panel-sm bg-white px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-black/45">{item.label}</p>
-                  <span className={`h-2 w-2 rounded-full ${item.ok ? "bg-[#20A060]" : "bg-[#D02020]"}`} />
-                </div>
-                <p className="mt-2 text-lg font-black tracking-[-0.04em] text-black">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <input
-            ref={dataFileInputRef}
-            type="file"
-            accept=".zip,application/zip"
-            className="hidden"
-            onChange={handleImportLocalDataFile}
-          />
-
-          <div className="flex flex-col gap-2 md:flex-row">
-            <Button
-              startContent={<Download size={16} />}
-              onPress={handleExportLocalData}
-              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-            >
-              导出数据包
-            </Button>
-            <Button
-              startContent={<Upload size={16} />}
-              isLoading={dataImporting}
-              onPress={() => dataFileInputRef.current?.click()}
-              className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
-            >
-              添加数据包
-            </Button>
-            <Button
-              startContent={<Trash2 size={16} />}
-              isLoading={dataCleaning}
-              onPress={handleCleanupLocalData}
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-            >
-              清理临时数据
-            </Button>
-          </div>
-
-          {dataFeedback && (
-            <div
-              className={`bauhaus-panel-sm px-3 py-3 text-xs font-medium ${
-                dataFeedback.type === "success" ? "bg-[#F0C020] text-black" : "bg-[#D02020] text-white"
-              }`}
-            >
-              {dataFeedback.message}
-            </div>
-          )}
-        </CardBody>
-      </Card>
 
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-5 p-5 md:p-6">
@@ -1074,12 +894,12 @@ export default function SettingsPage() {
               <Key size={18} />
             </div>
             <div>
-              <p className="bauhaus-label text-black/55">Model Providers</p>
-              <h3 className="text-2xl font-black uppercase tracking-[-0.06em] text-black">大模型 API 管理</h3>
+              <p className="bauhaus-label text-black/55">模型供应商</p>
+              <h3 className="text-2xl font-bold text-black">大模型接口管理</h3>
             </div>
           </div>
           <p className="text-sm font-medium leading-relaxed text-black/65">
-            请在此处配置您的 API 信息。新增、删除、编辑后，仍需点击本模块底部的“保存 API 配置”完成提交。
+            请在此处配置模型接口信息。新增、删除、编辑后，仍需点击本模块底部的“保存模型配置”完成提交。
           </p>
 
           {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
@@ -1107,7 +927,7 @@ export default function SettingsPage() {
               <div className="ml-4 grid grid-cols-1 gap-x-6 gap-y-1 text-white/70 sm:grid-cols-3">
                 <span>服务商: <span className="text-white">{config.active_llm_summary.service_name}</span></span>
                 <span>模型: <span className="text-white">{config.active_llm_summary.model}</span></span>
-                <span className="truncate">URL: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
+                <span className="truncate">地址: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
               </div>
             </div>
           )}
@@ -1118,8 +938,8 @@ export default function SettingsPage() {
                 <tr>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">模型名称</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">API URL</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">API密钥</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">接口地址</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">密钥状态</th>
                   <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">是否激活</th>
                 </tr>
               </thead>
@@ -1219,7 +1039,7 @@ export default function SettingsPage() {
                   apiSaved ? "bauhaus-button-yellow" : "bauhaus-button-red"
                 }`}
               >
-                {apiSaved ? "已保存" : "保存 API 配置"}
+                {apiSaved ? "已保存" : "保存模型配置"}
               </Button>
             </div>
           </div>
@@ -1248,8 +1068,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">Search Rules</p>
-            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">搜索配置</h3>
+            <p className="bauhaus-label text-black/55">搜索规则</p>
+            <h3 className="mt-2 text-2xl font-bold text-black">搜索配置</h3>
           </div>
           <Textarea
             label="搜索关键词（每行一个）"
@@ -1289,8 +1109,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">Source Toggles</p>
-            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">数据源</h3>
+            <p className="bauhaus-label text-black/55">来源开关</p>
+            <h3 className="mt-2 text-2xl font-bold text-black">数据源</h3>
           </div>
           {dataSources.map((source) => (
             <div key={source.name} className="bauhaus-panel-sm flex items-center justify-between gap-4 bg-[#F0F0F0] px-4 py-3">
@@ -1298,7 +1118,7 @@ export default function SettingsPage() {
                 <span className="text-sm font-medium text-black">{source.label}</span>
                 {!source.available && (
                   <Chip size="sm" variant="flat" className="border-2 border-black bg-white text-[10px] text-black/55">
-                    COMING SOON
+                    即将开放
                   </Chip>
                 )}
               </div>
@@ -1317,8 +1137,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">Resume Sync</p>
-            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">档案同步</h3>
+            <p className="bauhaus-label text-black/55">档案同步</p>
+            <h3 className="mt-2 text-2xl font-bold text-black">档案同步</h3>
           </div>
           <div className="bauhaus-panel-sm flex items-start justify-between gap-4 bg-[#F0F0F0] px-4 py-4">
             <div className="space-y-1">
@@ -1340,8 +1160,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">Delivery</p>
-            <h3 className="mt-2 text-2xl font-black uppercase tracking-[-0.06em] text-black">邮箱推送</h3>
+            <p className="bauhaus-label text-black/55">投递通知</p>
+            <h3 className="mt-2 text-2xl font-bold text-black">邮箱推送</h3>
           </div>
           <Input
             label="接收邮箱"
@@ -1361,8 +1181,8 @@ export default function SettingsPage() {
               <Cookie size={18} />
             </div>
             <div>
-              <p className="bauhaus-label text-black/55">Crawler Access</p>
-              <h3 className="text-2xl font-black uppercase tracking-[-0.06em] text-black">爬虫认证配置</h3>
+              <p className="bauhaus-label text-black/55">爬虫权限</p>
+              <h3 className="text-2xl font-bold text-black">爬虫认证配置</h3>
             </div>
           </div>
           <p className="text-xs font-medium leading-relaxed text-black/55">
@@ -1470,7 +1290,7 @@ export default function SettingsPage() {
       <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="3xl" placement="center" scrollBehavior="inside">
         <ModalContent className={bauhausModalContentClassName}>
           <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
-            {editingConfigId ? "编辑 API 配置" : "新增 API 配置"}
+            {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
           <ModalBody className="grid grid-cols-1 gap-4 overflow-y-auto px-6 py-6 md:grid-cols-2">
             <Autocomplete
@@ -1581,7 +1401,7 @@ export default function SettingsPage() {
             </Autocomplete>
 
             <Autocomplete
-              label="API URL 选择"
+              label="接口地址选择"
               variant="bordered"
               allowsCustomValue
               menuTrigger="manual"
@@ -1651,7 +1471,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => setShowFormApiKey((prev) => !prev)}
                   className="text-black/35 hover:text-black/70"
-                  aria-label={showFormApiKey ? "隐藏 API Key" : "显示 API Key"}
+                  aria-label={showFormApiKey ? "隐藏访问密钥" : "显示访问密钥"}
                   aria-pressed={showFormApiKey}
                 >
                   {showFormApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -1665,7 +1485,7 @@ export default function SettingsPage() {
 
             <Divider className="my-1 border-black/10 md:col-span-2" />
             <p className="text-xs font-medium text-black/55 md:col-span-2">
-              所有字段均必填。服务名称、模型名称、API URL 均支持预设选择和手动输入。
+              所有字段均必填。服务名称、模型名称、接口地址均支持预设选择和手动输入。
             </p>
           </ModalBody>
           <ModalFooter className="border-t-2 border-black px-6 py-5">
