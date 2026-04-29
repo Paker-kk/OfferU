@@ -22,7 +22,7 @@ except ImportError:
     mcp_server = None
     agent_route = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, optimize, interview
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview
 
 settings = get_settings()
 
@@ -63,6 +63,7 @@ app.add_middleware(
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+app.include_router(profile_agent.router, prefix="/api/profile/agent", tags=["Profile Agent"])
 app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])

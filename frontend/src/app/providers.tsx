@@ -9,6 +9,7 @@ import { SWRConfig } from "swr";
 import { AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { ProfileAgentDock } from "@/components/ai/ProfileAgentDock";
 import { useOnboarding } from "@/lib/useOnboarding";
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
@@ -43,6 +44,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <NextUIProvider>
         <OnboardingGate>
           {children}
+          <ProfileAgentDock />
         </OnboardingGate>
       </NextUIProvider>
     </SWRConfig>

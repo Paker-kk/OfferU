@@ -172,6 +172,31 @@ export const configApi = {
 };
 
 // ---- Profile API ----
+export interface ProfileAgentPatch {
+  action: "ask_user" | "propose_patch" | "apply_patch" | "generate_resume" | "finish";
+  assistant_message: string;
+  base_info: Record<string, string>;
+  target_roles: string[];
+  sections: {
+    section_type: string;
+    category_label?: string;
+    title: string;
+    content_json: Record<string, any>;
+    confidence: number;
+  }[];
+  next_question?: string;
+  confidence?: number;
+}
+
+export interface ProfileAgentResponse {
+  session_id: number;
+  state: Record<string, any>;
+  assistant_message: string;
+  patch: ProfileAgentPatch;
+  agent_trace?: Record<string, any>[];
+  stop_reason?: string;
+}
+
 export const profileApi = {
   get: () => request("/api/profile/"),
 
@@ -241,4 +266,38 @@ export const profileApi = {
 
   generateNarrative: () =>
     request("/api/profile/generate-narrative", { method: "POST" }),
+
+  startProfileAgent: async (data: {
+    file?: File | null;
+    resume_text?: string;
+    target_role?: string;
+    target_city?: string;
+    job_goal?: string;
+  }): Promise<ProfileAgentResponse> => {
+    const formData = new FormData();
+    if (data.file) formData.append("file", data.file);
+    formData.append("resume_text", data.resume_text || "");
+    formData.append("target_role", data.target_role || "");
+    formData.append("target_city", data.target_city || "");
+    formData.append("job_goal", data.job_goal || "");
+
+    const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  },
+
+  sendProfileAgentMessage: (data: { session_id: number; message: string }) =>
+    request<ProfileAgentResponse>("/api/profile/agent/message", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  applyProfileAgentPatch: (data: { session_id: number; patch?: ProfileAgentPatch }) =>
+    request("/api/profile/agent/apply-patch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
