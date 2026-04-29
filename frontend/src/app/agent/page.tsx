@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -9,160 +9,115 @@ import {
   ScrollShadow,
   Textarea,
 } from "@nextui-org/react";
-import { Bot, Loader2, Send, Sparkles, Trash2, User, Wrench } from "lucide-react";
+import {
+  Bot,
+  Briefcase,
+  CheckCircle2,
+  Loader2,
+  Send,
+  Sparkles,
+  Trash2,
+  User,
+  Wrench,
+} from "lucide-react";
+import {
+  harnessAgentApi,
+  type HarnessAgentCareerPath,
+  type HarnessAgentJobCard,
+  type HarnessAgentMessage,
+  type HarnessAgentProposedAction,
+  type HarnessAgentResponse,
+  type HarnessAgentToolCall,
+} from "@/lib/api";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://127.0.0.1:8000");
-
-interface ChatMsg {
+interface ConsoleMessage {
   id: string;
-  role: "user" | "assistant" | "tool";
+  role: "user" | "assistant";
   content: string;
-  toolCalls?: ToolCallInfo[];
-  thinking?: boolean;
-}
-
-interface ToolCallInfo {
-  tool: string;
-  args: Record<string, unknown>;
-  result: unknown;
+  response?: HarnessAgentResponse;
 }
 
 const QUICK_ACTIONS = [
-  { label: "查看资料", prompt: "帮我看看我的个人资料" },
-  { label: "岗位统计", prompt: "帮我统计一下目前的岗位情况" },
-  { label: "简历列表", prompt: "列出我的所有简历" },
-  { label: "浏览岗位", prompt: "帮我看看最新的岗位列表" },
-  { label: "生成简历", prompt: "帮我挑几个合适的岗位生成定制简历" },
+  { label: "职业探索", prompt: "参考我的档案，给我 5 个意想不到但适合我的职业方向" },
+  { label: "岗位匹配", prompt: "帮我看看现在岗位库里适合投哪些岗位" },
+  { label: "简历准备", prompt: "帮我为最适合的岗位准备定制简历" },
+  { label: "投递跟进", prompt: "帮我梳理投递管理和下一步动作" },
+  { label: "面试日程", prompt: "帮我检查邮件通知和面试日程" },
 ];
 
+function previewJson(value: unknown) {
+  try {
+    const text = JSON.stringify(value, null, 2);
+    return text.length > 420 ? `${text.slice(0, 420)}...` : text;
+  } catch {
+    return String(value);
+  }
+}
+
+function toApiMessages(messages: ConsoleMessage[]): HarnessAgentMessage[] {
+  return messages
+    .filter((message) => message.id !== "welcome")
+    .map((message) => ({ role: message.role, content: message.content }));
+}
+
 export default function AgentPage() {
-  const [messages, setMessages] = useState<ChatMsg[]>([
+  const [messages, setMessages] = useState<ConsoleMessage[]>([
     {
       id: "welcome",
       role: "assistant",
       content:
-        "你好，我是 OfferU AI 助手。\n\n我可以帮你查看岗位、筛选分拣、生成定制简历、管理投递记录和梳理求职流程。点击下方快捷动作，或直接告诉我你想完成什么。",
+        "我是 OfferU Harness Agent。你可以直接给我一个目标，我会读取档案、岗位、简历、投递和日程上下文，然后把下一步拆成可确认的动作。",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [error, setError] = useState("");
+  const [pendingActions, setPendingActions] = useState<HarnessAgentProposedAction[]>([]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+  const latestMode = useMemo(() => {
+    const latest = [...messages].reverse().find((message) => message.response?.mode);
+    return latest?.response?.mode || "ready";
   }, [messages]);
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim() || loading) return;
+  const sendMessage = async (text?: string, confirmedActionIds?: string[]) => {
+    const content = (text ?? input).trim();
+    const isConfirmation = Boolean(confirmedActionIds?.length);
+    if ((!content && !isConfirmation) || loading) return;
 
-      const userMsg: ChatMsg = {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: text.trim(),
-      };
+    const userMessage: ConsoleMessage | null = isConfirmation
+      ? null
+      : {
+          id: `user-${Date.now()}`,
+          role: "user",
+          content,
+        };
+    const nextMessages = userMessage ? [...messages, userMessage] : messages;
 
-      const historyForApi = [...messages, userMsg]
-        .filter((msg) => msg.role === "user" || msg.role === "assistant")
-        .filter((msg) => msg.id !== "welcome")
-        .map((msg) => ({ role: msg.role, content: msg.content }));
+    setMessages(nextMessages);
+    setInput("");
+    setLoading(true);
+    setError("");
 
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-      setLoading(true);
-
-      const thinkingId = `t-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: thinkingId, role: "assistant", content: "", thinking: true }]);
-
-      try {
-        abortRef.current = new AbortController();
-        const response = await fetch(`${API_BASE}/api/agent/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: historyForApi }),
-          signal: abortRef.current.signal,
-        });
-
-        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        const toolCalls: ToolCallInfo[] = [];
-        let finalContent = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data:")) continue;
-            const dataStr = line.slice(5).trim();
-            if (!dataStr) continue;
-            try {
-              const data = JSON.parse(dataStr);
-              if (data.content) finalContent = data.content;
-              if (data.tool) {
-                toolCalls.push({
-                  tool: data.tool,
-                  args: data.args || {},
-                  result: data.result,
-                });
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === thinkingId
-                      ? { ...msg, content: `正在调用 ${data.tool}...`, toolCalls: [...toolCalls] }
-                      : msg
-                  )
-                );
-              }
-            } catch {}
-          }
-        }
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === thinkingId
-              ? {
-                  ...msg,
-                  content: finalContent || "操作完成",
-                  thinking: false,
-                  toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                }
-              : msg
-          )
-        );
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name === "AbortError") return;
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === thinkingId ? { ...msg, content: "请求失败，请重试。", thinking: false } : msg
-          )
-        );
-      } finally {
-        setLoading(false);
-        abortRef.current = null;
-      }
-    },
-    [loading, messages]
-  );
-
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage(input);
+    try {
+      const response = await harnessAgentApi.chat({
+        messages: toApiMessages(nextMessages),
+        confirmed_action_ids: confirmedActionIds,
+      });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: response.assistant_message,
+          response,
+        },
+      ]);
+      setPendingActions(response.proposed_actions || []);
+    } catch (err: any) {
+      setError(err.message || "Harness Agent 请求失败");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -171,9 +126,15 @@ export default function AgentPage() {
       {
         id: "welcome",
         role: "assistant",
-        content: "对话已清空。告诉我你接下来想推进哪一段求职流程。",
+        content: "对话已清空。告诉我你想让 OfferU 先推进哪一步。",
       },
     ]);
+    setPendingActions([]);
+    setError("");
+  };
+
+  const confirmActions = () => {
+    sendMessage("", pendingActions.map((action) => action.id));
   };
 
   return (
@@ -187,76 +148,95 @@ export default function AgentPage() {
                   <Bot size={22} />
                 </div>
                 <div>
-                  <p className="bauhaus-label text-black/55">AI Workspace</p>
-                  <h1 className="mt-1 text-3xl font-black tracking-[-0.06em] text-black md:text-4xl">
-                    AI 求职助手
+                  <p className="bauhaus-label text-black/55">Harness Workspace</p>
+                  <h1 className="mt-1 text-3xl font-black text-black md:text-4xl">
+                    OfferU 全局助手
                   </h1>
                 </div>
               </div>
               <p className="max-w-3xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
-                直接说目标，助手会帮你查岗位、看简历、梳理投递并调用工具，把下一步动作尽快推进。
+                让助手读取你的求职上下文，先分析，再调用工具。批量筛选、导入投递表、同步日程这类动作会先展示计划。
               </p>
             </div>
 
-            <Button
-              variant="light"
-              onPress={clearChat}
-              title="清空对话"
-              startContent={<Trash2 size={16} />}
-              className="bauhaus-button bauhaus-button-outline !w-full !justify-center !px-4 !py-3 !text-[11px] md:!w-auto"
-            >
-              重置对话
-            </Button>
+            <div className="flex flex-col gap-2 md:items-end">
+              <Chip className="w-fit border-2 border-black bg-[var(--surface-muted)] text-xs font-semibold text-black">
+                {latestMode}
+              </Chip>
+              <Button
+                variant="light"
+                onPress={clearChat}
+                title="清空对话"
+                startContent={<Trash2 size={16} />}
+                className="bauhaus-button bauhaus-button-outline !w-full !justify-center !px-4 !py-3 !text-[11px] md:!w-auto"
+              >
+                重置对话
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Chip variant="flat" className="bauhaus-chip border-2 border-black bg-[var(--surface-muted)] px-3 py-2 text-black">
-              岗位查询
-            </Chip>
-            <Chip variant="flat" className="bauhaus-chip border-2 border-black bg-[#F0C020] px-3 py-2 text-black">
-              简历联动
-            </Chip>
-            <Chip variant="flat" className="bauhaus-chip border-2 border-black bg-[#F7E4E1] px-3 py-2 text-black">
-              连续对话
-            </Chip>
-            <Chip variant="flat" className="bauhaus-chip border-2 border-black bg-white px-3 py-2 text-black">
-              工具执行
-            </Chip>
+            {QUICK_ACTIONS.map((action, index) => (
+              <Chip
+                key={action.label}
+                className={`cursor-pointer border-2 border-black px-3 py-2 text-sm font-semibold ${
+                  index % 3 === 0
+                    ? "bg-[#F0C020] text-black"
+                    : index % 3 === 1
+                      ? "bg-white text-black"
+                      : "bg-[#F7E4E1] text-black"
+                }`}
+                onClick={() => sendMessage(action.prompt)}
+              >
+                {action.label}
+              </Chip>
+            ))}
           </div>
         </div>
       </section>
 
-      <ScrollShadow
-        ref={scrollRef}
-        className="bauhaus-panel min-h-[20rem] flex-1 overflow-y-auto bg-white p-4 md:min-h-[24rem] md:p-6"
-      >
-        <div className="space-y-4">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} />
+      <ScrollShadow className="bauhaus-panel min-h-[22rem] flex-1 overflow-y-auto bg-white p-4 md:min-h-[26rem] md:p-6">
+        <div className="space-y-5">
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
           ))}
+          {loading && (
+            <div className="inline-flex items-center gap-2 border-2 border-black bg-white px-4 py-3 text-[15px] font-medium text-black/65 shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]">
+              <Loader2 size={14} className="animate-spin" />
+              思考并调用工具中...
+            </div>
+          )}
         </div>
       </ScrollShadow>
 
-      {messages.length <= 2 && (
-        <div className="flex flex-wrap gap-2">
-          {QUICK_ACTIONS.map((action, index) => (
-            <Chip
-              key={action.label}
-              variant="flat"
-              className={`cursor-pointer border-2 border-black px-3 py-2 text-sm font-semibold ${
-                index % 4 === 0
-                  ? "bg-[var(--surface-muted)] text-black"
-                  : index % 4 === 1
-                    ? "bg-[#F0C020] text-black"
-                    : index % 4 === 2
-                      ? "bg-white text-black"
-                      : "bg-[#F7E4E1] text-black"
-              }`}
-              onClick={() => sendMessage(action.prompt)}
+      {pendingActions.length > 0 && (
+        <section className="bauhaus-panel-sm bg-[#F7E4E1] p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-black text-black">需要确认的动作</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pendingActions.map((action) => (
+                  <Chip key={action.id} className="border-2 border-black bg-white text-xs font-semibold text-black">
+                    {action.summary}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <Button
+              onPress={confirmActions}
+              isDisabled={loading}
+              startContent={loading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              className="bauhaus-button bauhaus-button-red !justify-center !px-5 !py-3 !text-xs"
             >
-              {action.label}
-            </Chip>
-          ))}
+              确认执行
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {error && (
+        <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+          {error}
         </div>
       )}
 
@@ -265,8 +245,13 @@ export default function AgentPage() {
           <Textarea
             value={input}
             onValueChange={setInput}
-            onKeyDown={handleKeyDown}
-            placeholder="输入你的需求...（Enter 发送，Shift+Enter 换行）"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="输入你的目标..."
             minRows={1}
             maxRows={4}
             variant="bordered"
@@ -276,7 +261,7 @@ export default function AgentPage() {
           />
           <Button
             isIconOnly
-            onPress={() => sendMessage(input)}
+            onPress={() => sendMessage()}
             isDisabled={!input.trim() || loading}
             aria-label="发送消息"
             className="bauhaus-button bauhaus-button-red !mb-[2px] !min-h-11 !min-w-11 !px-0 !py-0"
@@ -289,8 +274,9 @@ export default function AgentPage() {
   );
 }
 
-function MessageBubble({ msg }: { msg: ChatMsg }) {
-  const isUser = msg.role === "user";
+function MessageBubble({ message }: { message: ConsoleMessage }) {
+  const isUser = message.role === "user";
+  const response = message.response;
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -303,47 +289,44 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
       </div>
 
       <div className={`max-w-[92%] md:max-w-[84%] ${isUser ? "text-right" : ""}`}>
-        {msg.thinking && (
-          <div className="mb-2 inline-flex items-center gap-2 border-2 border-black bg-white px-4 py-3 text-[15px] font-medium text-black/65 shadow-[2px_2px_0_0_rgba(18,18,18,0.3)]">
-            <Loader2 size={13} className="animate-spin" />
-            <span>{msg.content || "思考中..."}</span>
-          </div>
-        )}
+        <div
+          className={`inline-block whitespace-pre-wrap border-2 border-black px-4 py-3.5 text-[15px] font-medium leading-7 shadow-[3px_3px_0_0_rgba(18,18,18,0.28)] md:px-5 md:py-4 md:text-base ${
+            isUser ? "bg-[#F7E4E1] text-black" : "bg-white text-black"
+          }`}
+        >
+          {message.content}
+        </div>
 
-        {msg.toolCalls && msg.toolCalls.length > 0 && (
-          <div className="mb-2 space-y-2">
-            {msg.toolCalls.map((toolCall, index) => (
-              <Card key={index} className="bauhaus-panel-sm rounded-none bg-white shadow-none">
-                <CardBody className="p-3">
-                  <div className="mb-2 flex items-start gap-2">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-black bg-[var(--surface-muted)] text-black">
-                      <Wrench size={14} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold tracking-[0.02em] text-black">{toolCall.tool}</p>
-                      {Object.keys(toolCall.args).length > 0 && (
-                        <p className="mt-1 text-[11px] font-medium text-black/45">
-                          {Object.entries(toolCall.args)
-                            .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-                            .join(", ")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <ToolResultPreview result={toolCall.result} />
+        {response && (
+          <div className="mt-4 space-y-4 text-left">
+            {response.transferable_skills_summary && (
+              <Card className="bauhaus-panel-sm rounded-none bg-white shadow-none">
+                <CardBody className="p-4 text-sm font-medium leading-6 text-black/75">
+                  {response.transferable_skills_summary}
                 </CardBody>
               </Card>
-            ))}
-          </div>
-        )}
-
-        {!msg.thinking && msg.content && (
-          <div
-            className={`inline-block whitespace-pre-wrap border-2 border-black px-4 py-3.5 text-[15px] font-medium leading-7 shadow-[3px_3px_0_0_rgba(18,18,18,0.28)] md:px-5 md:py-4 md:text-base ${
-              isUser ? "bg-[#F7E4E1] text-black" : "bg-white text-black"
-            }`}
-          >
-            {msg.content}
+            )}
+            {response.career_paths && response.career_paths.length > 0 && (
+              <CareerPathGrid paths={response.career_paths} />
+            )}
+            {response.job_cards && response.job_cards.length > 0 && (
+              <JobCardGrid jobs={response.job_cards} />
+            )}
+            {response.tool_calls && response.tool_calls.length > 0 && (
+              <ToolCallPanel calls={response.tool_calls} />
+            )}
+            {response.next_steps && response.next_steps.length > 0 && (
+              <Card className="bauhaus-panel-sm rounded-none bg-[var(--surface-muted)] shadow-none">
+                <CardBody className="p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Next steps</p>
+                  <ul className="mt-2 space-y-1 text-sm font-medium leading-6 text-black/72">
+                    {response.next_steps.map((step) => (
+                      <li key={step}>- {step}</li>
+                    ))}
+                  </ul>
+                </CardBody>
+              </Card>
+            )}
           </div>
         )}
       </div>
@@ -351,20 +334,86 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
   );
 }
 
-function ToolResultPreview({ result }: { result: unknown }) {
-  if (!result || typeof result !== "object") return null;
-
-  const data = result as Record<string, unknown>;
-  if (data.error) {
-    return <p className="text-xs font-medium text-[#D02020]">{String(data.error)}</p>;
-  }
-
-  const text = JSON.stringify(result, null, 2);
-  const preview = text.length > 320 ? `${text.slice(0, 320)}...` : text;
-
+function CareerPathGrid({ paths }: { paths: HarnessAgentCareerPath[] }) {
   return (
-    <pre className="max-h-32 overflow-x-auto overflow-y-auto whitespace-pre-wrap bg-[#F0F0F0] p-3 text-xs font-medium text-black/65">
-      {preview}
-    </pre>
+    <div className="grid gap-3 md:grid-cols-2">
+      {paths.map((path) => (
+        <Card key={path.title} className="bauhaus-panel-sm rounded-none bg-white shadow-none">
+          <CardBody className="p-4">
+            <p className="text-base font-black text-black">{path.title}</p>
+            <p className="mt-1 text-xs font-semibold text-black/50">{path.industry}</p>
+            <p className="mt-3 text-sm font-medium leading-6 text-black/72">{path.fit_reason}</p>
+            <div className="mt-3 space-y-2 text-xs font-medium leading-5 text-black/65">
+              <p>{path.entry_route}</p>
+              <p className="font-bold text-black">{path.salary_range}</p>
+              <p>{path.application_strategy}</p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {path.search_keywords.map((keyword) => (
+                <Chip key={keyword} size="sm" className="border border-black bg-[#F0C020] text-[10px] text-black">
+                  {keyword}
+                </Chip>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function JobCardGrid({ jobs }: { jobs: HarnessAgentJobCard[] }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {jobs.map((job) => (
+        <Card key={job.id} className="bauhaus-panel-sm rounded-none bg-white shadow-none">
+          <CardBody className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-black bg-[var(--surface-muted)] text-black">
+                <Briefcase size={15} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-black text-black">{job.company}</p>
+                <p className="mt-1 text-sm font-semibold text-black/72">{job.title}</p>
+                <p className="mt-1 text-xs font-medium text-black/50">
+                  {[job.location, job.salary_text, job.source].filter(Boolean).join(" / ")}
+                </p>
+                {job.summary && <p className="mt-2 text-xs font-medium leading-5 text-black/60">{job.summary}</p>}
+                {job.apply_url && (
+                  <a
+                    href={job.apply_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-block text-xs font-bold text-[#D02020] underline"
+                  >
+                    打开投递链接
+                  </a>
+                )}
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function ToolCallPanel({ calls }: { calls: HarnessAgentToolCall[] }) {
+  return (
+    <div className="space-y-2">
+      {calls.map((call, index) => (
+        <Card key={`${call.tool}-${index}`} className="bauhaus-panel-sm rounded-none bg-white shadow-none">
+          <CardBody className="p-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-black">
+              <Wrench size={14} />
+              {call.tool}
+            </div>
+            <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap bg-[#F0F0F0] p-3 text-xs font-medium text-black/65">
+              {previewJson(call.result)}
+            </pre>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
   );
 }

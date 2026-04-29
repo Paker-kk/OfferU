@@ -171,6 +171,71 @@ export const configApi = {
     request("/api/config/", { method: "PUT", body: JSON.stringify(data) }),
 };
 
+// ---- Harness Agent API ----
+export interface HarnessAgentMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface HarnessAgentToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  result: unknown;
+  action_id?: string;
+}
+
+export interface HarnessAgentProposedAction {
+  id: string;
+  tool: string;
+  summary: string;
+  risk_level: "read" | "write" | "confirm";
+  requires_confirmation: boolean;
+  args: Record<string, unknown>;
+}
+
+export interface HarnessAgentCareerPath {
+  title: string;
+  industry: string;
+  fit_reason: string;
+  entry_route: string;
+  salary_range: string;
+  search_keywords: string[];
+  application_strategy: string;
+}
+
+export interface HarnessAgentJobCard {
+  id: number;
+  title: string;
+  company: string;
+  location: string;
+  salary_text: string;
+  source: string;
+  apply_url: string;
+  summary?: string;
+}
+
+export interface HarnessAgentResponse {
+  assistant_message: string;
+  mode: string;
+  requires_confirmation: boolean;
+  tool_calls: HarnessAgentToolCall[];
+  proposed_actions: HarnessAgentProposedAction[];
+  career_paths?: HarnessAgentCareerPath[];
+  job_cards?: HarnessAgentJobCard[];
+  next_steps?: string[];
+  transferable_skills_summary?: string;
+  quick_wins?: string[];
+  reality_check?: Record<string, any>;
+}
+
+export const harnessAgentApi = {
+  chat: (data: { messages: HarnessAgentMessage[]; confirmed_action_ids?: string[] }) =>
+    request<HarnessAgentResponse>("/api/harness-agent/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
 // ---- Profile API ----
 export interface ProfileAgentPatch {
   action: "ask_user" | "propose_patch" | "apply_patch" | "generate_resume" | "finish";
