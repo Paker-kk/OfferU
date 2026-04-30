@@ -622,6 +622,7 @@ async def create_records_from_jobs(
     *,
     table_id: int,
     job_ids: list[int],
+    skip_existing_in_table: bool = False,
 ) -> dict[str, Any]:
     if not job_ids:
         raise ValueError("job_ids 不能为空")
@@ -637,8 +638,30 @@ async def create_records_from_jobs(
     if missing:
         raise ValueError(f"以下岗位不存在: {missing}")
 
+    existing_job_ids: set[int] = set()
+    if skip_existing_in_table:
+        existing_rows = (
+            await db.execute(
+                select(ApplicationRecord.job_ref_id)
+                .join(
+                    ApplicationTableRecord,
+                    ApplicationTableRecord.record_id == ApplicationRecord.id,
+                )
+                .where(
+                    ApplicationTableRecord.table_id == target_table.id,
+                    ApplicationRecord.job_ref_id.in_(job_ids),
+                )
+            )
+        ).scalars().all()
+        existing_job_ids = {int(job_id) for job_id in existing_rows if job_id is not None}
+
     created_records: list[ApplicationRecord] = []
+    skipped_existing_job_ids: list[int] = []
     for job_id in job_ids:
+        if job_id in existing_job_ids:
+            skipped_existing_job_ids.append(job_id)
+            continue
+
         job = job_map[job_id]
         values = _build_fixed_values_from_job(job)
         record = await _create_record_no_commit(
@@ -658,6 +681,8 @@ async def create_records_from_jobs(
     duplicate_count = sum(1 for record in created_records if record.is_duplicate)
     return {
         "created": len(created_records),
+        "skipped_existing": len(skipped_existing_job_ids),
+        "skipped_existing_job_ids": skipped_existing_job_ids,
         "duplicate_created": duplicate_count,
         "items": [
             {

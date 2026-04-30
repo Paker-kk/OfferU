@@ -32,6 +32,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShoppingCart,
   Table2,
   Trash2,
   X,
@@ -44,6 +45,7 @@ import {
   deleteApplicationRecords,
   deleteApplicationTable,
   importJobsToApplicationTable,
+  importLatestExtensionBatchToApplicationTable,
   moveApplicationRecords,
   renameApplicationTable,
   updateApplicationRecordCell,
@@ -319,6 +321,7 @@ export default function ApplicationsPage() {
   const [importSelected, setImportSelected] = useState<Set<number>>(new Set());
   const [importTargetTableId, setImportTargetTableId] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
+  const [latestExtensionImporting, setLatestExtensionImporting] = useState(false);
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [templateDraft, setTemplateDraft] = useState<ApplicationFieldSchema[]>([]);
@@ -596,6 +599,34 @@ export default function ApplicationsPage() {
     }
   };
 
+  const handleImportLatestExtensionBatch = async () => {
+    if (!currentTableId) return;
+    setLatestExtensionImporting(true);
+    try {
+      const result = await importLatestExtensionBatchToApplicationTable(currentTableId);
+      const created = toSafeCount(result?.created, 0);
+      const skippedExisting = toSafeCount(result?.skipped_existing, 0);
+      const totalJobs = toSafeCount(result?.total_jobs, created + skippedExisting);
+      const batchId = typeof result?.batch_id === "string" ? result.batch_id : "最近批次";
+
+      setOperationFeedback({
+        tone: created > 0 ? "success" : "warning",
+        message:
+          created > 0
+            ? `已从插件购物车${batchId}导入 ${created} 条记录，跳过 ${skippedExisting} 条已在当前表中的岗位。下一步可以筛选投递状态并打开岗位链接。`
+            : `插件购物车${batchId}中的 ${totalJobs} 条岗位已在当前表，无需重复导入。`,
+      });
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "没有找到插件购物车同步批次，请先在插件购物车点击同步。",
+      });
+    } finally {
+      setLatestExtensionImporting(false);
+    }
+  };
+
   const handleCreateManualRecord = async () => {
     if (!currentTableId) return;
     await createApplicationRecord(currentTableId, {
@@ -818,24 +849,40 @@ export default function ApplicationsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
-              startContent={<CopyPlus size={14} />}
-              onPress={openImportModal}
-            >
-              快捷导入
-            </Button>
-            <Tooltip content="设置" placement="bottom" closeDelay={120}>
+          <div className="flex flex-col items-stretch gap-2 lg:items-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Tooltip content="把最近一次插件购物车同步的岗位直接写入当前投递表" placement="bottom" closeDelay={120}>
+                <Button
+                  className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
+                  startContent={<ShoppingCart size={14} />}
+                  onPress={handleImportLatestExtensionBatch}
+                  isLoading={latestExtensionImporting}
+                  isDisabled={!currentTableId}
+                >
+                  导入最近插件同步
+                </Button>
+              </Tooltip>
               <Button
-                isIconOnly
-                className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
-                onPress={() => setSettingsModalOpen(true)}
-                aria-label="投递设置"
+                className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
+                startContent={<CopyPlus size={14} />}
+                onPress={openImportModal}
               >
-                <Settings size={14} />
+                快捷导入
               </Button>
-            </Tooltip>
+              <Tooltip content="设置" placement="bottom" closeDelay={120}>
+                <Button
+                  isIconOnly
+                  className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
+                  onPress={() => setSettingsModalOpen(true)}
+                  aria-label="投递设置"
+                >
+                  <Settings size={14} />
+                </Button>
+              </Tooltip>
+            </div>
+            <p className="max-w-[520px] text-xs font-medium leading-5 text-black/55 lg:text-right">
+              插件购物车同步后可直接导入当前表；导入后检查投递状态和岗位链接。
+            </p>
           </div>
         </div>
       </section>

@@ -40,16 +40,18 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastProfileArchiveUpdatedAtRef = useRef("");
+  const archiveDirtyRef = useRef(false);
 
   // Sync archive from profile data
   useEffect(() => {
     if (!profile) return;
-    setArchive((prev) => {
-      const fromProfile = normalizePersonalArchiveFromProfile(profile);
-      // Preserve local edits by checking if archive was already modified
-      if (prev.updatedAt && prev.updatedAt !== fromProfile.updatedAt) return prev;
-      return fromProfile;
-    });
+    const fromProfile = normalizePersonalArchiveFromProfile(profile);
+    const incomingStamp = fromProfile.updatedAt || String(profile.updated_at || "");
+    lastProfileArchiveUpdatedAtRef.current = incomingStamp;
+    if (!archiveDirtyRef.current) {
+      setArchive(fromProfile);
+    }
   }, [profile]);
 
   const metrics = useMemo(() => computeArchiveCompleteness(archive), [archive]);
@@ -71,6 +73,7 @@ export default function ProfilePage() {
         name: sanitized.resumeArchive.basicInfo.name || "默认档案",
         base_info_json: { ...(profile?.base_info_json || {}), ...baseInfoPayload },
       });
+      archiveDirtyRef.current = false;
       await mutate();
       setNotice("档案已保存");
     } catch (err: any) {
@@ -143,6 +146,7 @@ export default function ProfilePage() {
         ...syncedArchive.applicationArchive.jobPreference,
         expectedPosition: basicInfo.jobIntention || syncedArchive.applicationArchive.jobPreference.expectedPosition,
       };
+      archiveDirtyRef.current = true;
       setArchive(syncedArchive);
       setNotice(`已导入 ${file.name}`);
     } catch (err: any) {
@@ -180,6 +184,7 @@ export default function ProfilePage() {
       setSyncing(true);
       setError("");
       const { nextArchive, syncedPaths } = applyResumeToApplicationSync(archive, [...SHARED_ROOT_PATHS]);
+      archiveDirtyRef.current = true;
       setArchive(nextArchive);
       setNotice(syncedPaths.length > 0 ? `已同步 ${syncedPaths.length} 个字段` : "无需同步");
     } catch (err: any) {
@@ -191,6 +196,7 @@ export default function ProfilePage() {
 
   // === Override ===
   const handleToggleOverride = (path: string, enabled: boolean) => {
+    archiveDirtyRef.current = true;
     setArchive((prev) =>
       enabled ? markApplicationOverride(prev, path) : clearApplicationOverride(prev, path)
     );
@@ -275,6 +281,7 @@ export default function ProfilePage() {
           missingSections={missingSections}
           saving={saving}
           onChange={(nextResume, changedPaths) => {
+            archiveDirtyRef.current = true;
             setArchive((prev) => ({
               ...prev,
               updatedAt: new Date().toISOString(),
@@ -287,6 +294,7 @@ export default function ProfilePage() {
                 resumeArchive: nextResume,
               }, changedPaths);
               if (synced.syncedPaths.length > 0) {
+                archiveDirtyRef.current = true;
                 setArchive(synced.nextArchive);
                 return;
               }
@@ -303,6 +311,7 @@ export default function ProfilePage() {
           missingSections={missingSections}
           saving={saving}
           onChange={(nextApp) => {
+            archiveDirtyRef.current = true;
             setArchive((prev) => ({
               ...prev,
               updatedAt: new Date().toISOString(),
@@ -321,10 +330,13 @@ export default function ProfilePage() {
         autoSyncEnabled={archive.syncSettings.autoSyncEnabled}
         onClose={() => setSettingsOpen(false)}
         onAutoSyncChange={(next) =>
-          setArchive((prev) => ({
-            ...prev,
-            syncSettings: { ...prev.syncSettings, autoSyncEnabled: next },
-          }))
+          {
+            archiveDirtyRef.current = true;
+            setArchive((prev) => ({
+              ...prev,
+              syncSettings: { ...prev.syncSettings, autoSyncEnabled: next },
+            }));
+          }
         }
         onOneClickSync={handleOneClickSync}
         syncing={syncing}

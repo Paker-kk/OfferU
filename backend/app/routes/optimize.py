@@ -118,6 +118,23 @@ def _bullet_text(section: ProfileSection) -> str:
     return section.title or ""
 
 
+def _looks_like_corrupt_placeholder_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text or "")
+    if not compact:
+        return False
+    placeholder_count = compact.count("?") + compact.count("�")
+    return placeholder_count >= 3 and placeholder_count / max(len(compact), 1) >= 0.3
+
+
+def _section_search_text(section: ProfileSection) -> str:
+    payload = section.content_json or {}
+    try:
+        payload_text = json.dumps(payload, ensure_ascii=False)
+    except Exception:
+        payload_text = str(payload)
+    return f"{section.title or ''} {_bullet_text(section)} {payload_text}"
+
+
 def _rank_profile_sections(sections: list[ProfileSection], jd_text: str, limit: int = 12) -> list[tuple[ProfileSection, int]]:
     jd_tokens = set(_to_tokens(jd_text))
     scored: list[tuple[ProfileSection, int, float]] = []
@@ -295,7 +312,7 @@ async def _llm_rewrite_sections(rows: list[dict], jd_text: str) -> tuple:
             temperature=0.3,
             json_mode=True,
             max_tokens=4096,
-            tier="premium",
+            tier="standard",
         )
     except Exception as exc:
         _logger.warning("LLM rewrite failed, using original rows: %s", exc)
@@ -365,6 +382,10 @@ async def _get_profile_sections(profile_id: int, db: AsyncSession) -> list[Profi
         .order_by(ProfileSection.sort_order.asc(), ProfileSection.updated_at.desc())
     )
     sections = list(result.scalars().all())
+    sections = [
+        section for section in sections
+        if not _looks_like_corrupt_placeholder_text(_section_search_text(section))
+    ]
     if not sections:
         raise HTTPException(status_code=400, detail="档案条目为空，请先在 Profile 页面确认至少 1 条事实")
     return sections

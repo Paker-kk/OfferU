@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 from app.services.harness_agent import (  # noqa: E402
     build_career_exploration_fallback,
     build_application_import_preview,
+    build_scraper_args_from_context,
     classify_intent,
     execute_planned_actions,
     get_default_tool_registry,
@@ -69,6 +70,46 @@ def test_confirm_actions_block_batch_writes() -> None:
     assert action["risk_level"] == "confirm"
     assert action["requires_confirmation"] is True
     assert action["id"] == "batch_triage:1"
+
+
+def test_scraper_args_extract_role_keywords_and_location() -> None:
+    args = build_scraper_args_from_context(
+        user_message="我是文科小白，帮我找北京 AI 产品运营和用户研究实习岗位",
+        profile={},
+    )
+
+    assert args["source"] == "shixiseng"
+    assert args["location"] == "北京"
+    assert args["max_results"] == 30
+    assert "AI 产品运营" in args["keywords"]
+    assert "用户研究" in args["keywords"]
+    assert "找北京 AI 产品运营" not in args["keywords"]
+    assert args["keywords"][-1] == "实习"
+
+
+def test_scraper_args_ignore_corrupt_profile_keywords_and_support_english() -> None:
+    args = build_scraper_args_from_context(
+        user_message="Find Beijing AI Product Operations and User Research intern jobs",
+        profile={"target_roles": [{"role_name": "AI???????"}]},
+    )
+
+    assert args["location"] == "北京"
+    assert "AI Product Operations" in args["keywords"]
+    assert "User Research" in args["keywords"]
+    assert all("?" not in keyword for keyword in args["keywords"])
+
+
+def test_scraper_args_drop_instruction_words_from_chinese_prompt() -> None:
+    args = build_scraper_args_from_context(
+        user_message="我是新闻传播专业大三，想找北京 AI 产品运营实习，请先帮我匹配岗位，如果岗位库不相关就继续爬取。",
+        profile={},
+    )
+
+    assert args["location"] == "北京"
+    assert "AI 产品运营" in args["keywords"]
+    assert "实习" in args["keywords"]
+    assert "匹配" not in args["keywords"]
+    assert "如果" not in args["keywords"]
 
 
 def test_confirmed_action_ids_execute_only_matching() -> None:
@@ -143,6 +184,96 @@ def test_run_harness_agent_turn_returns_career_mode_with_fallback() -> None:
     assert response["requires_confirmation"] is False
 
 
+def test_run_harness_agent_turn_executes_confirmed_actions_with_runner() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_tool(name: str, args: dict):
+        calls.append((name, args))
+        if name == "get_profile":
+            return {"name": "Alex", "headline": "content operations"}
+        if name == "list_jobs":
+            return {"jobs": [], "total": 0}
+        if name == "run_scraper":
+            return {"task_id": "task-1", "status": "running"}
+        return {}
+
+    response = asyncio.run(
+        run_harness_agent_turn(
+            messages=[{"role": "user", "content": "帮我抓取产品经理实习岗位"}],
+            confirmed_action_ids=["run_scraper:1"],
+            tool_runner=fake_tool,
+        )
+    )
+
+    assert ("run_scraper", {"source": "shixiseng", "keywords": ["产品经理", "实习"], "location": "", "max_results": 30}) in calls
+    assert response["requires_confirmation"] is False
+    assert response["tool_calls"][-1]["tool"] == "run_scraper"
+    assert response["tool_calls"][-1]["result"]["status"] == "running"
+
+
+def test_job_workflow_scrapes_when_existing_jobs_do_not_match_request() -> None:
+    async def fake_tool(name: str, args: dict):
+        if name == "get_profile":
+            return {"name": "Alex", "headline": "content operations"}
+        if name == "list_jobs":
+            return {
+                "items": [
+                    {
+                        "id": 6,
+                        "title": "客户经理（2026校招）",
+                        "company": "Example Pharma",
+                        "summary": "负责区域客户维护和市场协访",
+                    }
+                ],
+                "total": 1,
+            }
+        return {}
+
+    response = asyncio.run(
+        run_harness_agent_turn(
+            messages=[{"role": "user", "content": "帮我找北京 AI 产品运营和用户研究实习岗位"}],
+            tool_runner=fake_tool,
+        )
+    )
+
+    assert response["requires_confirmation"] is True
+    assert response["proposed_actions"][0]["tool"] == "run_scraper"
+    assert response["proposed_actions"][0]["args"]["location"] == "北京"
+    assert "AI 产品运营" in response["proposed_actions"][0]["args"]["keywords"]
+    assert "用户研究" in response["proposed_actions"][0]["args"]["keywords"]
+
+
+def test_job_workflow_hides_irrelevant_cards_when_scraping_needed() -> None:
+    async def fake_tool(name: str, args: dict):
+        if name == "get_profile":
+            return {"name": "Alex", "headline": "content operations"}
+        if name == "list_jobs":
+            return {
+                "items": [
+                    {
+                        "id": 6,
+                        "title": "客户经理（2026校招）",
+                        "company": "Example Pharma",
+                        "location": "长沙",
+                        "summary": "负责区域客户维护和市场协作",
+                    }
+                ],
+                "total": 1,
+            }
+        return {}
+
+    response = asyncio.run(
+        run_harness_agent_turn(
+            messages=[{"role": "user", "content": "想找北京 AI 产品运营实习，请先匹配岗位，如果不相关就继续爬取。"}],
+            tool_runner=fake_tool,
+        )
+    )
+
+    assert response["requires_confirmation"] is True
+    assert response["proposed_actions"][0]["tool"] == "run_scraper"
+    assert response["job_cards"] == []
+
+
 def test_route_request_model_defaults_confirmation_ids() -> None:
     from app.routes.harness_agent import HarnessAgentChatRequest
 
@@ -159,8 +290,14 @@ if __name__ == "__main__":
     test_classify_job_workflow_prompt()
     test_career_fallback_shape_has_paths_and_next_steps()
     test_confirm_actions_block_batch_writes()
+    test_scraper_args_extract_role_keywords_and_location()
+    test_scraper_args_ignore_corrupt_profile_keywords_and_support_english()
+    test_scraper_args_drop_instruction_words_from_chinese_prompt()
     test_confirmed_action_ids_execute_only_matching()
     test_application_import_preview_uses_stable_fields()
     test_run_harness_agent_turn_returns_career_mode_with_fallback()
+    test_run_harness_agent_turn_executes_confirmed_actions_with_runner()
+    test_job_workflow_scrapes_when_existing_jobs_do_not_match_request()
+    test_job_workflow_hides_irrelevant_cards_when_scraping_needed()
     test_route_request_model_defaults_confirmation_ids()
     print("harness agent core tests passed")

@@ -85,6 +85,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   const [progressEvents, setProgressEvents] = useState<OptimizeProgressEvent[]>([]);
   const [results, setResults] = useState<OptimizeGenerateResult[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [warningMessages, setWarningMessages] = useState<string[]>([]);
   const [doneSummary, setDoneSummary] = useState<OptimizeDoneEvent | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -236,6 +237,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     setProgressEvents([]);
     setResults([]);
     setErrors([]);
+    setWarningMessages([]);
     setDoneSummary(null);
 
     const controller = new AbortController();
@@ -268,6 +270,13 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             if (event === "error") {
               const line = `${data?.job_title || "任务"}: ${data?.message || "生成失败"}`;
               setErrors((prev) => [...prev, line]);
+              return;
+            }
+
+            if (event === "warning") {
+              const prefix = data?.job_id ? `岗位 #${data.job_id}` : data?.mode === "combined" ? "综合生成" : "生成提示";
+              const line = `${prefix}: ${data?.message || "AI 改写未完全执行，已使用原始内容继续生成"}`;
+              setWarningMessages((prev) => [...prev, line]);
               return;
             }
 
@@ -594,6 +603,19 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             </div>
           )}
 
+          {warningMessages.length > 0 && (
+            <div className="space-y-3">
+              {warningMessages.map((line, idx) => (
+                <div
+                  key={`${line}-${idx}`}
+                  className="bauhaus-panel-sm bg-[#f3ead2] px-4 py-4 text-sm font-medium leading-relaxed text-black/76"
+                >
+                  {line}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-[var(--surface-muted)] p-3 text-black custom-scrollbar">
             {results.length === 0 ? (
               <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium leading-relaxed text-black/60">
@@ -683,6 +705,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
               setProgressEvents([]);
               setResults([]);
               setErrors([]);
+              setWarningMessages([]);
               setDoneSummary(null);
             }}
             isDisabled={generating}

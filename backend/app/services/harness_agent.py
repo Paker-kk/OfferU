@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Awaitable, Callable
 
 ToolHandler = Callable[..., Awaitable[Any]]
@@ -158,6 +159,210 @@ def build_job_card(job: dict[str, Any]) -> dict[str, Any]:
         "apply_url": str(job.get("apply_url") or job.get("url") or "").strip(),
         "summary": str(job.get("summary") or "")[:240],
     }
+
+
+ROLE_KEYWORD_PATTERNS = (
+    "AI 产品运营",
+    "AI产品运营",
+    "用户研究",
+    "产品运营",
+    "内容运营",
+    "新媒体运营",
+    "社群运营",
+    "活动运营",
+    "用户增长",
+    "产品经理",
+    "产品助理",
+    "商业分析",
+    "行业研究",
+    "战略分析",
+    "市场营销",
+    "品牌策划",
+    "校园招聘",
+    "人力资源",
+    "HR",
+    "数据分析",
+    "AI Product Operations",
+    "Product Operations",
+    "User Research",
+    "Content Operations",
+    "Product Manager",
+    "Data Analyst",
+)
+
+CITY_KEYWORDS = (
+    "北京",
+    "上海",
+    "深圳",
+    "广州",
+    "杭州",
+    "南京",
+    "苏州",
+    "成都",
+    "武汉",
+    "西安",
+    "重庆",
+    "天津",
+    "厦门",
+    "长沙",
+    "青岛",
+    "香港",
+)
+
+CITY_ALIASES = {
+    "beijing": "北京",
+    "shanghai": "上海",
+    "shenzhen": "深圳",
+    "guangzhou": "广州",
+    "hangzhou": "杭州",
+    "nanjing": "南京",
+    "suzhou": "苏州",
+    "chengdu": "成都",
+    "wuhan": "武汉",
+    "xian": "西安",
+    "xi'an": "西安",
+    "hong kong": "香港",
+}
+
+GENERIC_SCRAPER_KEYWORDS = {"实习", "校招", "应届"}
+SCRAPER_KEYWORD_STOPWORDS = {
+    "岗位",
+    "职位",
+    "岗位库",
+    "匹配",
+    "筛选",
+    "相关",
+    "不相关",
+    "如果",
+    "继续",
+    "爬取",
+    "抓取",
+    "帮我",
+    "请先",
+}
+
+
+def _dedupe_strings(items: list[str], limit: int = 6) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        if _looks_like_corrupt_keyword(text):
+            continue
+        if re.sub(r"\s+", "", text) in SCRAPER_KEYWORD_STOPWORDS:
+            continue
+        key = re.sub(r"\s+", "", text).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _looks_like_corrupt_keyword(text: str) -> bool:
+    compact = re.sub(r"\s+", "", str(text or ""))
+    if not compact:
+        return True
+    placeholder_count = compact.count("?") + compact.count("�")
+    return placeholder_count >= 2 and placeholder_count / max(len(compact), 1) >= 0.2
+
+
+def _profile_role_keywords(profile: dict[str, Any] | None) -> list[str]:
+    if not isinstance(profile, dict):
+        return []
+    roles = profile.get("target_roles") or []
+    keywords: list[str] = []
+    if isinstance(roles, list):
+        for role in roles:
+            if isinstance(role, dict):
+                keywords.append(str(role.get("role_name") or ""))
+            else:
+                keywords.append(str(role or ""))
+    headline = str(profile.get("headline") or "").strip()
+    if headline:
+        keywords.append(headline)
+    return _dedupe_strings(keywords, limit=4)
+
+
+def _message_role_keywords(message: str) -> list[str]:
+    text = str(message or "")
+    compact = re.sub(r"\s+", "", text)
+    keywords: list[str] = []
+    for pattern in ROLE_KEYWORD_PATTERNS:
+        if pattern in text or re.sub(r"\s+", "", pattern) in compact:
+            keywords.append(pattern)
+
+    for match in re.finditer(r"([\u4e00-\u9fa5A-Za-z0-9+ ]{2,18})(?:方向|岗位|职位|实习|校招)", text):
+        candidate = match.group(1).strip(" ，,、/和找想做的")
+        previous = None
+        while previous != candidate:
+            previous = candidate
+            candidate = re.sub(r"^.*?(?:帮我找|帮我|请|想找|找|抓取|爬取|筛选)", "", candidate).strip()
+        for city in CITY_KEYWORDS:
+            candidate = re.sub(rf"^{re.escape(city)}\s*", "", candidate).strip()
+        candidate = re.sub(r"(实习|校招|应届)$", "", candidate).strip()
+        if not candidate:
+            continue
+        pieces = re.split(r"[、/,，和及]|以及|或者|或", candidate)
+        for piece in pieces:
+            cleaned = piece.strip()
+            if 2 <= len(cleaned) <= 18 and not re.search(r"我|帮|请|抓取|爬取|筛选|岗位|职位", cleaned):
+                keywords.append(cleaned)
+
+    return _dedupe_strings(keywords, limit=5)
+
+
+def build_scraper_args_from_context(
+    *,
+    user_message: str,
+    profile: dict[str, Any] | None,
+    max_results: int = 30,
+) -> dict[str, Any]:
+    role_keywords = _message_role_keywords(user_message) or _profile_role_keywords(profile)
+    text = str(user_message or "")
+    location = next((city for city in CITY_KEYWORDS if city in text), "")
+    if not location:
+        lowered = text.lower()
+        location = next((city for alias, city in CITY_ALIASES.items() if alias in lowered), "")
+
+    keywords = _dedupe_strings(role_keywords, limit=5)
+    if re.search(r"实习|intern", text, re.IGNORECASE):
+        keywords.append("实习")
+    if re.search(r"校招|应届|春招|秋招", text, re.IGNORECASE):
+        keywords.append("校招")
+    if not keywords:
+        keywords = ["实习"]
+
+    return {
+        "source": "shixiseng",
+        "keywords": _dedupe_strings(keywords, limit=6),
+        "location": location,
+        "max_results": max_results,
+    }
+
+
+def _text_contains_keyword(text: str, keyword: str) -> bool:
+    haystack = re.sub(r"\s+", "", str(text or "")).lower()
+    needle = re.sub(r"\s+", "", str(keyword or "")).lower()
+    return bool(needle and needle in haystack)
+
+
+def _job_matches_keywords(job: dict[str, Any], keywords: list[str]) -> bool:
+    primary_keywords = [
+        keyword for keyword in keywords
+        if keyword and keyword not in GENERIC_SCRAPER_KEYWORDS
+    ]
+    if not primary_keywords:
+        return True
+    text = " ".join(
+        str(job.get(key) or "")
+        for key in ("title", "company", "summary", "raw_description", "company_industry")
+    )
+    return any(_text_contains_keyword(text, keyword) for keyword in primary_keywords)
 
 
 def build_career_exploration_fallback(
@@ -386,14 +591,24 @@ async def run_harness_agent_turn(
         }
 
     if mode == "job_workflow":
-        await call_tool("get_profile", {})
+        profile = await call_tool("get_profile", {})
+        scraper_args = build_scraper_args_from_context(
+            user_message=user_message,
+            profile=profile if isinstance(profile, dict) else {},
+        )
         jobs_result = await call_tool("list_jobs", {"page": 1, "page_size": 8})
         raw_jobs = []
         if isinstance(jobs_result, dict):
             raw_jobs = jobs_result.get("jobs") or jobs_result.get("items") or []
         job_cards = [build_job_card(item) for item in raw_jobs if isinstance(item, dict)]
-        if job_cards:
-            job_ids = [card["id"] for card in job_cards[:5] if card["id"]]
+        matching_job_cards = [
+            card for card in job_cards
+            if _job_matches_keywords(card, scraper_args.get("keywords") or [])
+        ]
+        needs_fresh_scrape = bool(job_cards) and not matching_job_cards
+        visible_job_cards = matching_job_cards if job_cards and not needs_fresh_scrape else []
+        if visible_job_cards:
+            job_ids = [card["id"] for card in visible_job_cards[:5] if card["id"]]
             proposed_actions.append(
                 plan_action(
                     "batch_triage",
@@ -410,17 +625,18 @@ async def run_harness_agent_turn(
             proposed_actions.append(
                 plan_action(
                     "run_scraper",
-                    {"source": "shixiseng", "keywords": ["校招", "实习"], "location": "", "max_results": 30},
+                    scraper_args,
                     index=1,
                 )
             )
             next_steps = [
-                "Confirm a scraper run to collect fresh jobs.",
+                "Confirm a scraper run to collect fresh jobs for this target.",
                 "After jobs arrive, ask me to rank them against your profile.",
             ]
         execution = await execute_planned_actions(
             proposed_actions,
             confirmed_action_ids=confirmed_action_ids,
+            tool_runner=runner,
         )
         tool_calls.extend(execution["tool_calls"])
         blocked_actions = execution["blocked_actions"]
@@ -431,7 +647,7 @@ async def run_harness_agent_turn(
             "tool_calls": tool_calls,
             "proposed_actions": blocked_actions,
             "career_paths": [],
-            "job_cards": job_cards,
+            "job_cards": visible_job_cards,
             "next_steps": next_steps,
         }
 
@@ -505,6 +721,7 @@ async def execute_planned_actions(
     *,
     registry: dict[str, dict[str, Any]] | None = None,
     confirmed_action_ids: list[str] | None = None,
+    tool_runner: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None,
 ) -> dict[str, Any]:
     registry = registry or get_default_tool_registry()
     confirmed = set(confirmed_action_ids or [])
@@ -523,7 +740,10 @@ async def execute_planned_actions(
 
         entry = registry.get(tool_name) or {}
         handler = entry.get("handler")
-        if handler is None:
+        if handler is None and tool_runner is not None:
+            clean_args = {k: v for k, v in args.items() if v is not None}
+            result = await tool_runner(tool_name, clean_args)
+        elif handler is None:
             result = {"error": f"Tool {tool_name} has no handler"}
         else:
             clean_args = {k: v for k, v in args.items() if v is not None}

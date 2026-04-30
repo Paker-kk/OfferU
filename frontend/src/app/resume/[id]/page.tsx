@@ -41,7 +41,7 @@ import {
   type ProfileSection,
   type Job,
 } from "@/lib/hooks";
-import { jobsApi } from "@/lib/api";
+import { jobsApi, resumeApi } from "@/lib/api";
 import SectionEditor, { createEmptySectionItem } from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
 import StyleToolbar, { DEFAULT_STYLE_CONFIG, MIN_STYLE_CONFIG } from "../components/StyleToolbar";
@@ -164,6 +164,7 @@ export default function ResumeEditorPage() {
   const [sections, setSections] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const initializedRef = useRef(false);
   const [fitting, setFitting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
@@ -939,25 +940,18 @@ export default function ResumeEditorPage() {
     }
   };
 
-  /** 导出 PDF — @react-pdf/renderer 矢量 PDF（ATS 可解析） */
+  /** 导出 PDF — 使用后端 WeasyPrint/ReportLab 兜底链路 */
   const handleExportPdf = async () => {
     setExporting(true);
-    await handleSave();
+    setExportError("");
     try {
-      const { pdf } = await import("@react-pdf/renderer");
-      const { default: ResumePDF } = await import("../components/ResumePDF");
-      const resolvedPhoto = photoUrl.startsWith("/")
-        ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${photoUrl}`
-        : photoUrl;
-      const doc = ResumePDF({
-        userName,
-        photoUrl: resolvedPhoto,
-        summary,
-        contactJson,
-        sections,
-        styleConfig,
-      });
-      const blob = await pdf(doc).toBlob();
+      await handleSave();
+      const response = await resumeApi.exportPdf(resumeId);
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(detail || `PDF export failed with ${response.status}`);
+      }
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -968,6 +962,8 @@ export default function ResumeEditorPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF export failed:", err);
+      const reason = err instanceof Error ? err.message : "请稍后重试或检查后端 PDF 服务。";
+      setExportError(`PDF 导出失败：${reason}`);
     } finally {
       setExporting(false);
     }
@@ -1163,6 +1159,12 @@ export default function ResumeEditorPage() {
         {/* ---- 左侧编辑面板（固定360px宽度，可滚动） ---- */}
         <div className="custom-scrollbar w-[480px] flex-shrink-0 overflow-y-auto border-r-2 border-black bg-[#E7E7E2]">
           <div className="p-4 space-y-4">
+            {exportError && (
+              <div className="bauhaus-panel-sm bg-[#f7ece9] px-3 py-3 text-xs font-medium leading-relaxed text-[#8a1e1e]">
+                {exportError}
+              </div>
+            )}
+
             {staleImportedItems.length > 0 && (
               <div className="bauhaus-panel-sm bg-[#F0C020] px-3 py-3 text-black" data-testid="resume-source-sync-banner">
                 <div className="flex items-start gap-2">

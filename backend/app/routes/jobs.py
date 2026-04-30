@@ -653,6 +653,15 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
     """
     created = 0
     skipped = 0
+    accepted_hash_keys: list[str] = []
+    created_hash_keys: list[str] = []
+    skipped_hash_keys: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    def append_unique(target: list[str], value: str) -> None:
+        key = (value or "").strip()
+        if key and key not in target:
+            target.append(key)
 
     ingest_batch_id = req.batch_id or f"manual-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     await _ensure_batch(
@@ -667,6 +676,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
         if existing.scalar_one_or_none():
             skipped += 1
+            append_unique(accepted_hash_keys, item.hash_key)
+            append_unique(skipped_hash_keys, item.hash_key)
             continue
 
         job_batch_id = item.batch_id or ingest_batch_id
@@ -711,6 +722,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         )
         db.add(job)
         created += 1
+        append_unique(accepted_hash_keys, item.hash_key)
+        append_unique(created_hash_keys, item.hash_key)
 
     await db.flush()
     batch = (await db.execute(select(Batch).where(Batch.id == ingest_batch_id))).scalar_one_or_none()
@@ -718,7 +731,15 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         batch.total_fetched = (batch.total_fetched or 0) + created
 
     await db.commit()
-    return {"created": created, "skipped": skipped, "batch_id": ingest_batch_id}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "batch_id": ingest_batch_id,
+        "accepted_hash_keys": accepted_hash_keys,
+        "created_hash_keys": created_hash_keys,
+        "skipped_hash_keys": skipped_hash_keys,
+        "failed": failed,
+    }
 
 
 async def _ensure_batch(

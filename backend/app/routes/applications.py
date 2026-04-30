@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.cover_letter import generate_cover_letter
 from app.database import get_db
-from app.models.models import Application, Job, Resume
+from app.models.models import Application, Batch, Job, Resume
 from app.services.application_workspace import (
     apply_template_to_all_tables,
     auto_write_job_to_total,
@@ -58,6 +58,13 @@ class TableRenameRequest(BaseModel):
 
 class ImportJobsRequest(BaseModel):
     job_ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+class ImportLatestExtensionBatchRequest(BaseModel):
+    batch_id: Optional[str] = Field(default=None, max_length=64)
+    source: str = Field(default="offeru-extension", min_length=1, max_length=64)
+    limit: int = Field(default=500, ge=1, le=500)
+    skip_existing: bool = True
 
 
 class RecordCreateRequest(BaseModel):
@@ -167,6 +174,60 @@ async def import_jobs(
         return await create_records_from_jobs(db, table_id=table_id, job_ids=data.job_ids)
     except ValueError as exc:
         raise _bad_request(exc) from exc
+
+
+@router.post("/tables/{table_id}/import-latest-extension-batch")
+async def import_latest_extension_batch(
+    table_id: int,
+    data: ImportLatestExtensionBatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    source = (data.source or "offeru-extension").strip()
+    batch_id = (data.batch_id or "").strip()
+    batch: Batch | None = None
+
+    if batch_id:
+        batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
+    else:
+        batch = (
+            await db.execute(
+                select(Batch)
+                .where(Batch.source == source)
+                .order_by(desc(Batch.created_at))
+            )
+        ).scalars().first()
+        batch_id = batch.id if batch else ""
+
+    if not batch_id:
+        raise HTTPException(status_code=404, detail="no extension sync batch found")
+
+    job_ids = (
+        await db.execute(
+            select(Job.id)
+            .where(Job.batch_id == batch_id)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(data.limit)
+        )
+    ).scalars().all()
+    if not job_ids:
+        raise HTTPException(status_code=404, detail="extension sync batch has no jobs")
+
+    try:
+        result = await create_records_from_jobs(
+            db,
+            table_id=table_id,
+            job_ids=[int(job_id) for job_id in job_ids],
+            skip_existing_in_table=data.skip_existing,
+        )
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+    return {
+        "batch_id": batch_id,
+        "source": batch.source if batch else source,
+        "total_jobs": len(job_ids),
+        **result,
+    }
 
 
 @router.post("/records")

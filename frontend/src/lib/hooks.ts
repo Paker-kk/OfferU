@@ -1366,6 +1366,27 @@ export async function importJobsToApplicationTable(tableId: number, jobIds: numb
   return res.json();
 }
 
+export async function importLatestExtensionBatchToApplicationTable(
+  tableId: number,
+  options: {
+    batch_id?: string;
+    source?: string;
+    limit?: number;
+    skip_existing?: boolean;
+  } = {}
+) {
+  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/import-latest-extension-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `导入最近插件同步失败 (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function createApplicationRecord(tableId: number, values: Record<string, any>, jobRefId?: number) {
   const res = await fetch(`${API_BASE}/api/applications/records`, {
     method: "POST",
