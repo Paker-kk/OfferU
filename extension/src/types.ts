@@ -33,7 +33,121 @@ export interface ExtractedJob {
 
 /** 插件设置 */
 export interface ExtensionSettings {
-  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:8000
+  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:9000
+}
+
+export interface SmartFillAiSettings {
+  enabled: boolean;
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  enableFallback: boolean;
+  cacheTtlSeconds?: number;
+  cacheMaxEntries?: number;
+  cacheCrossDomainReuse?: boolean;
+}
+
+export interface SmartFillRuntimeStats {
+  filledCount: number;
+  pendingCount: number;
+  failedCount: number;
+  usedAi: boolean;
+  channel: "plugin-direct" | "backend" | "none";
+  updatedAt: string;
+  errorCode?: string;
+}
+
+export interface SmartFillFieldCandidate {
+  fieldId: string;
+  label: string;
+  semanticLabel?: string;
+  moduleName?: string;
+  level1Title?: string;
+  level2Title?: string;
+  repeatGroupIndex?: number;
+  structureToken?: string;
+  qualifiedLabel?: string;
+  canonicalFieldKey?: string;
+  placeholder: string;
+  name: string;
+  inputType: string;
+  options: string[];
+  required: boolean;
+  nearbyText: string;
+}
+
+export type SmartFillProfileValueType =
+  | "text"
+  | "long-text"
+  | "date"
+  | "date-range"
+  | "email"
+  | "phone"
+  | "url"
+  | "id-number"
+  | "number"
+  | "choice"
+  | "multi-choice"
+  | "boolean";
+
+export interface SmartFillCatalogItem {
+  key: string;
+  path: string;
+  label: string;
+  categoryKey: string;
+  categoryLabel: string;
+  sectionType: string;
+  itemIndex?: number;
+  valueType: SmartFillProfileValueType;
+  aliases: string[];
+  sourceRef: string;
+  signature: string;
+  value?: string;
+}
+
+export type SmartFillAiTransform =
+  | { type: "none" }
+  | { type: "date_part"; part: "year" | "month" | "day" }
+  | { type: "phone_part"; part: "countryCode" | "nationalNumber" }
+  | { type: "boolean_choice"; trueValue: string; falseValue: string }
+  | { type: "join"; separator: string };
+
+export interface SmartFillAiMapping {
+  fieldId: string;
+  profilePath?: string;
+  catalogKey?: string;
+  sourcePath?: string;
+  resumePath?: string;
+  value?: string;
+  confidence: number;
+  intent?: string;
+  category?: string;
+  itemIndex?: number;
+  reason?: string;
+  transform?: SmartFillAiTransform;
+  source: "plugin-direct" | "backend";
+}
+
+export type SmartFillPipelineStage =
+  | "scan"
+  | "rule-seed"
+  | "ai-map"
+  | "write"
+  | "recover"
+  | "summary";
+
+export type SmartFillLogSeverity = "info" | "warn" | "error";
+export type SmartFillLogScope = "run" | "field" | "control";
+
+export interface SmartFillRunLogEntry {
+  stage: SmartFillPipelineStage;
+  severity: SmartFillLogSeverity;
+  scope: SmartFillLogScope;
+  message: string;
+  payload?: Record<string, unknown>;
+  fieldId?: string;
+  ts: string;
 }
 
 export interface StatusResponse {
@@ -101,6 +215,16 @@ export type Message =
   | { type: "SYNC_TO_SERVER" }
   | { type: "GET_STATUS" }
   | { type: "GET_JOBS" }
+  | { type: "GET_SMART_FILL_PROFILE" }
+  | { type: "GET_SMART_FILL_SETTINGS" }
+  | { type: "SAVE_SMART_FILL_SETTINGS"; settings: SmartFillAiSettings }
+  | { type: "REQUEST_SMART_FILL_HOST_PERMISSION"; baseUrl: string }
+  | { type: "CHECK_SMART_FILL_AI_CONNECTION" }
+  | { type: "SMART_FILL_AI_MAP"; fields: SmartFillFieldCandidate[]; pageUrl?: string; catalog?: SmartFillCatalogItem[]; profileValues?: unknown[]; adapterHint?: string }
+  | { type: "SMART_FILL_OPTION_MATCH"; candidates: string[]; resumeValue: string; level1Title: string; level2Title: string }
+  | { type: "SMART_FILL_FIELD_MAP"; fragments: Array<{ module_name: string; field_label: string; item_index: number }> }
+  | { type: "SMART_FILL_MODULE_COUNT" }
+  | { type: "SMART_FILL_RUN_LOG"; runId: string; logs: SmartFillRunLogEntry[] }
   | { type: "COPY_IMAGE_TO_CLIPBOARD"; imageUrl: string }
   | { type: "OFFSCREEN_WRITE_IMAGE"; requestId: string; imageUrl: string }
   | { type: "OFFSCREEN_WRITE_IMAGE_RESULT"; requestId: string; ok: boolean; error?: string }

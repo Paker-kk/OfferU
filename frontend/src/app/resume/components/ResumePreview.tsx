@@ -48,15 +48,21 @@ function normalizeSkillEntry(item: any, index: number): NormalizedResumeItem {
       bullets: [],
     };
   }
+  const PROFICIENCY_RE = /^(熟悉|精通|了解|掌握|熟练|一般|入门|高级|中级|初级|专家|资深|进阶|基础|专业|应用)/;
+  const rawTags = Array.isArray(item.items)
+    ? item.items.map((value: unknown) => String(value)).filter(Boolean)
+    : String(item.items || "")
+        .split(/[,，、]/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+  const category = item.category || "";
+  const displayTags = PROFICIENCY_RE.test(category) && rawTags.length > 0
+    ? rawTags.map((t: string) => `${category} ${t}`)
+    : rawTags;
   return {
     id: `skill-${index}`,
-    title: item.category || `Skill Group ${index + 1}`,
-    tags: Array.isArray(item.items)
-      ? item.items.map((value: unknown) => String(value)).filter(Boolean)
-      : String(item.items || "")
-          .split(/[,，、]/)
-          .map((value) => value.trim())
-          .filter(Boolean),
+    title: PROFICIENCY_RE.test(category) && rawTags.length > 0 ? "" : category || `Skill Group ${index + 1}`,
+    tags: displayTags,
     bullets: [],
   };
 }
@@ -72,7 +78,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       bullets: splitBullets(item.description || ""),
     };
   }
-  if (sectionType === "experience") {
+  if (sectionType === "experience" || sectionType === "workExperiences") {
     return {
       id: `experience-${index}`,
       title: item.position || item.company || `Experience ${index + 1}`,
@@ -83,7 +89,18 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       bullets: splitBullets(item.description || ""),
     };
   }
-  if (sectionType === "project") {
+  if (sectionType === "internshipExperiences") {
+    return {
+      id: `internship-${index}`,
+      title: item.position || item.company || `Internship ${index + 1}`,
+      organization: item.company || "",
+      location: item.location || "",
+      date: dateRange(item.startDate, item.endDate),
+      descriptionHtml: item.description || "",
+      bullets: splitBullets(item.description || ""),
+    };
+  }
+  if (sectionType === "project" || sectionType === "projects") {
     return {
       id: `project-${index}`,
       title: item.name || `Project ${index + 1}`,
@@ -94,10 +111,10 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       bullets: splitBullets(item.description || ""),
     };
   }
-  if (sectionType === "skill") {
+  if (sectionType === "skill" || sectionType === "skills") {
     return normalizeSkillEntry(item, index);
   }
-  if (sectionType === "certificate") {
+  if (sectionType === "certificate" || sectionType === "certificates") {
     return {
       id: `certificate-${index}`,
       title: item.name || `Certificate ${index + 1}`,
@@ -105,6 +122,25 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       date: item.date || "",
       url: item.url || "",
       bullets: [],
+    };
+  }
+  if (sectionType === "awards") {
+    return {
+      id: `award-${index}`,
+      title: item.awardName || item.name || `Award ${index + 1}`,
+      subtitle: item.issuer || "",
+      date: item.awardedAt || item.date || "",
+      descriptionHtml: item.description || "",
+      bullets: splitBullets(item.description || ""),
+    };
+  }
+  if (sectionType === "personalExperiences" || sectionType === "custom") {
+    return {
+      id: `personal-${index}`,
+      title: item.experienceTitle || item.subtitle || item.title || `Experience ${index + 1}`,
+      date: dateRange(item.startDate, item.endDate),
+      descriptionHtml: item.description || "",
+      bullets: splitBullets(item.description || ""),
     };
   }
   return {
@@ -154,6 +190,7 @@ function normalizeResumeData(props: ResumePreviewProps): NormalizedResumeData {
     title: props.title || props.contactJson?.headline || props.contactJson?.title || "",
     photoUrl: props.photoUrl,
     summary: textFromHtml(props.summary),
+    summaryHtml: props.summary || "",
     contact: normalizeContactJson(props.contactJson || {}),
     sections: normalizedSections,
   };
@@ -168,8 +205,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
   const template = (() => {
     if (
       settings.template === "reference" ||
-      settings.template === "reference-compact" ||
-      settings.template === "reference-no-photo"
+      settings.template === "reference-compact"
     ) {
       return <ResumeReference data={data} highlightKeywords={highlightKeywords} template={settings.template} />;
     }

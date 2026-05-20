@@ -5,6 +5,7 @@
   RemoveResponse,
   ResumeDetail,
   ResumeListItem,
+  SmartFillAiSettings,
   StatusResponse,
   SyncResponse,
 } from "./types.js";
@@ -76,7 +77,7 @@ interface CollectFromPageResponse {
   skipped: number;
 }
 
-const DEFAULT_SERVER_URL = "http://127.0.0.1:8000";
+const DEFAULT_SERVER_URL = "http://127.0.0.1:9000";
 const RESUME_IMAGE_EXPORT_SCALE = 1.2;
 const RESUME_THUMB_PREFETCH_LIMIT = 1;
 const SETTINGS_KEY = "settings";
@@ -102,6 +103,15 @@ const DEFAULT_DESKTOP_OPEN_SETTINGS: DesktopOpenSettings = {
   mode: "docker",
   dockerPort: DEFAULT_DOCKER_PORT,
   appPath: "",
+};
+
+const DEFAULT_SMART_FILL_SETTINGS: SmartFillAiSettings = {
+  enabled: false,
+  provider: "openai-compatible",
+  baseUrl: "",
+  apiKey: "",
+  model: "",
+  enableFallback: true,
 };
 
 const SOURCE_LABELS: Record<ExtractedJob["source"], string> = {
@@ -169,6 +179,16 @@ const saveSettingsBtn = document.getElementById("saveSettingsBtn") as HTMLButton
 const checkServerBtn = document.getElementById("checkServerBtn") as HTMLButtonElement;
 const serviceStatusDotEl = document.getElementById("serviceStatusDot") as HTMLSpanElement;
 const serviceStatusEl = document.getElementById("serviceStatus") as HTMLSpanElement;
+const aiSmartFillToggle = document.getElementById("aiSmartFillToggle") as HTMLInputElement;
+const aiProviderSelect = document.getElementById("aiProviderSelect") as HTMLSelectElement;
+const aiBaseUrlInput = document.getElementById("aiBaseUrlInput") as HTMLInputElement;
+const aiApiKeyInput = document.getElementById("aiApiKeyInput") as HTMLInputElement;
+const aiModelInput = document.getElementById("aiModelInput") as HTMLInputElement;
+const aiFallbackToggle = document.getElementById("aiFallbackToggle") as HTMLInputElement;
+const saveAiSettingsBtn = document.getElementById("saveAiSettingsBtn") as HTMLButtonElement;
+const checkAiConnectionBtn = document.getElementById("checkAiConnectionBtn") as HTMLButtonElement;
+const aiServiceStatusDotEl = document.getElementById("aiServiceStatusDot") as HTMLSpanElement;
+const aiServiceStatusEl = document.getElementById("aiServiceStatus") as HTMLSpanElement;
 const feedbackBtn = document.getElementById("feedbackBtn") as HTMLButtonElement;
 const checkUpdateBtn = document.getElementById("checkUpdateBtn") as HTMLButtonElement;
 const updateStatusTextEl = document.getElementById("updateStatusText") as HTMLParagraphElement;
@@ -217,6 +237,7 @@ let currentReadyCount = 0;
 let uiSettings: PopupUiSettings = { ...DEFAULT_UI_SETTINGS };
 let shortcutSettings: ShortcutSettings = { ...DEFAULT_SHORTCUT_SETTINGS };
 let desktopOpenSettings: DesktopOpenSettings = { ...DEFAULT_DESKTOP_OPEN_SETTINGS };
+let smartFillSettings: SmartFillAiSettings = { ...DEFAULT_SMART_FILL_SETTINGS };
 let shortcutCaptureAction: keyof ShortcutSettings | null = null;
 let resumeFilterVisible = false;
 let cartFilterVisible = false;
@@ -1665,6 +1686,139 @@ async function checkServerConnection(): Promise<void> {
   }
 }
 
+function setAiServiceStatus(text: string, mode: "pending" | "ok" | "error"): void {
+  aiServiceStatusEl.textContent = text;
+  aiServiceStatusDotEl.classList.remove("ok", "err");
+  if (mode === "ok") {
+    aiServiceStatusDotEl.classList.add("ok");
+  }
+  if (mode === "error") {
+    aiServiceStatusDotEl.classList.add("err");
+  }
+}
+
+function applySmartFillSettingsToUi(): void {
+  aiSmartFillToggle.checked = smartFillSettings.enabled;
+  aiProviderSelect.value = smartFillSettings.provider || DEFAULT_SMART_FILL_SETTINGS.provider;
+  aiBaseUrlInput.value = smartFillSettings.baseUrl || "";
+  aiApiKeyInput.value = smartFillSettings.apiKey || "";
+  aiModelInput.value = smartFillSettings.model || "";
+  aiFallbackToggle.checked = smartFillSettings.enableFallback;
+
+  if (!smartFillSettings.enabled) {
+    setAiServiceStatus("未启用", "pending");
+    return;
+  }
+
+  const configured = Boolean(
+    smartFillSettings.baseUrl.trim()
+    && smartFillSettings.apiKey.trim()
+    && smartFillSettings.model.trim(),
+  );
+  if (configured) {
+    setAiServiceStatus("已配置", "ok");
+  } else {
+    setAiServiceStatus("未完整配置，将走后端通道", "pending");
+  }
+}
+
+async function loadSmartFillSettingsFromBackground(): Promise<void> {
+  try {
+    const response = await sendBackgroundMessage<{ ok: boolean; settings?: SmartFillAiSettings }>({
+      type: "GET_SMART_FILL_SETTINGS",
+    });
+    if (!response?.ok || !response.settings) {
+      smartFillSettings = { ...DEFAULT_SMART_FILL_SETTINGS };
+    } else {
+      smartFillSettings = {
+        ...DEFAULT_SMART_FILL_SETTINGS,
+        ...response.settings,
+      };
+    }
+  } catch {
+    smartFillSettings = { ...DEFAULT_SMART_FILL_SETTINGS };
+  }
+
+  applySmartFillSettingsToUi();
+}
+
+async function saveSmartFillSettingsToBackground(): Promise<void> {
+  smartFillSettings = {
+    enabled: aiSmartFillToggle.checked,
+    provider: aiProviderSelect.value.trim() || DEFAULT_SMART_FILL_SETTINGS.provider,
+    baseUrl: aiBaseUrlInput.value.trim(),
+    apiKey: aiApiKeyInput.value.trim(),
+    model: aiModelInput.value.trim(),
+    enableFallback: aiFallbackToggle.checked,
+  };
+
+  await sendBackgroundMessage<{ ok: boolean }>({
+    type: "SAVE_SMART_FILL_SETTINGS",
+    settings: smartFillSettings,
+  });
+  applySmartFillSettingsToUi();
+}
+
+async function requestSmartFillHostPermissionIfNeeded(baseUrl: string): Promise<void> {
+  const normalizedBaseUrl = baseUrl.trim();
+  if (!normalizedBaseUrl) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizedBaseUrl);
+  } catch {
+    throw new Error("AI 服务地址格式不正确");
+  }
+
+  const originPattern = `${parsed.protocol}//${parsed.host}/*`;
+  const chromeWithPermissions = chrome as typeof chrome & {
+    permissions?: {
+      contains: (permissions: { origins?: string[] }) => Promise<boolean>;
+      request: (permissions: { origins?: string[] }) => Promise<boolean>;
+    };
+  };
+
+  if (!chromeWithPermissions.permissions) return;
+  // Keep request in the same user-gesture task. Awaiting `contains` first
+  // may lose gesture context in some Chromium builds.
+  const granted = await chromeWithPermissions.permissions.request({ origins: [originPattern] });
+  if (granted) return;
+
+  const hasPermission = await chromeWithPermissions.permissions.contains({ origins: [originPattern] });
+  if (!hasPermission) {
+    throw new Error("用户未授予目标 AI 服务地址权限");
+  }
+}
+
+async function checkSmartFillAiConnection(): Promise<void> {
+  setAiServiceStatus("检查中...", "pending");
+  try {
+    const response = await sendBackgroundMessage<{
+      ok: boolean;
+      channel: "plugin-direct" | "backend" | "none";
+      fallbackUsed: boolean;
+      error?: string;
+    }>({
+      type: "CHECK_SMART_FILL_AI_CONNECTION",
+    });
+
+    if (!response.ok) {
+      setAiServiceStatus(`连接失败：${response.error || "未知错误"}`, "error");
+      return;
+    }
+
+    const suffix = response.fallbackUsed ? "（已自动切换）" : "";
+    const channelText = response.channel === "plugin-direct"
+      ? "插件直连"
+      : response.channel === "backend"
+        ? "后端通道"
+        : "未知通道";
+    setAiServiceStatus(`连接成功：${channelText}${suffix}`, "ok");
+  } catch (error: unknown) {
+    const text = error instanceof Error ? error.message : "未知错误";
+    setAiServiceStatus(`连接失败：${text}`, "error");
+  }
+}
+
 function openFeedbackModal(): void {
   feedbackModal.classList.remove("hidden");
   feedbackModal.setAttribute("aria-hidden", "false");
@@ -2207,6 +2361,52 @@ function bindSettingsEvents(): void {
     void checkServerConnection();
   });
 
+  aiSmartFillToggle.addEventListener("change", () => {
+    smartFillSettings.enabled = aiSmartFillToggle.checked;
+    applySmartFillSettingsToUi();
+  });
+
+  aiProviderSelect.addEventListener("change", () => {
+    smartFillSettings.provider = aiProviderSelect.value.trim();
+  });
+
+  aiFallbackToggle.addEventListener("change", () => {
+    smartFillSettings.enableFallback = aiFallbackToggle.checked;
+  });
+
+  saveAiSettingsBtn.addEventListener("click", () => {
+    void (async () => {
+      try {
+        const baseUrl = aiBaseUrlInput.value.trim();
+        if (baseUrl) {
+          await requestSmartFillHostPermissionIfNeeded(baseUrl);
+        }
+        await saveSmartFillSettingsToBackground();
+        showMessage("AI 服务设置已保存", "success");
+      } catch (error: unknown) {
+        const text = error instanceof Error ? error.message : "保存失败";
+        showMessage(`AI 服务设置保存失败：${text}`, "error");
+      }
+    })();
+  });
+
+  checkAiConnectionBtn.addEventListener("click", () => {
+    void (async () => {
+      try {
+        const baseUrl = aiBaseUrlInput.value.trim();
+        if (baseUrl) {
+          await requestSmartFillHostPermissionIfNeeded(baseUrl);
+        }
+        await saveSmartFillSettingsToBackground();
+      } catch (error: unknown) {
+        const text = error instanceof Error ? error.message : "权限申请失败";
+        setAiServiceStatus(`连接失败：${text}`, "error");
+        return;
+      }
+      await checkSmartFillAiConnection();
+    })();
+  });
+
   feedbackBtn.addEventListener("click", () => {
     openFeedbackModal();
   });
@@ -2355,6 +2555,7 @@ async function bootstrap(): Promise<void> {
   shortcutSettings = loaded.shortcuts;
   desktopOpenSettings = loaded.desktop;
   applyUiSettings();
+  await loadSmartFillSettingsFromBackground();
   syncDesktopOpenControls();
   setDesktopDockerStatus("未检测", "pending");
 
@@ -2363,4 +2564,18 @@ async function bootstrap(): Promise<void> {
   void checkServerConnection();
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  const text = error instanceof Error ? error.message : String(error);
+  // eslint-disable-next-line no-console
+  console.error("[OfferU Popup] bootstrap failed:", error);
+  try {
+    if (messageEl) {
+      messageEl.textContent = `插件启动失败：${text}`;
+      messageEl.className = "message error";
+      return;
+    }
+  } catch {
+    // ignore render failures
+  }
+  document.body.innerHTML = `<div style="padding:12px;font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#b91c1c;">插件启动失败：${text}</div>`;
+});

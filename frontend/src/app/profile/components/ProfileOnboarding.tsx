@@ -30,6 +30,7 @@ import {
   type ProfileImportResult,
   type ResumeImportParseMode,
 } from "@/lib/hooks";
+import AIImportModal from "./AIImportModal";
 
 interface ProfileOnboardingProps {
   currentArchive?: PersonalArchive;
@@ -85,12 +86,14 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
-function textLines(value: string): string[] {
+function textToHtml(value: string): string {
   const lines = value
     .split(/\n+/g)
     .map((item) => item.replace(/^[•·●▪◦*+\-\d.)、\s]+/, "").trim())
     .filter(Boolean);
-  return lines.length > 0 ? lines : [value.trim()].filter(Boolean);
+  if (lines.length === 0) return "";
+  if (lines.length === 1) return `<p>${lines[0]}</p>`;
+  return `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
 }
 
 function buildImportedArchive(imported: ProfileImportResult | null, profile?: ProfileData | null): PersonalArchive {
@@ -163,7 +166,7 @@ export function buildOnboardingArchive(
       major: form.major.trim(),
       endDate: form.graduationDate.trim(),
       gpa: form.gpa.trim(),
-      descriptions: form.gpa.trim() ? [`GPA：${form.gpa.trim()}`] : [""],
+      description: form.gpa.trim() ? `<p>GPA：${form.gpa.trim()}</p>` : "",
     });
   }
 
@@ -182,7 +185,7 @@ export function buildOnboardingArchive(
           ...personalArchiveFactories.createEmptyProject(),
           projectName: `补充经历 ${index + 1}`,
           projectRole: primaryRole ? `${primaryRole}候选人` : "",
-          descriptions: textLines(item),
+          description: textToHtml(item),
         });
       });
   }
@@ -269,6 +272,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
   const [importing, setImporting] = useState<ResumeImportParseMode | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [aiImportOpen, setAiImportOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importModeRef = useRef<ResumeImportParseMode>("ai");
 
@@ -312,6 +316,19 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
     if (!title) return;
     toggleRole(title);
     setCustomRole("");
+  };
+
+  const handleAiImport = (result: ProfileImportResult) => {
+    setImported(result);
+    const base = result.base_info || {};
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || clean(base.name),
+      phone: prev.phone || clean(base.phone),
+      email: prev.email || clean(base.email),
+      currentCity: prev.currentCity || clean(base.current_city),
+      summary: prev.summary || clean(base.summary || base.personal_summary),
+    }));
   };
 
   const openResumeImport = (parseMode: ResumeImportParseMode) => {
@@ -380,7 +397,6 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
 
   return (
     <div className="fixed inset-0 z-50 bg-[#f6f3ed]/95 p-4 text-black backdrop-blur-md">
-      <input ref={fileInputRef} type="file" accept=".pdf,.docx" className="hidden" onChange={handleFileChange} />
       <div className="mx-auto flex h-full max-w-6xl flex-col">
         <div className="flex items-center justify-between border-b border-black/10 py-3">
           <div>
@@ -485,6 +501,16 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                           : "原版机械解析"}
                     </Button>
                   </div>
+                  <div className="mt-2">
+                    <Button className="w-full justify-center" variant="bordered" startContent={<Sparkles size={16} />} onPress={() => setAiImportOpen(true)}>
+                      {imported ? `已导入 ${imported.filename === "ai-import" ? "AI 解析结果" : imported.filename}` : "AI 对话导入简历"}
+                    </Button>
+                  </div>
+                  <AIImportModal
+                    open={aiImportOpen}
+                    onClose={() => setAiImportOpen(false)}
+                    onImport={handleAiImport}
+                  />
                   <div className="mt-4 space-y-3">
                     {form.experiences.map((value, index) => (
                       <Textarea

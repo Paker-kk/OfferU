@@ -4,7 +4,7 @@ export const bauhausFieldClassNames = {
   input: "font-medium text-black placeholder:text-black/45",
   label: "font-bold uppercase tracking-[0.14em] text-[11px] text-black/65",
   description: "text-black/55",
-  errorMessage: "font-medium text-[#D02020]",
+  errorMessage: "font-medium text-[#c95548]",
 };
 
 export const bauhausSelectClassNames = {
@@ -26,7 +26,7 @@ export const bauhausIconButtonClassName =
 
 export const bauhausTabsClassNames = {
   tabList: "rounded-none border-2 border-black bg-white p-1 shadow-[3px_3px_0_0_#121212] md:border-[3px]",
-  cursor: "rounded-none bg-[#D02020]",
+  cursor: "rounded-none bg-[#c95548]",
   tab: "min-h-10 rounded-none px-4 data-[hover-unselected=true]:opacity-100",
   tabContent: "font-bold uppercase tracking-[0.12em] text-[11px] text-black group-data-[selected=true]:text-white",
 };

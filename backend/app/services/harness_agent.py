@@ -624,7 +624,7 @@ async def run_harness_agent_turn(
             proposed_actions.append(
                 plan_action(
                     "batch_triage",
-                    {"job_ids": job_ids, "status": "screened"},
+                    {"job_ids": job_ids, "status": "picked"},
                     index=1,
                 )
             )

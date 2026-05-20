@@ -1,11 +1,7 @@
+import "../src/content";
+
 export default defineContentScript({
-  matches: [
-    "http://*/*",
-    "https://*/*",
-  ],
+  matches: ["<all_urls>"],
   runAt: "document_idle",
-  main() {
-    // Runtime logic lives in src/content.ts
-    void import("../src/content");
-  },
+  main() {},
 });

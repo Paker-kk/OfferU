@@ -111,21 +111,24 @@ class ResumeMatcherSkill(BaseSkill):
         分析简历与 JD 的匹配度
 
         context 需要:
-          - resume_text: 简历纯文本
-          - jd_text: JD 原文
+          - resume_text: 简历文本（结构化 JSON 或纯文本）
           - jd_analysis: Skill 1 的输出（JD 结构化分析）
+          - jd_text: JD 原文（仅 jd_analysis 不可用时作为 fallback）
 
         返回: ATS 评分 + 逐段分析 + 风险项
         """
         resume_text = context.get("resume_text", "")
-        jd_text = context.get("jd_text", "")
         jd_analysis = context.get("jd_analysis", {})
 
         if not resume_text.strip():
             return {"error": "简历文本为空"}
 
-        # 将 JD 分析结果格式化为 LLM 可读的文本
-        jd_summary = self._format_jd_analysis(jd_analysis)
+        # 优先使用 Skill 1 的结构化分析，不可用时回退到 JD 原文
+        if jd_analysis and "error" not in jd_analysis:
+            jd_section = f"## 岗位要求分析\n\n{self._format_jd_analysis(jd_analysis)}"
+        else:
+            jd_text = context.get("jd_text", "")
+            jd_section = f"## 岗位描述\n\n{jd_text}"
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -133,8 +136,7 @@ class ResumeMatcherSkill(BaseSkill):
                 "role": "user",
                 "content": (
                     f"## 候选人简历\n\n{resume_text}\n\n"
-                    f"## 岗位要求分析\n\n{jd_summary}\n\n"
-                    f"## 岗位描述原文\n\n{jd_text}"
+                    f"{jd_section}"
                 ),
             },
         ]
@@ -178,5 +180,7 @@ class ResumeMatcherSkill(BaseSkill):
             parts.append(f"核心职责: {', '.join(jd['responsibilities'])}")
         if jd.get("industry_tags"):
             parts.append(f"行业: {', '.join(jd['industry_tags'])}")
+        if jd.get("culture_keywords"):
+            parts.append(f"文化关键词: {', '.join(jd['culture_keywords'])}")
 
         return "\n".join(parts) if parts else "（无 JD 分析数据）"

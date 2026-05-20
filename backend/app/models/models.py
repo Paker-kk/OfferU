@@ -506,3 +506,85 @@ class InterviewQuestion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     experience: Mapped["InterviewExperience"] = relationship(back_populates="questions")
+
+
+class OptimizeSession(Base):
+    """对话式简历优化会话"""
+    __tablename__ = "optimize_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    profile_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    phase: Mapped[str] = mapped_column(String(30), default="confirming")
+    job_ids: Mapped[list] = mapped_column(JSON, default=list)
+    mode: Mapped[str] = mapped_column(String(20), default="per_job")
+    messages_json: Mapped[list] = mapped_column(JSON, default=list)
+    jd_analysis_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    match_analysis_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    reorder_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    framework_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    rows_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    current_section_index: Mapped[int] = mapped_column(Integer, default=0)
+    resume_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
+    interview_experiences_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    raw_jd_json: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
+    job_titles_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    confirmed_sections_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    original_rows_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    pending_action_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SmartFillMapCache(Base):
+    """SmartFill 映射缓存：后端缓存域（SQLite 优先）"""
+    __tablename__ = "smartfill_map_cache"
+    __table_args__ = (
+        UniqueConstraint("cache_key", name="uq_smartfill_map_cache_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cache_key: Mapped[str] = mapped_column(String(128), index=True)
+    adapter_id: Mapped[str] = mapped_column(String(50), default="unknown", index=True)
+    model_signature: Mapped[str] = mapped_column(String(128), default="", index=True)
+    mappings_json: Mapped[list] = mapped_column(JSON, default=list)
+    channel: Mapped[str] = mapped_column(String(30), default="backend")
+    fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SmartFillRun(Base):
+    """SmartFill 运行记录：run 级摘要"""
+    __tablename__ = "smartfill_runs"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_smartfill_run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SmartFillRunLog(Base):
+    """SmartFill 分层诊断日志：run/field/control 级结构化记录"""
+    __tablename__ = "smartfill_run_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), ForeignKey("smartfill_runs.run_id"), index=True)
+    stage: Mapped[str] = mapped_column(String(40), index=True)
+    severity: Mapped[str] = mapped_column(String(20), default="info", index=True)
+    scope: Mapped[str] = mapped_column(String(20), default="run", index=True)
+    message: Mapped[str] = mapped_column(Text, default="")
+    field_id: Mapped[str] = mapped_column(String(120), default="", index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)

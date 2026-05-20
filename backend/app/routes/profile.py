@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -36,9 +38,13 @@ from app.models.models import (
     ProfileChatSession,
     ProfileSection,
     ProfileTargetRole,
+    SmartFillMapCache,
+    SmartFillRun,
+    SmartFillRunLog,
 )
 from app.services.profile_schema import (
     PROFILE_BUILTIN_SECTION_TYPES,
+    PROFILE_SECTION_SCHEMA_VERSION,
     canonicalize_profile_section_payload,
     get_category_label,
     is_custom_category_key,
@@ -116,6 +122,82 @@ class ProfileChatConfirmRequest(BaseModel):
 class InstantDraftRequest(BaseModel):
     experiences: list[str] = Field(..., min_length=1, max_length=20)
     target_roles: list[str] = Field(default_factory=list)
+
+
+class SmartFillPingRequest(BaseModel):
+    mode: str = "smart-fill"
+
+
+class SmartFillFieldItem(BaseModel):
+    fieldId: str = Field(..., min_length=1, max_length=120)
+    label: str = ""
+    placeholder: str = ""
+    name: str = ""
+    inputType: str = ""
+    options: list[str] = Field(default_factory=list)
+    required: bool = False
+    nearbyText: str = ""
+
+
+class SmartFillMapRequest(BaseModel):
+    fields: list[SmartFillFieldItem] = Field(default_factory=list)
+    profile: Optional[dict[str, Any]] = None
+    profileValues: list[dict[str, str]] = Field(default_factory=list)
+    catalog: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SmartFillOptionMatchRequest(BaseModel):
+    candidates: list[str] = Field(default_factory=list)
+    resume_value: str = ""
+    level1_title: str = ""
+    level2_title: str = ""
+
+
+class SmartFillFieldMapFragment(BaseModel):
+    module_name: str = Field(..., min_length=1, max_length=100)
+    field_label: str = Field(..., min_length=1, max_length=100)
+    item_index: int = Field(default=0, ge=0)
+
+
+class SmartFillFieldMapRequest(BaseModel):
+    fragments: list[SmartFillFieldMapFragment] = Field(default_factory=list)
+    profile: Optional[dict[str, Any]] = None
+
+
+class SmartFillModuleCountRequest(BaseModel):
+    profile: Optional[dict[str, Any]] = None
+
+
+class SmartFillCacheGetRequest(BaseModel):
+    cacheKey: str = Field(..., min_length=4, max_length=128)
+    adapterId: str = Field(default="unknown", max_length=50)
+    modelSignature: str = Field(default="", max_length=128)
+
+
+class SmartFillCacheSetRequest(BaseModel):
+    cacheKey: str = Field(..., min_length=4, max_length=128)
+    adapterId: str = Field(default="unknown", max_length=50)
+    modelSignature: str = Field(default="", max_length=128)
+    ttlSeconds: int = Field(default=300, ge=30, le=7200)
+    mappings: list[dict[str, Any]] = Field(default_factory=list)
+    channel: str = Field(default="backend", max_length=30)
+    fallbackUsed: bool = False
+    runId: Optional[str] = Field(default=None, max_length=64)
+
+
+class SmartFillRunLogItem(BaseModel):
+    stage: str = Field(..., min_length=1, max_length=40)
+    severity: str = Field(default="info", max_length=20)
+    scope: str = Field(default="run", max_length=20)
+    message: str = Field(default="", max_length=500)
+    payload: Optional[dict[str, Any]] = None
+    fieldId: Optional[str] = Field(default=None, max_length=120)
+    ts: Optional[str] = Field(default=None, max_length=40)
+
+
+class SmartFillRunLogRequest(BaseModel):
+    runId: str = Field(..., min_length=6, max_length=64)
+    logs: list[SmartFillRunLogItem] = Field(default_factory=list)
 
 
 def _serialize_target_role(role: ProfileTargetRole) -> dict:
@@ -1331,6 +1413,241 @@ async def list_profile_categories(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/smart-fill/catalog")
+async def smart_fill_catalog(db: AsyncSession = Depends(get_db)):
+    profile = await _get_or_create_default_profile(db)
+    normalized_base_info = normalize_base_info_payload(profile.base_info_json)
+    if profile.base_info_json != normalized_base_info:
+        profile.base_info_json = normalized_base_info
+    await db.commit()
+
+    profile, roles, sections = await _load_profile_bundle(db, profile.id)
+    profile_payload = _serialize_profile(profile, roles, sections)
+    catalog = _build_smartfill_catalog_from_profile(profile_payload)
+    public_catalog = [{key: value for key, value in item.items() if key != "value"} for item in catalog]
+    return {
+        "ok": True,
+        "profileVersion": "smartfill.catalog.v1",
+        "catalog": public_catalog,
+        "count": len(public_catalog),
+        "signature": _smartfill_signature(*[item.get("signature", "") for item in public_catalog]),
+    }
+
+
+def _html_to_plain_text(html: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+_EXPERIENCE_MAPPED_CUSTOM_TYPES = {"custom:c_internship"}
+
+
+def _build_archive_entry(section_type: str, category_label: str, title: str, normalized: dict) -> tuple[str, str, dict] | None:
+    if section_type in _EXPERIENCE_MAPPED_CUSTOM_TYPES:
+        desc = normalized.get("description", "")
+        bullet = " | ".join(
+            [normalized.get("company", ""), normalized.get("position", ""), desc]
+        ).strip(" |")
+        content_json = {
+            "schema_version": PROFILE_SECTION_SCHEMA_VERSION,
+            "category_key": section_type,
+            "category_label": category_label,
+            "field_values": {
+                f"{section_type}.subtitle": title,
+                f"{section_type}.description": desc,
+            },
+            "normalized": normalized,
+            "bullet": bullet,
+            "title": title,
+        }
+        return section_type, title, content_json
+    try:
+        resolved_type, resolved_label, _, content_json = canonicalize_profile_section_payload(
+            section_type=section_type,
+            title=title,
+            raw_content_json={"normalized": normalized},
+            category_label=category_label,
+        )
+        return resolved_type, title, content_json
+    except ValueError:
+        return None
+
+
+async def _sync_personal_archive_to_sections(profile: Profile, db: AsyncSession) -> int:
+    base_info = profile.base_info_json or {}
+    personal_archive = base_info.get("personal_archive")
+    if not isinstance(personal_archive, dict):
+        return 0
+    if personal_archive.get("schemaVersion") != "personal.archive.v1":
+        return 0
+
+    resume_archive = personal_archive.get("resumeArchive")
+    if not isinstance(resume_archive, dict):
+        return 0
+
+    await db.execute(
+        ProfileSection.__table__.delete().where(
+            ProfileSection.profile_id == profile.id,
+            ProfileSection.source == "archive_sync",
+        )
+    )
+
+    sort_order = 0
+    entries: list[tuple[str, str, dict]] = []
+
+    for item in resume_archive.get("education", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("schoolName") or "").strip() or "教育经历"
+        normalized = {
+            "school": item.get("schoolName", ""),
+            "degree": (item.get("degree") or item.get("educationLevel") or ""),
+            "major": item.get("major", ""),
+            "start_date": item.get("startDate", ""),
+            "end_date": item.get("endDate", ""),
+            "gpa": item.get("gpa", ""),
+            "description": _html_to_plain_text(item.get("description", "")),
+        }
+        result = _build_archive_entry("education", "教育经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("workExperiences", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("companyName") or "").strip() or "工作经历"
+        normalized = {
+            "company": item.get("companyName", ""),
+            "department": item.get("department", ""),
+            "position": item.get("positionName", ""),
+            "start_date": item.get("startDate", ""),
+            "end_date": item.get("endDate", ""),
+            "description": _html_to_plain_text(item.get("description", "")),
+        }
+        result = _build_archive_entry("experience", "工作经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("internshipExperiences", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("companyName") or "").strip() or "实习经历"
+        desc = _html_to_plain_text(item.get("description", ""))
+        normalized = {
+            "company": item.get("companyName", ""),
+            "position": item.get("positionName", ""),
+            "start_date": item.get("startDate", ""),
+            "end_date": item.get("endDate", ""),
+            "description": desc,
+            "subtitle": title,
+        }
+        result = _build_archive_entry("custom:c_internship", "实习经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("projects", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("projectName") or "").strip() or "项目经历"
+        normalized = {
+            "name": item.get("projectName", ""),
+            "role": item.get("projectRole", ""),
+            "url": item.get("projectLink", ""),
+            "start_date": item.get("startDate", ""),
+            "end_date": item.get("endDate", ""),
+            "description": _html_to_plain_text(item.get("description", "")),
+        }
+        result = _build_archive_entry("project", "项目经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    skill_groups: dict[str, dict] = {}
+    for item in resume_archive.get("skills", []):
+        if not isinstance(item, dict):
+            continue
+        proficiency = (item.get("proficiency") or "").strip() or "技能"
+        if proficiency not in skill_groups:
+            skill_groups[proficiency] = {"names": [], "remarks": []}
+        name = (item.get("skillName") or "").strip()
+        if name:
+            skill_groups[proficiency]["names"].append(name)
+        remark = (item.get("remark") or "").strip()
+        if remark:
+            skill_groups[proficiency]["remarks"].append(remark)
+
+    for proficiency, group in skill_groups.items():
+        normalized = {
+            "category": proficiency,
+            "items": group["names"],
+            "description": "\n".join(group["remarks"]) if group["remarks"] else "",
+        }
+        result = _build_archive_entry("skill", "技能与证书", proficiency, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("certificates", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("certificateName") or "").strip() or "证书"
+        normalized = {
+            "name": item.get("certificateName", ""),
+            "issuer": item.get("issuer", ""),
+            "date": item.get("acquiredAt", ""),
+            "score": item.get("scoreOrLevel", ""),
+            "description": item.get("scoreOrLevel", ""),
+        }
+        result = _build_archive_entry("certificate", "技能与证书", title, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("awards", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("awardName") or "").strip() or "获奖经历"
+        desc = _html_to_plain_text(item.get("description", ""))
+        normalized = {
+            "subtitle": title,
+            "description": desc,
+            "issuer": item.get("issuer", ""),
+            "date": item.get("awardedAt", ""),
+        }
+        result = _build_archive_entry("custom:c_awards", "获奖经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    for item in resume_archive.get("personalExperiences", []):
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("experienceTitle") or "").strip() or "个人经历"
+        desc = _html_to_plain_text(item.get("description", ""))
+        normalized = {
+            "subtitle": title,
+            "description": desc,
+            "start_date": item.get("startDate", ""),
+            "end_date": item.get("endDate", ""),
+        }
+        result = _build_archive_entry("custom:c_personal", "个人经历", title, normalized)
+        if result:
+            entries.append(result)
+
+    for resolved_type, title, content_json in entries:
+        section = ProfileSection(
+            profile_id=profile.id,
+            section_type=resolved_type,
+            title=title,
+            sort_order=sort_order,
+            content_json=content_json,
+            source="archive_sync",
+            confidence=1.0,
+        )
+        db.add(section)
+        sort_order += 1
+
+    await db.flush()
+    return sort_order
+
+
 @router.put("/")
 async def update_profile(data: ProfileUpdateRequest, db: AsyncSession = Depends(get_db)):
     profile = await _get_or_create_default_profile(db)
@@ -1341,6 +1658,9 @@ async def update_profile(data: ProfileUpdateRequest, db: AsyncSession = Depends(
 
     for key, value in payload.items():
         setattr(profile, key, value)
+
+    if "base_info_json" in payload:
+        await _sync_personal_archive_to_sections(profile, db)
 
     await db.commit()
     await db.refresh(profile)
@@ -1920,3 +2240,1103 @@ async def instant_draft(data: InstantDraftRequest):
         "missing_hints": ["请补充量化结果（如增长、转化、效率）", "请补充时间范围和你的具体角色"],
         "encouragement": "你已经有很好的素材，补上细节后会非常有竞争力。",
     }
+
+
+def _collect_profile_strings(payload: Any, output: set[str]) -> None:
+    if isinstance(payload, str):
+        value = payload.strip()
+        if value:
+            output.add(value)
+        return
+
+    if isinstance(payload, list):
+        for item in payload:
+            _collect_profile_strings(item, output)
+        return
+
+    if isinstance(payload, dict):
+        for item in payload.values():
+            _collect_profile_strings(item, output)
+        return
+
+
+def _is_enum_compatible(value: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return False
+    allowed = {
+        "男",
+        "女",
+        "不便透露",
+        "已婚",
+        "未婚",
+        "离异",
+        "丧偶",
+        "是",
+        "否",
+        "yes",
+        "no",
+        "male",
+        "female",
+    }
+    return normalized in allowed
+
+
+def _sanitize_ai_mappings(
+    parsed: dict[str, Any],
+    fields: list[SmartFillFieldItem],
+    catalog: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    mappings = parsed.get("mappings")
+    if not isinstance(mappings, list):
+        return []
+
+    field_ids = {item.fieldId for item in fields}
+    catalog_by_path = {str(item.get("path") or ""): item for item in catalog if isinstance(item, dict)}
+    catalog_by_key = {str(item.get("key") or ""): item for item in catalog if isinstance(item, dict)}
+
+    result: list[dict[str, Any]] = []
+    for row in mappings:
+        if not isinstance(row, dict):
+            continue
+        field_id = str(row.get("fieldId") or "").strip()
+        profile_path = str(row.get("profilePath") or row.get("sourcePath") or row.get("resumePath") or "").strip()
+        catalog_key = str(row.get("catalogKey") or row.get("key") or "").strip()
+        reason = str(row.get("reason") or "").strip()
+        transform = row.get("transform") if isinstance(row.get("transform"), dict) else {"type": "none"}
+        confidence_raw = row.get("confidence")
+        try:
+            confidence = float(confidence_raw)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        confidence = max(0.0, min(1.0, confidence))
+
+        if not field_id or field_id not in field_ids:
+            continue
+        item = catalog_by_path.get(profile_path) or catalog_by_key.get(catalog_key)
+        if not item:
+            continue
+
+        result.append(
+            {
+                "fieldId": field_id,
+                "profilePath": str(item.get("path") or profile_path),
+                "catalogKey": str(item.get("key") or catalog_key or item.get("path") or ""),
+                "intent": str(item.get("label") or ""),
+                "category": str(item.get("categoryLabel") or ""),
+                "itemIndex": item.get("itemIndex"),
+                "transform": transform,
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+    return result
+
+
+def _new_smartfill_run_id() -> str:
+    return f"sf-{uuid.uuid4().hex[:20]}"
+
+
+async def _ensure_smartfill_run(db: AsyncSession, run_id: str, status: str = "running") -> SmartFillRun:
+    existing = (
+        await db.execute(
+            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    row = SmartFillRun(run_id=run_id, status=status, summary_json={})
+    db.add(row)
+    await db.flush()
+    return row
+
+
+def _parse_dt_iso(value: Optional[str]) -> datetime:
+    if not value:
+        return datetime.utcnow()
+    text = value.strip()
+    if not text:
+        return datetime.utcnow()
+    text = text.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text).replace(tzinfo=None)
+    except Exception:
+        return datetime.utcnow()
+
+
+SMART_FILL_KEY_LABELS = {
+    "name": "姓名",
+    "fullName": "姓名",
+    "phone": "手机号",
+    "email": "邮箱",
+    "current_city": "所在城市",
+    "city": "所在城市",
+    "job_intention": "目标岗位",
+    "summary": "个人简介",
+    "personal_summary": "个人简介",
+    "school": "学校名称",
+    "schoolName": "学校名称",
+    "degree": "学位",
+    "major": "专业",
+    "educationLevel": "学历",
+    "relatedCourses": "相关课程",
+    "courses": "相关课程",
+    "start_date": "开始时间",
+    "startDate": "开始时间",
+    "end_date": "结束时间",
+    "endDate": "结束时间",
+    "gpa": "GPA",
+    "company": "公司名称",
+    "companyName": "公司名称",
+    "position": "职位名称",
+    "jobTitle": "职位名称",
+    "positionName": "职位名称",
+    "department": "部门",
+    "role": "担任角色",
+    "projectName": "项目名称",
+    "projectRole": "项目角色",
+    "projectLink": "项目链接",
+    "description": "描述",
+    "descriptions": "描述列表",
+    "skillName": "技能名称",
+    "proficiency": "掌握程度",
+    "remark": "备注",
+    "certificateName": "证书名称",
+    "scoreOrLevel": "证书成绩/等级",
+    "acquiredAt": "获得时间",
+    "issuer": "颁发机构",
+    "awardName": "奖项名称",
+    "awardedAt": "获奖时间",
+    "experienceTitle": "经历名称",
+    "fileName": "附件名称",
+    "chineseName": "中文姓名",
+    "englishOrPinyinName": "英文/拼音姓名",
+    "gender": "性别",
+    "birthDate": "出生日期",
+    "nationalityOrRegion": "国籍/地区",
+    "idType": "证件类型",
+    "idNumber": "证件号码",
+    "currentAddress": "现居住地址",
+    "nativePlace": "籍贯",
+    "householdRegistration": "户籍所在地",
+    "ethnicity": "民族",
+    "politicalStatus": "政治面貌",
+    "maritalStatus": "婚姻状况",
+    "expectedPosition": "期望职位",
+    "expectedPositionCategory": "期望职位类别",
+    "expectedCities": "期望城市",
+    "expectedSalary": "期望薪资",
+    "employmentType": "工作类型",
+    "availableStartDate": "到岗时间",
+    "currentJobSearchStatus": "求职状态",
+    "acceptAdjustment": "是否接受调剂",
+    "acceptBusinessTravel": "是否接受出差",
+    "acceptAssignment": "是否接受外派",
+    "acceptShiftWork": "是否接受倒班",
+    "isFreshGraduate": "是否应届生",
+    "graduationDate": "毕业时间",
+    "studentOrigin": "生源地",
+    "studentStatus": "学生状态",
+    "studentId": "学号",
+    "majorRank": "专业排名",
+    "thesis": "论文题目",
+    "patent": "专利",
+    "researchExperiences": "科研经历",
+    "relation": "关系",
+    "contact": "联系电话",
+    "hasRelativeInTargetCompany": "是否有亲属在目标公司",
+    "emergencyContactName": "紧急联系人姓名",
+    "emergencyContactRelation": "紧急联系人关系",
+    "emergencyContactPhone": "紧急联系人电话",
+    "backgroundCheckAuthorization": "背调授权",
+    "hasNonCompete": "是否有竞业限制",
+    "healthDeclaration": "健康声明",
+    "sourceChannel": "来源渠道",
+    "referralCode": "内推码",
+    "referralName": "内推人姓名",
+    "referralEmployeeId": "内推人工号",
+    "referralContact": "内推人联系方式",
+    "recommenderInfo": "推荐信息",
+    "notes": "备注",
+    "url": "链接",
+    "link": "链接",
+}
+
+
+def _smartfill_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value).strip()
+    return ""
+
+
+def _smartfill_scalar_list_text(value: list[Any]) -> str:
+    parts = [_smartfill_str(item) for item in value]
+    return "; ".join(part for part in parts if part)
+
+
+def _smartfill_label_for_key(key: str) -> str:
+    if key in SMART_FILL_KEY_LABELS:
+        return SMART_FILL_KEY_LABELS[key]
+    tail = re.split(r"[._-]", key)[-1] if key else key
+    return SMART_FILL_KEY_LABELS.get(tail, tail or "字段")
+
+
+def _smartfill_value_type(label: str, path: str, value: str) -> str:
+    text = f"{label} {path}".lower()
+    if re.search(r"email|邮箱|邮件", text):
+        return "email"
+    if re.search(r"phone|mobile|tel|手机|电话|联系方式", text):
+        return "phone"
+    if re.search(r"url|link|github|linkedin|website|链接|网址|主页|作品|论文", text):
+        return "url"
+    if re.search(r"idnumber|identity|身份证|证件号|证件号码", text):
+        return "id-number"
+    if re.search(r"date|time|日期|时间|开始|结束|出生|毕业|入学|到岗", text):
+        return "date-range" if _smartfill_is_date_range_value(value) else "date"
+    if re.search(r"gender|sex|性别|学历|学位|政治面貌|婚姻|是否|状态|类型", text):
+        return "choice"
+    if re.search(r"课程|技能|skills|items|relatedcourses", text):
+        return "multi-choice"
+    if re.search(r"gpa|score|rank|height|weight|薪资|分数|成绩|排名", text) and re.search(r"\d", value):
+        return "number"
+    if len(value) > 120 or re.search(r"description|summary|content|描述|简介|评价|职责|内容", text):
+        return "long-text"
+    return "text"
+
+
+def _smartfill_is_date_range_value(value: str) -> bool:
+    text = _smartfill_str(value)
+    if not text:
+        return False
+    date_token = r"(?:19|20)\d{2}(?:[-/.年]\s?\d{1,2})?(?:[-/.月]\s?\d{1,2})?"
+    return bool(re.search(fr"{date_token}\s*(?:至|到|~|—|–|\s-\s)\s*{date_token}", text))
+
+
+def _smartfill_signature(*parts: Any) -> str:
+    text = "::".join(str(part or "") for part in parts)
+    hash_value = 2166136261
+    for char in text:
+        hash_value ^= ord(char)
+        hash_value += (hash_value << 1) + (hash_value << 4) + (hash_value << 7) + (hash_value << 8) + (hash_value << 24)
+    return f"{hash_value & 0xFFFFFFFF:08x}"
+
+
+def _smartfill_section_type(category_key: str, category_label: str, path: str) -> str:
+    source = f"{category_key} {category_label} {path}"
+    if re.search(r"education|教育|学校", source, re.I):
+        return "education"
+    if re.search(r"intern|实习", source, re.I):
+        return "internship"
+    if re.search(r"experience|work|工作", source, re.I):
+        return "work"
+    if re.search(r"project|项目", source, re.I):
+        return "project"
+    if re.search(r"certificate|证书|语言", source, re.I):
+        return "certificate"
+    if re.search(r"award|honou?r|奖|荣誉", source, re.I):
+        return "award"
+    if re.search(r"skill|技能", source, re.I):
+        return "skill"
+    if re.search(r"basic|identity|基本|身份|联系", source, re.I):
+        return "basic"
+    return "general"
+
+
+def _push_smartfill_catalog_item(
+    output: list[dict[str, Any]],
+    seen: set[str],
+    *,
+    path: str,
+    label: str,
+    value: str,
+    category_key: str,
+    category_label: str,
+    section_type: str = "",
+    item_index: Optional[int] = None,
+    aliases: Optional[list[str]] = None,
+    source_ref: str = "",
+) -> None:
+    value = _smartfill_str(value)
+    if not value:
+        return
+    if value.strip().startswith(("{", "[")) and value.strip().endswith(("}", "]")):
+        return
+    if path in seen:
+        return
+    seen.add(path)
+    resolved_section_type = section_type or _smartfill_section_type(category_key, category_label, path)
+    value_type = _smartfill_value_type(label, path, value)
+    signature = _smartfill_signature(path, label, category_label, item_index or "", value_type)
+    clean_aliases = []
+    for alias in [label, *(aliases or [])]:
+        alias_text = _smartfill_str(alias)
+        if alias_text and alias_text not in clean_aliases:
+            clean_aliases.append(alias_text)
+    output.append(
+        {
+            "key": path,
+            "path": path,
+            "label": label,
+            "categoryKey": category_key or resolved_section_type,
+            "categoryLabel": category_label,
+            "sectionType": resolved_section_type,
+            "itemIndex": item_index,
+            "valueType": value_type,
+            "aliases": clean_aliases,
+            "sourceRef": source_ref or f"{category_label}/{label}",
+            "signature": signature,
+            "value": value,
+        }
+    )
+
+
+def _flatten_smartfill_payload(
+    output: list[dict[str, Any]],
+    seen: set[str],
+    *,
+    base_path: str,
+    payload: Any,
+    category_key: str,
+    category_label: str,
+    section_type: str,
+    item_index: Optional[int] = None,
+) -> None:
+    if isinstance(payload, list):
+        if all(not isinstance(item, (dict, list)) for item in payload):
+            text = _smartfill_scalar_list_text(payload)
+            if text:
+                key = base_path.rsplit(".", 1)[-1] if base_path else category_label
+                label = _smartfill_label_for_key(key)
+                _push_smartfill_catalog_item(
+                    output,
+                    seen,
+                    path=base_path,
+                    label=label,
+                    value=text,
+                    category_key=category_key,
+                    category_label=category_label,
+                    section_type=section_type,
+                    item_index=item_index,
+                    aliases=[key, label],
+                    source_ref=f"{category_label}{f'/第{item_index}条' if item_index else ''}/{label}",
+                )
+            return
+        for index, item in enumerate(payload):
+            _flatten_smartfill_payload(
+                output,
+                seen,
+                base_path=f"{base_path}.{index}",
+                payload=item,
+                category_key=category_key,
+                category_label=category_label,
+                section_type=section_type,
+                item_index=index + 1,
+            )
+        return
+
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key in {"id", "source", "confidence"}:
+                continue
+            if base_path.startswith("applicationArchive.attachments.") and key not in {"fileName", "url", "link"}:
+                continue
+            if base_path.startswith("applicationArchive.") and key in {"fileType", "fileSize", "uploadedAt", "fieldType"}:
+                continue
+            next_path = f"{base_path}.{key}" if base_path else key
+            if isinstance(value, (dict, list)):
+                _flatten_smartfill_payload(
+                    output,
+                    seen,
+                    base_path=next_path,
+                    payload=value,
+                    category_key=category_key,
+                    category_label=category_label,
+                    section_type=section_type,
+                    item_index=item_index,
+                )
+                continue
+            text = _smartfill_str(value)
+            if not text:
+                continue
+            label = _smartfill_label_for_key(key)
+            _push_smartfill_catalog_item(
+                output,
+                seen,
+                path=next_path,
+                label=label,
+                value=text,
+                category_key=category_key,
+                category_label=category_label,
+                section_type=section_type,
+                item_index=item_index,
+                aliases=[key, label],
+                source_ref=f"{category_label}{f'/第{item_index}条' if item_index else ''}/{label}",
+            )
+        return
+
+    text = _smartfill_str(payload)
+    if text:
+        _push_smartfill_catalog_item(
+            output,
+            seen,
+            path=base_path,
+            label=category_label,
+            value=text,
+            category_key=category_key,
+            category_label=category_label,
+            section_type=section_type,
+            item_index=item_index,
+            aliases=[category_label],
+        )
+
+
+def _smartfill_profile_view(profile_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = profile_payload if isinstance(profile_payload, dict) else {}
+    sections = payload.get("sections") if isinstance(payload.get("sections"), list) else []
+
+    direct_basic = payload.get("basic") if isinstance(payload.get("basic"), dict) else {}
+    direct_resume = payload.get("resumeArchive") if isinstance(payload.get("resumeArchive"), dict) else {}
+    direct_application = payload.get("applicationArchive") if isinstance(payload.get("applicationArchive"), dict) else {}
+    if direct_basic or direct_resume or direct_application:
+        return {
+            "basic": direct_basic,
+            "resumeArchive": direct_resume,
+            "applicationArchive": direct_application,
+            "sections": sections,
+        }
+
+    base_info_json = payload.get("base_info_json") if isinstance(payload.get("base_info_json"), dict) else {}
+    personal_archive = base_info_json.get("personal_archive") if isinstance(base_info_json.get("personal_archive"), dict) else {}
+    resume_archive_legacy = personal_archive.get("resumeArchive") if isinstance(personal_archive.get("resumeArchive"), dict) else {}
+    application_archive_legacy = personal_archive.get("applicationArchive") if isinstance(personal_archive.get("applicationArchive"), dict) else {}
+    resume_basic = resume_archive_legacy.get("basicInfo") if isinstance(resume_archive_legacy.get("basicInfo"), dict) else {}
+
+    if resume_archive_legacy or application_archive_legacy:
+        return {
+            "basic": {
+                "fullName": _smartfill_str(resume_basic.get("name") or base_info_json.get("name") or payload.get("name")),
+                "phone": _smartfill_str(resume_basic.get("phone") or base_info_json.get("phone") or payload.get("phone")),
+                "email": _smartfill_str(resume_basic.get("email") or base_info_json.get("email") or payload.get("email")),
+                "city": _smartfill_str(
+                    resume_basic.get("currentCity")
+                    or base_info_json.get("current_city")
+                    or payload.get("current_city")
+                ),
+                "targetRole": _smartfill_str(
+                    resume_basic.get("jobIntention")
+                    or base_info_json.get("job_intention")
+                    or payload.get("job_intention")
+                ),
+                "website": _smartfill_str(resume_basic.get("website") or base_info_json.get("website") or payload.get("website")),
+                "github": _smartfill_str(resume_basic.get("github") or base_info_json.get("github") or payload.get("github")),
+                "summary": _smartfill_str(
+                    resume_archive_legacy.get("personalSummary")
+                    or base_info_json.get("personal_summary")
+                    or base_info_json.get("summary")
+                    or payload.get("personal_summary")
+                    or payload.get("summary")
+                    or payload.get("headline")
+                ),
+            },
+            "resumeArchive": resume_archive_legacy,
+            "applicationArchive": application_archive_legacy,
+            "sections": sections,
+        }
+
+    return {
+        "basic": {
+            "fullName": _smartfill_str(base_info_json.get("name") or payload.get("name")),
+            "phone": _smartfill_str(base_info_json.get("phone") or payload.get("phone")),
+            "email": _smartfill_str(base_info_json.get("email") or payload.get("email")),
+            "city": _smartfill_str(base_info_json.get("current_city") or payload.get("current_city")),
+            "targetRole": _smartfill_str(base_info_json.get("job_intention") or payload.get("job_intention")),
+            "website": _smartfill_str(base_info_json.get("website") or payload.get("website")),
+            "github": _smartfill_str(base_info_json.get("github") or payload.get("github")),
+            "summary": _smartfill_str(
+                base_info_json.get("personal_summary")
+                or base_info_json.get("summary")
+                or payload.get("personal_summary")
+                or payload.get("summary")
+                or payload.get("headline")
+            ),
+        },
+        "resumeArchive": {},
+        "applicationArchive": {},
+        "sections": sections,
+    }
+
+
+def _build_smartfill_catalog_from_profile(profile_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    profile_view = _smartfill_profile_view(profile_payload)
+
+    basic = profile_view.get("basic") if isinstance(profile_view.get("basic"), dict) else {}
+    basic_map = {
+        "fullName": "姓名",
+        "phone": "手机号",
+        "email": "邮箱",
+        "city": "所在城市",
+        "targetRole": "目标岗位",
+        "website": "个人网站",
+        "github": "GitHub",
+        "summary": "个人简介",
+    }
+    for key, label in basic_map.items():
+        value = _smartfill_str(basic.get(key))
+        _push_smartfill_catalog_item(
+            output,
+            seen,
+            path=f"basic.{key}",
+            label=label,
+            value=value,
+            category_key="basic",
+            category_label="基本信息",
+            section_type="basic",
+            aliases=[label, key],
+            source_ref=f"基本信息/{label}",
+        )
+
+    resume_archive = profile_view.get("resumeArchive") if isinstance(profile_view.get("resumeArchive"), dict) else {}
+    resume_sections = [
+        ("education", "教育经历", "education"),
+        ("workExperiences", "工作经历", "work"),
+        ("internshipExperiences", "实习经历", "internship"),
+        ("projects", "项目经历", "project"),
+        ("skills", "技能", "skill"),
+        ("certificates", "证书", "certificate"),
+        ("awards", "获奖经历", "award"),
+        ("personalExperiences", "个人经历", "experience"),
+    ]
+    for key, label, section_type in resume_sections:
+        _flatten_smartfill_payload(
+            output,
+            seen,
+            base_path=f"resumeArchive.{key}",
+            payload=resume_archive.get(key),
+            category_key=section_type,
+            category_label=label,
+            section_type=section_type,
+        )
+
+    app_archive = profile_view.get("applicationArchive") if isinstance(profile_view.get("applicationArchive"), dict) else {}
+    for key, value in app_archive.items():
+        if not isinstance(value, dict):
+            continue
+        category_label = {
+            "shared": "共享信息",
+            "identityContact": "身份联系",
+            "jobPreference": "求职偏好",
+            "campusFields": "校招专项",
+            "relationshipCompliance": "关系合规",
+            "sourceReferral": "来源推荐",
+            "attachments": "附件",
+        }.get(key, key)
+        _flatten_smartfill_payload(
+            output,
+            seen,
+            base_path=f"applicationArchive.{key}",
+            payload=value,
+            category_key=key,
+            category_label=category_label,
+            section_type=_smartfill_section_type(key, category_label, key),
+        )
+
+    for section_index, section in enumerate(profile_view.get("sections") or []):
+        if not isinstance(section, dict):
+            continue
+        category_key = _smartfill_str(section.get("category_key") or section.get("section_type") or f"section{section_index}")
+        category_label = _smartfill_str(section.get("category_label") or section.get("title") or category_key)
+        content = section.get("content_json") if isinstance(section.get("content_json"), dict) else {}
+        normalized = content.get("normalized") if isinstance(content.get("normalized"), dict) else content
+        _flatten_smartfill_payload(
+            output,
+            seen,
+            base_path=f"sections.{section_index}.{category_key}",
+            payload=normalized,
+            category_key=category_key,
+            category_label=category_label,
+            section_type=_smartfill_section_type(category_key, category_label, category_key),
+        )
+
+    return output
+
+
+def _sanitize_smartfill_catalog(catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in catalog:
+        if not isinstance(row, dict):
+            continue
+        path = _smartfill_str(row.get("path") or row.get("key"))
+        label = _smartfill_str(row.get("label"))
+        if not path or not label or path in seen:
+            continue
+        seen.add(path)
+        result.append(
+            {
+                "key": _smartfill_str(row.get("key") or path),
+                "path": path,
+                "label": label,
+                "categoryKey": _smartfill_str(row.get("categoryKey") or row.get("sectionType")),
+                "categoryLabel": _smartfill_str(row.get("categoryLabel") or row.get("category")),
+                "sectionType": _smartfill_str(row.get("sectionType") or row.get("categoryKey") or "general"),
+                "itemIndex": row.get("itemIndex") if isinstance(row.get("itemIndex"), int) else None,
+                "valueType": _smartfill_str(row.get("valueType") or "text"),
+                "aliases": [str(item).strip() for item in row.get("aliases") or [] if str(item).strip()][:12],
+                "sourceRef": _smartfill_str(row.get("sourceRef")),
+                "signature": _smartfill_str(row.get("signature") or _smartfill_signature(path, label)),
+            }
+        )
+    return result
+
+
+@router.post("/smart-fill/ping")
+async def smart_fill_ping(_data: SmartFillPingRequest):
+    """
+    检查后端 AI 通道可用性。
+    不暴露任何敏感信息，仅返回是否可用与简短原因。
+    """
+    try:
+        result = await chat_completion(
+            messages=[
+                {"role": "system", "content": "你是连通性探针，只回复 pong。"},
+                {"role": "user", "content": "ping"},
+            ],
+            temperature=0,
+            json_mode=False,
+            max_tokens=8,
+            tier="fast",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"AI 服务不可用: {exc}") from exc
+
+    if not result:
+        raise HTTPException(status_code=503, detail="AI 服务不可用: empty response")
+
+    return {"ok": True, "message": "pong"}
+
+
+@router.post("/smart-fill/cache/get")
+async def smart_fill_cache_get(data: SmartFillCacheGetRequest, db: AsyncSession = Depends(get_db)):
+    now = datetime.utcnow()
+    row = (
+        await db.execute(
+            select(SmartFillMapCache).where(
+                SmartFillMapCache.cache_key == data.cacheKey,
+                SmartFillMapCache.expires_at > now,
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        return {"ok": True, "hit": False, "mappings": []}
+
+    mappings = row.mappings_json if isinstance(row.mappings_json, list) else []
+    return {
+        "ok": True,
+        "hit": True,
+        "mappings": mappings,
+        "channel": row.channel or "backend",
+        "fallbackUsed": bool(row.fallback_used),
+        "runId": row.run_id or "",
+    }
+
+
+@router.post("/smart-fill/cache/set")
+async def smart_fill_cache_set(data: SmartFillCacheSetRequest, db: AsyncSession = Depends(get_db)):
+    now = datetime.utcnow()
+    expires_at = now + timedelta(seconds=max(30, min(7200, data.ttlSeconds)))
+    existing = (
+        await db.execute(
+            select(SmartFillMapCache).where(SmartFillMapCache.cache_key == data.cacheKey)
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.adapter_id = data.adapterId or "unknown"
+        existing.model_signature = data.modelSignature or ""
+        existing.mappings_json = data.mappings
+        existing.channel = data.channel or "backend"
+        existing.fallback_used = bool(data.fallbackUsed)
+        existing.expires_at = expires_at
+        if data.runId:
+            existing.run_id = data.runId
+    else:
+        row = SmartFillMapCache(
+            cache_key=data.cacheKey,
+            adapter_id=data.adapterId or "unknown",
+            model_signature=data.modelSignature or "",
+            mappings_json=data.mappings,
+            channel=data.channel or "backend",
+            fallback_used=bool(data.fallbackUsed),
+            expires_at=expires_at,
+            run_id=data.runId or None,
+        )
+        db.add(row)
+
+    await db.commit()
+    return {"ok": True, "saved": True}
+
+
+@router.post("/smart-fill/runs/log")
+async def smart_fill_runs_log(data: SmartFillRunLogRequest, db: AsyncSession = Depends(get_db)):
+    run = await _ensure_smartfill_run(db, data.runId, status="running")
+    inserted = 0
+    for item in data.logs:
+        row = SmartFillRunLog(
+            run_id=data.runId,
+            stage=item.stage,
+            severity=item.severity or "info",
+            scope=item.scope or "run",
+            message=item.message or "",
+            field_id=item.fieldId or "",
+            payload_json=item.payload if isinstance(item.payload, dict) else {},
+            ts=_parse_dt_iso(item.ts),
+        )
+        db.add(row)
+        inserted += 1
+
+    run.updated_at = datetime.utcnow()
+    await db.commit()
+    return {"ok": True, "inserted": inserted}
+
+
+@router.get("/smart-fill/runs/{run_id}")
+async def smart_fill_run_summary(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = (
+        await db.execute(
+            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    logs = (
+        await db.execute(
+            select(SmartFillRunLog)
+            .where(SmartFillRunLog.run_id == run_id)
+            .order_by(SmartFillRunLog.ts.asc(), SmartFillRunLog.id.asc())
+        )
+    ).scalars().all()
+    return {
+        "ok": True,
+        "runId": run.run_id,
+        "status": run.status,
+        "summary": run.summary_json if isinstance(run.summary_json, dict) else {},
+        "logCount": len(logs),
+    }
+
+
+@router.get("/smart-fill/runs/{run_id}/export")
+async def smart_fill_run_export(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = (
+        await db.execute(
+            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    logs = (
+        await db.execute(
+            select(SmartFillRunLog)
+            .where(SmartFillRunLog.run_id == run_id)
+            .order_by(SmartFillRunLog.ts.asc(), SmartFillRunLog.id.asc())
+        )
+    ).scalars().all()
+    return {
+        "ok": True,
+        "runId": run.run_id,
+        "status": run.status,
+        "summary": run.summary_json if isinstance(run.summary_json, dict) else {},
+        "logs": [
+            {
+                "stage": row.stage,
+                "severity": row.severity,
+                "scope": row.scope,
+                "message": row.message,
+                "fieldId": row.field_id,
+                "payload": row.payload_json if isinstance(row.payload_json, dict) else {},
+                "ts": row.ts.isoformat() if isinstance(row.ts, datetime) else str(row.ts),
+            }
+            for row in logs
+        ],
+    }
+
+
+@router.post("/smart-fill/map")
+async def smart_fill_map(data: SmartFillMapRequest, db: AsyncSession = Depends(get_db)):
+    """
+    后端 AI 通道：仅返回字段映射建议，不执行任何 DOM 写入。
+    """
+    fields = data.fields or []
+    run_id = _new_smartfill_run_id()
+    await _ensure_smartfill_run(db, run_id, status="running")
+    await db.commit()
+    if len(fields) == 0:
+        return {"ok": True, "mappings": [], "runId": run_id}
+
+    profile_payload: dict[str, Any]
+    if isinstance(data.profile, dict) and data.profile:
+        profile_payload = data.profile
+    else:
+        profile = await _get_or_create_default_profile(db)
+        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
+        if profile.base_info_json != normalized_base_info:
+            profile.base_info_json = normalized_base_info
+            await db.commit()
+        profile, roles, sections = await _load_profile_bundle(db, profile.id)
+        profile_payload = _serialize_profile(profile, roles, sections)
+
+    if data.catalog:
+        public_catalog = _sanitize_smartfill_catalog(data.catalog)
+        private_catalog = []
+        value_by_path: dict[str, str] = {}
+        for row in data.profileValues:
+            if isinstance(row, dict):
+                path = str(row.get("path") or row.get("key") or "").strip()
+                value = str(row.get("value") or "").strip()
+                if path and value:
+                    value_by_path[path] = value
+        for row in public_catalog:
+            with_value = dict(row)
+            if with_value["path"] in value_by_path:
+                with_value["value"] = value_by_path[with_value["path"]]
+            private_catalog.append(with_value)
+    else:
+        private_catalog = _build_smartfill_catalog_from_profile(profile_payload)
+        public_catalog = [{key: value for key, value in item.items() if key != "value"} for item in private_catalog]
+
+    prompt = (
+        "你是招聘表单字段映射助手。"
+        "请严格输出 JSON：{\"mappings\":[{\"fieldId\":\"...\",\"profilePath\":\"...\",\"catalogKey\":\"...\",\"confidence\":0-1,\"transform\":{\"type\":\"none\"},\"reason\":\"...\"}]}。"
+        "只能从 catalog 中选择已有 path/key，不要输出用户真实值，不要编造。"
+        "如果字段语义不明确，宁可不返回映射。"
+    )
+
+    try:
+        llm_result = await chat_completion(
+            messages=[
+                {"role": "system", "content": prompt},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "fields": [item.model_dump() for item in fields],
+                            "catalog": public_catalog,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            temperature=0.1,
+            json_mode=True,
+            max_tokens=1200,
+            tier="fast",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"AI 映射失败: {exc}") from exc
+
+    parsed = extract_json(llm_result or "")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="AI 映射返回格式异常")
+
+    mappings = _sanitize_ai_mappings(parsed, fields, private_catalog)
+    run = (
+        await db.execute(
+            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if run:
+        run.status = "success"
+        run.summary_json = {
+            "mappingCount": len(mappings),
+            "fieldCount": len(fields),
+        }
+    await db.commit()
+    return {"ok": True, "mappings": mappings, "runId": run_id}
+
+
+@router.post("/smart-fill/option-match")
+async def smart_fill_option_match(data: SmartFillOptionMatchRequest):
+    from app.services.option_matcher import option_match
+
+    result = option_match(
+        candidates=data.candidates,
+        resume_value=data.resume_value,
+        level1_title=data.level1_title,
+        level2_title=data.level2_title,
+    )
+
+    if result["matchType"] == "NONE" and data.candidates and data.resume_value:
+        try:
+            ai_result = await _ai_option_match(
+                candidates=data.candidates,
+                resume_value=data.resume_value,
+                level1_title=data.level1_title,
+                level2_title=data.level2_title,
+            )
+            if ai_result:
+                return ai_result
+        except Exception:
+            pass
+
+    return {"ok": True, **result}
+
+
+@router.post("/smart-fill/field-map")
+async def smart_fill_field_map(data: SmartFillFieldMapRequest, db: AsyncSession = Depends(get_db)):
+    from app.services.field_mapper import field_map
+
+    if not data.fragments:
+        return {"ok": True, "mappings": []}
+
+    archive: dict[str, Any]
+    if isinstance(data.profile, dict) and data.profile:
+        archive = data.profile
+    else:
+        profile = await _get_or_create_default_profile(db)
+        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
+        if profile.base_info_json != normalized_base_info:
+            profile.base_info_json = normalized_base_info
+            await db.commit()
+        profile, roles, sections = await _load_profile_bundle(db, profile.id)
+        profile_payload = _serialize_profile(profile, roles, sections)
+        profile_view = _smartfill_profile_view(profile_payload)
+        ra = profile_view.get("resumeArchive") or {}
+        aa = profile_view.get("applicationArchive") or {}
+        basic = profile_view.get("basic") or {}
+        if not ra.get("basicInfo"):
+            ra["basicInfo"] = {
+                "name": basic.get("fullName", ""),
+                "phone": basic.get("phone", ""),
+                "email": basic.get("email", ""),
+                "currentCity": basic.get("city", ""),
+                "jobIntention": basic.get("targetRole", ""),
+                "website": basic.get("website", ""),
+                "github": basic.get("github", ""),
+            }
+        if not ra.get("personalSummary") and basic.get("summary"):
+            ra["personalSummary"] = basic["summary"]
+        archive = {"resumeArchive": ra, "applicationArchive": aa}
+
+    fragments = [f.model_dump() for f in data.fragments]
+    mappings = field_map(fragments, archive)
+
+    return {"ok": True, "mappings": mappings}
+
+
+@router.post("/smart-fill/module-count")
+async def smart_fill_module_count(data: SmartFillModuleCountRequest, db: AsyncSession = Depends(get_db)):
+    archive: dict[str, Any]
+    if isinstance(data.profile, dict) and data.profile:
+        archive = data.profile
+    else:
+        profile = await _get_or_create_default_profile(db)
+        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
+        if profile.base_info_json != normalized_base_info:
+            profile.base_info_json = normalized_base_info
+            await db.commit()
+        profile, roles, sections = await _load_profile_bundle(db, profile.id)
+        profile_payload = _serialize_profile(profile, roles, sections)
+        profile_view = _smartfill_profile_view(profile_payload)
+        ra = profile_view.get("resumeArchive") or {}
+        aa = profile_view.get("applicationArchive") or {}
+        archive = {"resumeArchive": ra, "applicationArchive": aa}
+
+    ra = archive.get("resumeArchive", {})
+    aa = archive.get("applicationArchive", {})
+
+    repeatable_modules = [
+        ("education", "教育经历", "educationList"),
+        ("workExperiences", "工作经历", "workList"),
+        ("internshipExperiences", "实习经历", "internshipList"),
+        ("projects", "项目经历", "projectList"),
+        ("skills", "技能", "skillList"),
+        ("certificates", "证书", "certificateList"),
+        ("awards", "获奖经历", "awardList"),
+        ("personalExperiences", "个人经历", "personalExperienceList"),
+    ]
+
+    modules = []
+    modules.append({"module_name": "基本信息", "field_name": "basicInfo", "count": 1})
+    modules.append({"module_name": "身份联系", "field_name": "identityContact", "count": 1})
+    modules.append({"module_name": "求职偏好", "field_name": "jobPreference", "count": 1})
+    modules.append({"module_name": "校招专项", "field_name": "campusFields", "count": 1})
+    modules.append({"module_name": "关系合规", "field_name": "relationshipCompliance", "count": 1})
+    modules.append({"module_name": "来源推荐", "field_name": "sourceReferral", "count": 1})
+
+    for key, display_name, field_name in repeatable_modules:
+        arr = ra.get(key, [])
+        count = len(arr) if isinstance(arr, list) else 0
+        modules.append({"module_name": display_name, "field_name": field_name, "count": count})
+
+    family_members = aa.get("relationshipCompliance", {}).get("familyMembers", [])
+    if isinstance(family_members, list):
+        modules.append({"module_name": "家庭关系", "field_name": "familyMembers", "count": len(family_members)})
+
+    return {"ok": True, "modules": modules}
+
+
+async def _ai_option_match(
+    candidates: list[str],
+    resume_value: str,
+    level1_title: str,
+    level2_title: str,
+) -> Optional[dict]:
+    prompt = (
+        "你是招聘表单选项匹配助手。根据简历值和候选选项，选出最佳匹配。"
+        "严格输出 JSON: {\"value\": \"最佳选项文本\", \"confidence\": 0.9}。"
+        "如果无法匹配，输出 {\"value\": \"\", \"confidence\": 0.0}。"
+        "只从候选选项中选择，不要编造选项。"
+    )
+    user_content = json.dumps(
+        {
+            "candidates": candidates,
+            "resume_value": resume_value,
+            "level1_title": level1_title,
+            "level2_title": level2_title,
+        },
+        ensure_ascii=False,
+    )
+
+    llm_result = await chat_completion(
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.1,
+        json_mode=True,
+        max_tokens=200,
+        tier="fast",
+    )
+
+    parsed = extract_json(llm_result or "")
+    if not isinstance(parsed, dict):
+        return None
+
+    value = str(parsed.get("value") or "").strip()
+    if not value:
+        return None
+
+    for c in candidates:
+        if c.strip() == value:
+            confidence = float(parsed.get("confidence") or 0.9)
+            return {"ok": True, "value": c, "matchType": "AI", "confidence": min(1.0, max(0.0, confidence))}
+
+    best_fuzzy: Optional[dict] = None
+    best_fuzzy_len = 0
+    for c in candidates:
+        c_stripped = c.strip()
+        if value in c_stripped or c_stripped in value:
+            overlap = min(len(value), len(c_stripped))
+            if overlap > best_fuzzy_len and overlap >= max(len(value), len(c_stripped)) * 0.4:
+                best_fuzzy_len = overlap
+                confidence = float(parsed.get("confidence") or 0.9)
+                best_fuzzy = {"ok": True, "value": c, "matchType": "AI", "confidence": min(1.0, max(0.0, confidence))}
+    if best_fuzzy:
+        return best_fuzzy
+
+    return None

@@ -1,5 +1,5 @@
 import type { NormalizedResumeData } from "./templateSettings";
-import { ContactLine, HighlightText, SectionBlock, splitTwoColumnSections } from "./shared";
+import { ContactLine, HighlightText, RichSummary, SectionBlock, splitTwoColumnSections } from "./shared";
 
 export function ResumeModernTwoColumn({
   data,
@@ -25,9 +25,9 @@ export function ResumeModernTwoColumn({
           {data.summary && (
             <section className="resume-section">
               <h3 className="resume-section-title-accent">Summary</h3>
-              <p className="text-justify">
-                <HighlightText text={data.summary} keywords={highlightKeywords} />
-              </p>
+              <div className="text-justify">
+                <RichSummary data={data} keywords={highlightKeywords} />
+              </div>
             </section>
           )}
           {main.map((section) => (

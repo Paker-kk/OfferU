@@ -30,6 +30,7 @@ import {
   Key,
   Plus,
   Save,
+  Search,
   SquarePen,
   Trash2,
 } from "lucide-react";
@@ -282,6 +283,109 @@ function normalizeApiConfigsForSave(apiConfigs: LlmApiConfig[]) {
   };
 }
 
+function TestLlmButton() {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setResult(null);
+    try {
+      const API_BASE =
+        process.env.NEXT_PUBLIC_API_URL ||
+        (typeof window !== "undefined"
+          ? `${window.location.protocol}//${window.location.hostname}:8000`
+          : "http://127.0.0.1:8000");
+      const res = await fetch(`${API_BASE}/api/config/test-llm`, { method: "POST" });
+      const data = await res.json();
+      setResult({ success: data.success, message: data.message });
+    } catch (err: any) {
+      setResult({ success: false, message: `请求失败: ${err.message}` });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        size="sm"
+        className="border-2 border-white/30 bg-white/10 text-white hover:bg-white/20"
+        onPress={testConnection}
+        isLoading={testing}
+      >
+        测试连接
+      </Button>
+      {result && (
+        <span className={`text-xs ${result.success ? "text-green-300" : "text-red-300"}`}>
+          {result.message}
+        </span>
+      )}
+    </>
+  );
+}
+
+interface FetchModelsButtonProps {
+  baseUrl: string;
+  apiKey: string;
+  onModelsFetched: (models: { id: string; name: string; owned_by?: string }[]) => void;
+}
+
+function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButtonProps) {
+  const [fetching, setFetching] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const fetchModels = async () => {
+    if (!baseUrl.trim()) {
+      setMessage("请先填写接口地址");
+      return;
+    }
+    setFetching(true);
+    setMessage(null);
+    try {
+      const API_BASE =
+        process.env.NEXT_PUBLIC_API_URL ||
+        (typeof window !== "undefined"
+          ? `${window.location.protocol}//${window.location.hostname}:8000`
+          : "http://127.0.0.1:8000");
+      const res = await fetch(`${API_BASE}/api/config/fetch-models`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+      });
+      const data = await res.json();
+      if (data.success && data.models?.length > 0) {
+        setMessage(`获取到 ${data.models.length} 个模型`);
+        onModelsFetched(data.models);
+      } else {
+        setMessage(data.message || "未获取到模型");
+      }
+    } catch (err: any) {
+      setMessage(`请求失败: ${err.message}`);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        size="sm"
+        className="bauhaus-button bauhaus-button-outline !px-3 !py-2 !text-[11px]"
+        onPress={fetchModels}
+        isLoading={fetching}
+        isDisabled={!baseUrl.trim()}
+        startContent={!fetching ? <Search size={14} /> : undefined}
+      >
+        获取模型列表
+      </Button>
+      {message && (
+        <span className="text-xs font-medium text-black/60">{message}</span>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
@@ -330,6 +434,7 @@ export default function SettingsPage() {
   const [formCustomServiceName, setFormCustomServiceName] = useState("");
   const [formModelChoice, setFormModelChoice] = useState<string>("");
   const [formCustomModel, setFormCustomModel] = useState("");
+  const [fetchedModelOptions, setFetchedModelOptions] = useState<SelectOption[]>([]);
   const [formUrlChoice, setFormUrlChoice] = useState<string>("");
   const [formBaseUrl, setFormBaseUrl] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
@@ -392,12 +497,15 @@ export default function SettingsPage() {
   }, [providerPresets]);
 
   const modelSelectOptions = useMemo<SelectOption[]>(() => {
-    return formModelOptions.map((model) => ({
+    const preset = formModelOptions.map((model) => ({
       id: model.id,
       label: model.name,
       description: model.description || "",
     }));
-  }, [formModelOptions]);
+    const existingIds = new Set(preset.map((o) => o.id));
+    const fetched = fetchedModelOptions.filter((o) => !existingIds.has(o.id));
+    return [...preset, ...fetched];
+  }, [formModelOptions, fetchedModelOptions]);
 
   const urlSelectOptions = useMemo<SelectOption[]>(() => {
     const list: SelectOption[] = [];
@@ -618,6 +726,7 @@ export default function SettingsPage() {
 
   const handleProviderChoiceChange = (value: string) => {
     setFormProviderChoice(value);
+    setFetchedModelOptions([]);
     if (value === CUSTOM_OPTION) {
       setFormCustomServiceName(resolvedFormServiceName);
       setFormModelChoice(CUSTOM_OPTION);
@@ -930,6 +1039,9 @@ export default function SettingsPage() {
                 <span>服务商: <span className="text-white">{config.active_llm_summary.service_name}</span></span>
                 <span>模型: <span className="text-white">{config.active_llm_summary.model}</span></span>
                 <span className="truncate">地址: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
+              </div>
+              <div className="mt-3 ml-4 flex items-center gap-3">
+                <TestLlmButton />
               </div>
             </div>
           )}
@@ -1401,6 +1513,26 @@ export default function SettingsPage() {
                 </AutocompleteItem>
               ))}
             </Autocomplete>
+
+            <div className="flex items-center gap-2 md:col-span-2">
+              <FetchModelsButton
+                baseUrl={formUrlChoice === CUSTOM_OPTION ? formBaseUrl : resolvedFormBaseUrl}
+                apiKey={formApiKey}
+                onModelsFetched={(models) => {
+                  if (models.length > 0) {
+                    const options: SelectOption[] = models.map((m) => ({
+                      id: m.id,
+                      label: m.name || m.id,
+                      description: m.owned_by || "",
+                    }));
+                    setFetchedModelOptions(options);
+                    setFormModelChoice(models[0].id);
+                    setFormCustomModel("");
+                  }
+                }}
+              />
+              <span className="text-xs text-black/45">根据接口地址和密钥获取可用模型列表</span>
+            </div>
 
             <Autocomplete
               label="接口地址选择"

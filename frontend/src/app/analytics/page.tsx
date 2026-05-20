@@ -7,7 +7,7 @@ import { Hash, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { useWeeklyReport, useJobTrend } from "@/lib/hooks";
 import { TrendChart } from "@/components/charts/TrendChart";
 
-const COLORS = ["#D02020", "#1040C0", "#F0C020", "#121212", "#2E6B4A", "#C84D16", "#7C3EBD"];
+const COLORS = ["#c95548", "#6f8396", "#e4c46a", "#121212", "#7a8f7e", "#C84D16", "#7C3EBD"];
 
 const container = {
   hidden: { opacity: 0 },
@@ -42,7 +42,7 @@ export default function AnalyticsPage() {
       title: "本周新增",
       value: `${thisWeek?.total ?? 0} 条`,
       note: "最近 7 天采集到的新岗位总量。",
-      surface: "bg-[#D02020] text-white",
+      surface: "bg-[#e4ece6] text-black",
       accent: "bg-white text-black",
       change: totalChange,
     },
@@ -51,8 +51,8 @@ export default function AnalyticsPage() {
       title: "上周新增",
       value: `${lastWeek?.total ?? 0} 条`,
       note: "上一时间窗口的对照数据。",
-      surface: "bg-[#1040C0] text-white",
-      accent: "bg-[#F0C020] text-black",
+      surface: "bg-[#f3ead2] text-black",
+      accent: "bg-white text-black",
       change: 0,
     },
     {
@@ -60,7 +60,7 @@ export default function AnalyticsPage() {
       title: "来源数量",
       value: `${report?.source_distribution?.length ?? 0} 个`,
       note: "当前参与周报统计的数据源。",
-      surface: "bg-[#F0C020] text-black",
+      surface: "bg-[#f7ece9] text-black",
       accent: "bg-white text-black",
       change: 0,
     },
@@ -76,7 +76,7 @@ export default function AnalyticsPage() {
       <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">渠道周报</span>
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">渠道周报</span>
             <div>
               <p className="bauhaus-label text-black/55">分析中心</p>
               <h1 className="mt-3 text-4xl font-black leading-tight text-black sm:text-5xl">
@@ -118,9 +118,9 @@ export default function AnalyticsPage() {
 
       <motion.section variants={item} className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-          <CardHeader className="border-b-2 border-black bg-[#1040C0] px-6 py-5 text-white">
+          <CardHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-black">
             <div>
-              <p className="bauhaus-label text-white/70">趋势报告</p>
+              <p className="bauhaus-label text-black/55">趋势报告</p>
               <h2 className="mt-2 text-3xl font-black">采集趋势</h2>
             </div>
           </CardHeader>
@@ -130,9 +130,9 @@ export default function AnalyticsPage() {
         </Card>
 
         <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-          <CardHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-black">
+          <CardHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-black">
             <div>
-              <p className="bauhaus-label text-black/60">来源结构</p>
+              <p className="bauhaus-label text-black/55">来源结构</p>
               <h2 className="mt-2 text-3xl font-black">来源分布</h2>
             </div>
           </CardHeader>
@@ -161,9 +161,9 @@ export default function AnalyticsPage() {
 
       <motion.section variants={item}>
         <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-          <CardHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-white">
+          <CardHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-black">
             <div>
-              <p className="bauhaus-label text-white/70">高频词</p>
+              <p className="bauhaus-label text-black/55">高频词</p>
               <h2 className="mt-2 text-3xl font-black">热门关键词</h2>
             </div>
           </CardHeader>
@@ -177,9 +177,9 @@ export default function AnalyticsPage() {
                   startContent={<Hash size={10} />}
                   className={`border-2 border-black text-[11px] font-semibold ${
                     index % 3 === 0
-                      ? "bg-[#1040C0] text-white"
+                      ? "bg-[#6f8396] text-white"
                       : index % 3 === 1
-                        ? "bg-[#F0C020] text-black"
+                        ? "bg-[#e4c46a] text-black"
                         : "bg-white text-black"
                   }`}
                 >
@@ -187,7 +187,7 @@ export default function AnalyticsPage() {
                 </Chip>
               ))}
               {(!report?.top_keywords || report.top_keywords.length === 0) && (
-                <div className="bauhaus-panel-sm bg-[#F0F0F0] px-4 py-4 text-sm font-medium text-black/60">
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium text-black/60">
                   暂无数据，等周报聚合后这里会出现关键词热度。
                 </div>
               )}

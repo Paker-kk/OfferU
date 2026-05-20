@@ -791,3 +791,169 @@ async def boss_cookie_status():
             ", key fields look good" if "wt2" in cookie else ", but wt2 is missing"
         ),
     }
+
+
+@router.post("/test-llm")
+async def test_llm_connection():
+    import httpx
+    from app.agents.llm import _get_client
+
+    settings = get_settings()
+    provider = settings.llm_provider
+    model = settings.llm_model
+
+    try:
+        client, resolved_model = _get_client()
+        base_url = str(client.base_url)
+        api_key = client.api_key
+    except ValueError as exc:
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": str(exc),
+        }
+
+    if not api_key or (isinstance(api_key, str) and api_key in _PLACEHOLDER_API_KEYS):
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": "API Key 未配置或仍为占位符，请先在设置中填写有效的 API Key。",
+        }
+
+    test_url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 5,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(test_url, json=payload, headers=headers)
+
+        if resp.status_code == 200:
+            body = resp.json()
+            model_used = body.get("model", model)
+            return {
+                "success": True,
+                "provider": provider,
+                "model": model_used,
+                "message": f"连接成功！模型 {model_used} 可正常使用。",
+            }
+
+        try:
+            err_body = resp.json()
+            err_msg = err_body.get("error", {}).get("message", "") or err_body.get("message", "")
+        except Exception:
+            err_msg = resp.text[:200]
+
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": f"API 返回错误 ({resp.status_code}): {err_msg}",
+        }
+    except httpx.ConnectError:
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": f"无法连接到 {base_url}，请检查 Base URL 是否正确以及网络是否畅通。",
+        }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": f"连接超时 ({base_url})，请检查网络或更换 Base URL。",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "message": f"检测失败: {exc}",
+        }
+
+
+class FetchModelsRequest(BaseModel):
+    base_url: str = Field(..., min_length=1)
+    api_key: str = Field(default="")
+
+
+@router.post("/fetch-models")
+async def fetch_models(body: FetchModelsRequest):
+    import httpx
+
+    base_url = body.base_url.rstrip("/")
+    api_key = body.api_key
+
+    models_url = f"{base_url}/models"
+    headers: dict = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(models_url, headers=headers)
+
+        if resp.status_code != 200:
+            try:
+                err_body = resp.json()
+                err_msg = err_body.get("error", {}).get("message", "") or err_body.get("message", "")
+            except Exception:
+                err_msg = resp.text[:200]
+            return {
+                "success": False,
+                "models": [],
+                "message": f"获取模型列表失败 ({resp.status_code}): {err_msg}",
+            }
+
+        data = resp.json()
+        raw_models = data.get("data", [])
+        if not isinstance(raw_models, list):
+            raw_models = []
+
+        model_list = []
+        for m in raw_models:
+            if not isinstance(m, dict):
+                continue
+            model_id = m.get("id", "")
+            if model_id:
+                model_list.append({
+                    "id": model_id,
+                    "name": m.get("name") or model_id,
+                    "owned_by": m.get("owned_by", ""),
+                })
+
+        model_list.sort(key=lambda x: x["id"])
+
+        return {
+            "success": True,
+            "models": model_list,
+            "message": f"获取到 {len(model_list)} 个模型",
+        }
+    except httpx.ConnectError:
+        return {
+            "success": False,
+            "models": [],
+            "message": f"无法连接到 {base_url}，请检查 Base URL 是否正确。",
+        }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "models": [],
+            "message": f"连接超时 ({base_url})，请检查网络。",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "models": [],
+            "message": f"获取失败: {exc}",
+        }

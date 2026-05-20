@@ -1,5 +1,5 @@
 import type { ProfileData, ProfileSection } from "@/lib/hooks";
-import { descriptionLinesToPlainText, splitBullets } from "@/lib/resumeText";
+import { descriptionLinesToPlainText, splitBullets, textFromHtml } from "@/lib/resumeText";
 
 export type ArchiveTab = "resume" | "application";
 
@@ -23,7 +23,7 @@ export interface ResumeEducationItem {
   endDate: string;
   gpa: string;
   relatedCourses: string[];
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumeWorkItem {
@@ -33,7 +33,7 @@ export interface ResumeWorkItem {
   positionName: string;
   startDate: string;
   endDate: string;
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumeInternshipItem {
@@ -42,7 +42,7 @@ export interface ResumeInternshipItem {
   positionName: string;
   startDate: string;
   endDate: string;
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumeProjectItem {
@@ -52,7 +52,7 @@ export interface ResumeProjectItem {
   startDate: string;
   endDate: string;
   projectLink: string;
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumeSkillItem {
@@ -75,7 +75,7 @@ export interface ResumeAwardItem {
   awardName: string;
   issuer: string;
   awardedAt: string;
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumePersonalExperienceItem {
@@ -83,7 +83,7 @@ export interface ResumePersonalExperienceItem {
   experienceTitle: string;
   startDate: string;
   endDate: string;
-  descriptions: string[];
+  description: string;
 }
 
 export interface ResumeArchive {
@@ -333,9 +333,16 @@ function cloneArchive(archive: PersonalArchive): PersonalArchive {
   return JSON.parse(JSON.stringify(archive)) as PersonalArchive;
 }
 
-function normalizeDescriptions(value: unknown): string[] {
-  const list = Array.isArray(value) ? value.flatMap((item) => splitBullets(asString(item))) : splitBullets(asString(value));
-  return list.length > 0 ? list : [""];
+function normalizeDescription(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const lines = value.map((item) => asString(item).trim()).filter(Boolean);
+    if (lines.length === 0) return "";
+    if (lines.length === 1) return `<p>${lines[0]}</p>`;
+    return `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
+  }
+  const text = asString(value).trim();
+  return text ? `<p>${text}</p>` : "";
 }
 
 function createEmptyEducation(): ResumeEducationItem {
@@ -349,7 +356,7 @@ function createEmptyEducation(): ResumeEducationItem {
     endDate: "",
     gpa: "",
     relatedCourses: [],
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -361,7 +368,7 @@ function createEmptyWork(): ResumeWorkItem {
     positionName: "",
     startDate: "",
     endDate: "",
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -372,7 +379,7 @@ function createEmptyInternship(): ResumeInternshipItem {
     positionName: "",
     startDate: "",
     endDate: "",
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -384,7 +391,7 @@ function createEmptyProject(): ResumeProjectItem {
     startDate: "",
     endDate: "",
     projectLink: "",
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -413,7 +420,7 @@ function createEmptyAward(): ResumeAwardItem {
     awardName: "",
     issuer: "",
     awardedAt: "",
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -423,7 +430,7 @@ function createEmptyPersonalExperience(): ResumePersonalExperienceItem {
     experienceTitle: "",
     startDate: "",
     endDate: "",
-    descriptions: [""],
+    description: "",
   };
 }
 
@@ -604,7 +611,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
         endDate: asString(normalized.end_date),
         gpa: asString(normalized.gpa),
         relatedCourses: asStringList(normalized.related_courses),
-        descriptions: normalizeDescriptions(normalized.description || sectionText(section)),
+        description: normalizeDescription(normalized.description || sectionText(section)),
       });
       continue;
     }
@@ -617,7 +624,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
           positionName: asString(normalized.position),
           startDate: asString(normalized.start_date),
           endDate: asString(normalized.end_date),
-          descriptions: normalizeDescriptions(normalized.description || sectionText(section)),
+          description: normalizeDescription(normalized.description || sectionText(section)),
         });
       } else {
         resumeArchive.workExperiences?.push({
@@ -627,7 +634,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
           positionName: asString(normalized.position),
           startDate: asString(normalized.start_date),
           endDate: asString(normalized.end_date),
-          descriptions: normalizeDescriptions(normalized.description || sectionText(section)),
+          description: normalizeDescription(normalized.description || sectionText(section)),
         });
       }
       continue;
@@ -641,7 +648,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
         startDate: asString(normalized.start_date),
         endDate: asString(normalized.end_date),
         projectLink: asString(normalized.url),
-        descriptions: normalizeDescriptions(normalized.description || sectionText(section)),
+        description: normalizeDescription(normalized.description || sectionText(section)),
       });
       continue;
     }
@@ -685,7 +692,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
         awardName: title || "获奖经历",
         issuer: "",
         awardedAt: "",
-        descriptions: normalizeDescriptions(sectionText(section)),
+        description: normalizeDescription(sectionText(section)),
       });
       continue;
     }
@@ -695,7 +702,7 @@ function buildFromLegacySections(sections: ProfileSection[]): Partial<ResumeArch
       experienceTitle: title || "个人经历",
       startDate: "",
       endDate: "",
-      descriptions: normalizeDescriptions(sectionText(section)),
+      description: normalizeDescription(sectionText(section)),
     });
   }
 
@@ -723,37 +730,49 @@ function normalizeResumeArchiveCandidate(value: unknown): ResumeArchive {
     },
     personalSummary: asString(source.personalSummary),
     education: Array.isArray(source.education)
-      ? source.education.map((item) => ({
-          ...createEmptyEducation(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("edu"),
-          relatedCourses: asStringList((item as any)?.relatedCourses),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.education.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyEducation(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("edu"),
+            relatedCourses: asStringList((item as any)?.relatedCourses),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
     workExperiences: Array.isArray(source.workExperiences)
-      ? source.workExperiences.map((item) => ({
-          ...createEmptyWork(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("work"),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.workExperiences.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyWork(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("work"),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
     internshipExperiences: Array.isArray(source.internshipExperiences)
-      ? source.internshipExperiences.map((item) => ({
-          ...createEmptyInternship(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("intern"),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.internshipExperiences.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyInternship(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("intern"),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
     projects: Array.isArray(source.projects)
-      ? source.projects.map((item) => ({
-          ...createEmptyProject(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("proj"),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.projects.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyProject(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("proj"),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
     skills: Array.isArray(source.skills)
       ? source.skills.map((item) => ({
@@ -770,20 +789,26 @@ function normalizeResumeArchiveCandidate(value: unknown): ResumeArchive {
         }))
       : [],
     awards: Array.isArray(source.awards)
-      ? source.awards.map((item) => ({
-          ...createEmptyAward(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("award"),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.awards.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyAward(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("award"),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
     personalExperiences: Array.isArray(source.personalExperiences)
-      ? source.personalExperiences.map((item) => ({
-          ...createEmptyPersonalExperience(),
-          ...(item || {}),
-          id: asString((item as any)?.id) || createId("personal"),
-          descriptions: normalizeDescriptions((item as any)?.descriptions ?? (item as any)?.description),
-        }))
+      ? source.personalExperiences.map((item) => {
+          const { descriptions: _old, ...rest } = item || {};
+          return {
+            ...createEmptyPersonalExperience(),
+            ...rest,
+            id: asString((item as any)?.id) || createId("personal"),
+            description: normalizeDescription((item as any)?.description || _old),
+          };
+        })
       : [],
   };
 }
@@ -964,10 +989,6 @@ export function normalizePersonalArchiveFromProfile(profileData: ProfileData | n
 
 function countNonEmpty(values: string[]): number {
   return values.map((item) => asString(item).trim()).filter(Boolean).length;
-}
-
-function hasAnyText(values: string[]): boolean {
-  return values.some((item) => asString(item).trim().length > 0);
 }
 
 export function computeArchiveCompleteness(archive: PersonalArchive): ArchiveCompletenessMetrics {
@@ -1213,7 +1234,7 @@ function buildSection(
       normalized,
       bullet: listToBullet([
         title,
-        asString(normalized.description),
+        textFromHtml(asString(normalized.description)),
       ]),
     },
     source: "manual",
@@ -1243,7 +1264,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
           start_date: item.startDate,
           end_date: item.endDate,
           gpa: item.gpa,
-          description: listToBullet(item.descriptions),
+          description: item.description,
         },
         updatedAt,
         sortOrder
@@ -1266,7 +1287,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
           position: item.positionName,
           start_date: item.startDate,
           end_date: item.endDate,
-          description: listToBullet(item.descriptions),
+          description: item.description,
         },
         updatedAt,
         sortOrder
@@ -1288,7 +1309,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
           position: item.positionName,
           start_date: item.startDate,
           end_date: item.endDate,
-          description: listToBullet(item.descriptions),
+          description: item.description,
         },
         updatedAt,
         sortOrder
@@ -1311,7 +1332,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
           url: item.projectLink,
           start_date: item.startDate,
           end_date: item.endDate,
-          description: listToBullet(item.descriptions),
+          description: item.description,
         },
         updatedAt,
         sortOrder
@@ -1319,19 +1340,28 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
     );
   }
 
+  const skillGroups = new Map<string, { names: string[]; remarks: string[] }>();
   for (const item of archive.skills) {
+    const key = asString(item.proficiency) || "技能";
+    if (!skillGroups.has(key)) skillGroups.set(key, { names: [], remarks: [] });
+    const name = asString(item.skillName);
+    if (name) skillGroups.get(key)!.names.push(name);
+    const remark = asString(item.remark);
+    if (remark) skillGroups.get(key)!.remarks.push(remark);
+  }
+  for (const [proficiency, group] of skillGroups) {
     const sortOrder = index++;
     sections.push(
       buildSection(
-        toSyntheticSectionId(`skill-${item.id}`, sortOrder),
+        toSyntheticSectionId(`skill-${proficiency}`, sortOrder),
         "skill",
         "skill",
         "技能与证书",
-        item.skillName || "技能",
+        proficiency,
         {
-          category: item.proficiency || "技能",
-          items: [item.skillName].filter(Boolean),
-          description: item.remark,
+          category: proficiency,
+          items: group.names,
+          description: group.remarks.length > 0 ? group.remarks.join("\n") : "",
         },
         updatedAt,
         sortOrder
@@ -1371,7 +1401,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
         "获奖经历",
         item.awardName || "获奖经历",
         {
-          description: listToBullet(item.descriptions),
+          description: item.description,
           issuer: item.issuer,
           date: item.awardedAt,
         },
@@ -1393,7 +1423,7 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
         {
           start_date: item.startDate,
           end_date: item.endDate,
-          description: listToBullet(item.descriptions),
+          description: item.description,
         },
         updatedAt,
         sortOrder
@@ -1407,18 +1437,45 @@ function buildResumeArchiveSyntheticSections(archive: ResumeArchive, updatedAt: 
 export function buildProfileSectionsForResumeImport(profileData: ProfileData | null | undefined): ProfileSection[] {
   const sections = (profileData?.sections || []).slice();
   const base = profileData?.base_info_json || {};
-  const personalArchive = base.personal_archive as PersonalArchive | undefined;
-  if (!personalArchive || personalArchive.schemaVersion !== "personal.archive.v1") {
+  const rawArchive = base.personal_archive as PersonalArchive | undefined;
+  if (!rawArchive || rawArchive.schemaVersion !== "personal.archive.v1") {
     return sections;
   }
+  const resumeArchive = normalizeResumeArchiveCandidate(rawArchive.resumeArchive);
 
   const synthetic = buildResumeArchiveSyntheticSections(
-    personalArchive.resumeArchive,
-    personalArchive.updatedAt || nowIso()
+    resumeArchive,
+    rawArchive.updatedAt || nowIso()
   );
 
   if (synthetic.length === 0) return sections;
-  return synthetic;
+  if (sections.length === 0) return synthetic;
+
+  const merged: ProfileSection[] = [];
+  const seen = new Set<string>();
+
+  const pushUnique = (item: ProfileSection) => {
+    const content = item.content_json && typeof item.content_json === "object"
+      ? (item.content_json as Record<string, any>)
+      : {};
+    const normalized = content.normalized && typeof content.normalized === "object"
+      ? JSON.stringify(content.normalized)
+      : "";
+    const bullet = asString(content.bullet || "");
+    const key = [
+      asString(item.category_key || item.section_type).toLowerCase(),
+      asString(item.title || ""),
+      normalized,
+      bullet,
+    ].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  };
+
+  synthetic.forEach(pushUnique);
+  sections.forEach(pushUnique);
+  return merged;
 }
 
 function compactList<T>(items: T[], predicate: (item: T) => boolean): T[] {
@@ -1429,16 +1486,16 @@ export function sanitizePersonalArchive(archive: PersonalArchive): PersonalArchi
   const next = cloneArchive(archive);
 
   next.resumeArchive.education = compactList(next.resumeArchive.education, (item) => {
-    return !!asString(item.schoolName).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.schoolName).trim() || !!asString(item.description).trim();
   });
   next.resumeArchive.workExperiences = compactList(next.resumeArchive.workExperiences, (item) => {
-    return !!asString(item.companyName).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.companyName).trim() || !!asString(item.description).trim();
   });
   next.resumeArchive.internshipExperiences = compactList(next.resumeArchive.internshipExperiences, (item) => {
-    return !!asString(item.companyName).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.companyName).trim() || !!asString(item.description).trim();
   });
   next.resumeArchive.projects = compactList(next.resumeArchive.projects, (item) => {
-    return !!asString(item.projectName).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.projectName).trim() || !!asString(item.description).trim();
   });
   next.resumeArchive.skills = compactList(next.resumeArchive.skills, (item) => {
     return !!asString(item.skillName).trim();
@@ -1447,10 +1504,10 @@ export function sanitizePersonalArchive(archive: PersonalArchive): PersonalArchi
     return !!asString(item.certificateName).trim();
   });
   next.resumeArchive.awards = compactList(next.resumeArchive.awards, (item) => {
-    return !!asString(item.awardName).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.awardName).trim() || !!asString(item.description).trim();
   });
   next.resumeArchive.personalExperiences = compactList(next.resumeArchive.personalExperiences, (item) => {
-    return !!asString(item.experienceTitle).trim() || hasAnyText(item.descriptions);
+    return !!asString(item.experienceTitle).trim() || !!asString(item.description).trim();
   });
 
   next.applicationArchive.shared = JSON.parse(JSON.stringify(next.applicationArchive.shared));
@@ -1480,19 +1537,22 @@ export function buildAutofillProfile(archive: PersonalArchive): Record<string, a
 }
 
 /**
- * 璇ユ柟娉曚负鏈潵娴忚鍣ㄦ彃浠朵竴閿～鍏呰兘鍔涢鐣欍€? * 褰撳墠闃舵浠呭鍑烘湰鍦扮粨鏋勫寲妗ｆ鏁版嵁锛屼笉鎵ц缃戦〉濉厖銆? */
+ * 该方法为未来浏览器插件一键填充能力预留。当前阶段仅导出本地结构化档案数据，不执行网页填充。
+ */
 export function getResumeArchive(archive: PersonalArchive): ResumeArchive {
   return JSON.parse(JSON.stringify(archive.resumeArchive)) as ResumeArchive;
 }
 
 /**
- * 璇ユ柟娉曚负鏈潵娴忚鍣ㄦ彃浠朵竴閿～鍏呰兘鍔涢鐣欍€? * 褰撳墠闃舵浠呭鍑烘湰鍦扮粨鏋勫寲妗ｆ鏁版嵁锛屼笉鎵ц缃戦〉濉厖銆? */
+ * 该方法为未来浏览器插件一键填充能力预留。当前阶段仅导出本地结构化档案数据，不执行网页填充。
+ */
 export function getApplicationArchive(archive: PersonalArchive): ApplicationArchive {
   return JSON.parse(JSON.stringify(archive.applicationArchive)) as ApplicationArchive;
 }
 
 /**
- * 璇ユ柟娉曚负鏈潵娴忚鍣ㄦ彃浠朵竴閿～鍏呰兘鍔涢鐣欍€? * 褰撳墠闃舵浠呭鍑烘湰鍦扮粨鏋勫寲妗ｆ鏁版嵁锛屼笉鎵ц缃戦〉濉厖銆? */
+ * 该方法为未来浏览器插件一键填充能力预留。当前阶段仅导出本地结构化档案数据，不执行网页填充。
+ */
 export function getAutofillProfile(archive: PersonalArchive): Record<string, any> {
   return buildAutofillProfile(archive);
 }

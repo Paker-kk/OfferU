@@ -1,5 +1,5 @@
 import type { NormalizedResumeData } from "./templateSettings";
-import { ContactLine, HighlightText, SectionBlock, sortSections } from "./shared";
+import { ContactLine, HighlightText, RichSummary, SectionBlock, sortSections } from "./shared";
 
 export function ResumeSwissSingle({
   data,
@@ -23,9 +23,9 @@ export function ResumeSwissSingle({
       {data.summary && (
         <section className="resume-section">
           <h3 className="resume-section-title">Summary</h3>
-          <p className="text-justify">
-            <HighlightText text={data.summary} keywords={highlightKeywords} />
-          </p>
+          <div className="text-justify">
+            <RichSummary data={data} keywords={highlightKeywords} />
+          </div>
         </section>
       )}
       {sections.map((section) => (

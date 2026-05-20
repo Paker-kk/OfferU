@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo } from "react";
 import Link from "next/link";
@@ -49,7 +49,7 @@ export default function OptimizePage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
             <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
               <p className="bauhaus-label text-black/60">生成模式</p>
               <p className="mt-3 text-2xl font-bold">逐岗位 / 综合</p>

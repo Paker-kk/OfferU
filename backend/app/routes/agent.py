@@ -53,7 +53,7 @@ TOOL_REGISTRY: dict[str, dict] = {
         "fn": list_jobs,
         "description": "分页浏览岗位列表，支持筛选",
         "parameters": {
-            "triage_status": "str? (unscreened|screened|ignored)",
+            "triage_status": "str? (inbox|picked|ignored)",
             "pool_id": "int?",
             "keyword": "str?",
             "page": "int=1",
@@ -67,7 +67,7 @@ TOOL_REGISTRY: dict[str, dict] = {
     },
     "triage_job": {
         "fn": triage_job,
-        "description": "将岗位分拣为 screened/ignored，可分配到池",
+        "description": "将岗位分拣为 picked/ignored，可分配到池",
         "parameters": {"job_id": "int", "status": "str", "pool_id": "int?"},
     },
     "batch_triage": {

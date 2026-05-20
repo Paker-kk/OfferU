@@ -18,7 +18,7 @@ import {
   sanitizePersonalArchive,
   buildProfileBaseInfoForSave,
 } from "@/lib/personalArchive";
-import { importProfileResume, updateProfileData, useProfile } from "@/lib/hooks";
+import { importProfileResume, updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
 import ArchiveIntroCard from "./components/archive/ArchiveIntroCard";
 import ArchiveCompletenessBar from "./components/archive/ArchiveCompletenessBar";
 import ArchiveTabsHeader from "./components/archive/ArchiveTabsHeader";
@@ -26,6 +26,7 @@ import ArchiveSettingsDialog from "./components/archive/ArchiveSettingsDialog";
 import ResumeArchiveEditor from "./components/archive/ResumeArchiveEditor";
 import ApplicationArchiveEditor from "./components/archive/ApplicationArchiveEditor";
 import { ProfileOnboarding } from "./components/ProfileOnboarding";
+import AIImportModal from "./components/AIImportModal";
 
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
@@ -40,6 +41,7 @@ export default function ProfilePage() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [aiImportOpen, setAiImportOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastProfileArchiveUpdatedAtRef = useRef("");
@@ -101,7 +103,50 @@ export default function ProfilePage() {
 
   // === Import ===
   const triggerImport = () => {
-    fileInputRef.current?.click();
+    setAiImportOpen(true);
+  };
+
+  const handleAiImport = (result: ProfileImportResult) => {
+    const importedBase = result.base_info || {};
+    const importedBaseInfo = {
+      ...(profile?.base_info_json || {}),
+      personal_archive: undefined,
+      ...importedBase,
+    };
+    const rawArchive = normalizePersonalArchiveFromProfile({
+      ...profile,
+      name: importedBase.name || profile?.name || "",
+      base_info_json: importedBaseInfo,
+      sections: result.bullets?.map((b: any) => ({
+        ...b,
+        category_key: b.section_type,
+        category_label: "",
+        title: b.title || "",
+        content_json: b.content_json || {},
+        confidence: b.confidence ?? 0.7,
+        source: "ai_import",
+      })) || [],
+    } as any);
+    rawArchive.resumeArchive.basicInfo = {
+      ...rawArchive.resumeArchive.basicInfo,
+      name: importedBase.name || rawArchive.resumeArchive.basicInfo.name,
+      phone: importedBase.phone || rawArchive.resumeArchive.basicInfo.phone,
+      email: importedBase.email || rawArchive.resumeArchive.basicInfo.email,
+      currentCity: importedBase.current_city || rawArchive.resumeArchive.basicInfo.currentCity,
+      jobIntention: importedBase.job_intention || rawArchive.resumeArchive.basicInfo.jobIntention,
+      website: importedBase.website || rawArchive.resumeArchive.basicInfo.website,
+      github: importedBase.github || rawArchive.resumeArchive.basicInfo.github,
+    };
+
+    const importedSummary = importedBase.summary || importedBase.personal_summary;
+    if (importedSummary && !rawArchive.resumeArchive.personalSummary) {
+      rawArchive.resumeArchive.personalSummary = importedSummary;
+    }
+
+    const syncedArchive = applyResumeToApplicationSync(rawArchive, [...SHARED_ROOT_PATHS], true).nextArchive;
+    archiveDirtyRef.current = true;
+    setArchive(syncedArchive);
+    setNotice("已导入 AI 解析结果");
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,14 +291,11 @@ export default function ProfilePage() {
       transition={{ type: "spring", damping: 18 }}
       className="space-y-5"
     >
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.docx"
-        className="hidden"
-        onChange={handleFileChange}
-        disabled={importing}
+      {/* AI Import Modal */}
+      <AIImportModal
+        open={aiImportOpen}
+        onClose={() => setAiImportOpen(false)}
+        onImport={handleAiImport}
       />
 
       {showOnboarding && (
@@ -276,7 +318,6 @@ export default function ProfilePage() {
         onImport={triggerImport}
         onSave={handleSave}
         saving={saving}
-        importing={importing}
       />
 
       <div className="bauhaus-panel-sm flex flex-col gap-3 bg-[var(--surface)] p-4 md:flex-row md:items-center md:justify-between">

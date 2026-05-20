@@ -16,7 +16,6 @@ import {
 import {
   Sparkles,
   Key,
-  Upload,
   Briefcase,
   ArrowRight,
   ArrowLeft,
@@ -27,8 +26,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
-import { createResume, updateConfig, useConfig } from "@/lib/hooks";
+import { createResume, updateConfig, useConfig, type ProfileImportResult } from "@/lib/hooks";
 import { profileApi, resumeApi } from "@/lib/api";
+import AIImportModal, { AI_IMPORT_PROMPT, parseAiImportJson } from "@/app/profile/components/AIImportModal";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -376,6 +376,12 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [resumeCreated, setResumeCreated] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [aiImportStep, setAiImportStep] = useState(0);
+  const [aiImportCopied, setAiImportCopied] = useState(false);
+  const [aiImportJsonText, setAiImportJsonText] = useState("");
+  const [aiImportError, setAiImportError] = useState("");
+  const [aiImportParsing, setAiImportParsing] = useState(false);
 
   const goNext = () => {
     setDirection(1);
@@ -791,6 +797,89 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       setUploadResult("文件解析失败，请确认上传的是有效的 PDF 或 Word 文档。");
     } finally {
       setUploadingFile(false);
+    }
+  };
+
+  const handleAiImportForWizard = async (result: ProfileImportResult) => {
+    try {
+      // 从 AI 解析结果中提取文本，创建简历
+      const baseInfo = result.base_info || {};
+      const sections = result.bullets || [];
+      const textParts: string[] = [];
+      if (baseInfo.name) textParts.push(baseInfo.name);
+      if (baseInfo.phone) textParts.push(baseInfo.phone);
+      if (baseInfo.email) textParts.push(baseInfo.email);
+      if (baseInfo.job_intention) textParts.push(`求职意向：${baseInfo.job_intention}`);
+      if (baseInfo.summary) textParts.push(baseInfo.summary);
+
+      for (const bullet of sections) {
+        const normalized = bullet.content_json?.normalized || {};
+        const values = Object.values(normalized).filter((v) => v && typeof v === "string");
+        if (values.length) textParts.push(values.join(" | "));
+      }
+
+      const rawText = textParts.join("\n");
+      const titleName = baseInfo.name || "AI 导入简历";
+
+      await createResume({
+        user_name: baseInfo.name || "待完善",
+        title: titleName,
+        raw_text: rawText,
+      });
+
+      setUploadResult("已通过 AI 导入创建简历，稍后可以继续在简历编辑器中精修。");
+      setResumeCreated(true);
+      setTimeout(goNext, 1000);
+    } catch {
+      setUploadResult("AI 导入创建简历失败，请重试或选择快速创建。");
+    }
+  };
+
+  // === 内联 AI 导入处理 ===
+  const handleCopyPromptInline = async () => {
+    try {
+      await navigator.clipboard.writeText(AI_IMPORT_PROMPT);
+      setAiImportCopied(true);
+      setTimeout(() => setAiImportCopied(false), 2000);
+      setAiImportStep(1);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = AI_IMPORT_PROMPT;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setAiImportCopied(true);
+      setTimeout(() => setAiImportCopied(false), 2000);
+      setAiImportStep(1);
+    }
+  };
+
+  const handlePasteFromClipboardInline = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setAiImportJsonText(text);
+    } catch {
+      setAiImportError("无法读取剪贴板，请手动粘贴。");
+    }
+  };
+
+  const handleConfirmAiImportInline = () => {
+    if (!aiImportJsonText.trim()) {
+      setAiImportError("请先粘贴 AI 返回的 JSON 结果。");
+      return;
+    }
+    setAiImportParsing(true);
+    setAiImportError("");
+    try {
+      const result = parseAiImportJson(aiImportJsonText);
+      handleAiImportForWizard(result);
+    } catch (err: any) {
+      setAiImportError(err.message || "解析失败，请确认 JSON 格式正确。");
+    } finally {
+      setAiImportParsing(false);
     }
   };
 
@@ -1391,14 +1480,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             onPress={() => setResumeMode("upload")}
                           >
                             <CardBody className="flex min-h-[220px] flex-col justify-between p-5">
-                              <Upload size={34} strokeWidth={2.4} />
+                              <Sparkles size={34} strokeWidth={2.4} />
                               <div>
                                 <p className="bauhaus-label text-black/55">方案二</p>
                                 <p className="mt-3 text-3xl font-bold">
-                                  上传解析
+                                  AI 导入
                                 </p>
                                 <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
-                                  导入现有 PDF 或 Word 简历，自动解析为可继续优化的初稿。
+                                  借助 AI 工具解析现有简历，快速生成结构化的简历初稿。
                                 </p>
                               </div>
                             </CardBody>
@@ -1556,16 +1645,104 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     ) : (
                       <div className="space-y-6">
                         <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
-                          <CardBody className="space-y-4 p-6 text-center">
-                            <Upload size={44} strokeWidth={2.4} className="mx-auto" />
-                            <div>
-                              <p className="text-3xl font-bold">
-                                上传简历
-                              </p>
-                              <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
-                                支持 PDF 和 Word。系统会自动解析文本并创建一份可继续编辑的草稿。
-                              </p>
+                          <CardBody className="space-y-5 p-6">
+                            <div className="flex items-center gap-3">
+                              <Sparkles size={28} strokeWidth={2.4} className="text-[var(--primary-red)]" />
+                              <p className="text-2xl font-bold">AI 导入简历</p>
                             </div>
+
+                            {/* 内联 3 步骤 */}
+                            {aiImportStep === 0 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  点击下方按钮复制提示词，然后前往 AI 工具上传简历并发送提示词。
+                                </p>
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  startContent={<Sparkles size={16} />}
+                                  onPress={handleCopyPromptInline}
+                                >
+                                  {aiImportCopied ? "已复制，进入下一步" : "复制提示词"}
+                                </Button>
+                              </div>
+                            )}
+
+                            {aiImportStep === 1 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  提示词已复制。请前往 AI 工具上传简历并发送提示词，然后复制返回的 JSON。
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {[
+                                    { name: "豆包", url: "https://www.doubao.com/chat/" },
+                                    { name: "ChatGPT", url: "https://chat.openai.com/" },
+                                    { name: "通义千问", url: "https://tongyi.aliyun.com/qianwen/" },
+                                    { name: "Kimi", url: "https://kimi.moonshot.cn/" },
+                                  ].map((tool) => (
+                                    <a
+                                      key={tool.name}
+                                      href={tool.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium text-black/70 transition hover:border-black/30 hover:text-black"
+                                    >
+                                      {tool.name}
+                                    </a>
+                                  ))}
+                                </div>
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  onPress={() => setAiImportStep(2)}
+                                >
+                                  我已复制 JSON，下一步
+                                </Button>
+                              </div>
+                            )}
+
+                            {aiImportStep === 2 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  将 AI 返回的 JSON 粘贴到下方，点击确认导入。
+                                </p>
+                                <Textarea
+                                  minRows={6}
+                                  maxRows={12}
+                                  placeholder='粘贴 AI 返回的 JSON...'
+                                  value={aiImportJsonText}
+                                  onValueChange={setAiImportJsonText}
+                                  variant="bordered"
+                                  classNames={{ inputWrapper: "border-black/20 bg-white font-mono text-sm" }}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="bauhaus-button bauhaus-button-outline flex-1"
+                                    onPress={handlePasteFromClipboardInline}
+                                  >
+                                    从剪贴板粘贴
+                                  </Button>
+                                  <Button
+                                    className="bauhaus-button bauhaus-button-outline flex-1"
+                                    onPress={() => setAiImportJsonText("")}
+                                    isDisabled={!aiImportJsonText}
+                                  >
+                                    清空
+                                  </Button>
+                                </div>
+                                {aiImportError && (
+                                  <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                                    {aiImportError}
+                                  </div>
+                                )}
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  isDisabled={!aiImportJsonText.trim()}
+                                  isLoading={aiImportParsing}
+                                  onPress={handleConfirmAiImportInline}
+                                >
+                                  确认导入
+                                </Button>
+                              </div>
+                            )}
 
                             {uploadResult && (
                               <div
@@ -1578,30 +1755,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                 {uploadResult}
                               </div>
                             )}
-
-                            <label className="inline-flex cursor-pointer">
-                              <input
-                                type="file"
-                                accept=".pdf,.docx"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                                disabled={uploadingFile}
-                              />
-                              <Button
-                                as="span"
-                                className="bauhaus-button bauhaus-button-blue pointer-events-none"
-                                isLoading={uploadingFile}
-                              >
-                                {uploadingFile ? "解析中..." : "选择文件"}
-                              </Button>
-                            </label>
                           </CardBody>
                         </Card>
 
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <Button
                             className="bauhaus-button bauhaus-button-outline"
-                            onPress={() => setResumeMode("choose")}
+                            startContent={<ArrowLeft size={16} />}
+                            onPress={() => { setResumeMode("choose"); setAiImportStep(0); }}
                           >
                             返回方式选择
                           </Button>

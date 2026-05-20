@@ -1,13 +1,12 @@
 "use client";
 
 import { Button, Card, CardBody } from "@nextui-org/react";
-import { Save, Upload } from "lucide-react";
+import { Save, Sparkles } from "lucide-react";
 
 interface ArchiveIntroCardProps {
   onImport: () => void;
   onSave: () => void;
   saving: boolean;
-  importing: boolean;
 }
 
 export default function ArchiveIntroCard(props: ArchiveIntroCardProps) {
@@ -23,12 +22,11 @@ export default function ArchiveIntroCard(props: ArchiveIntroCardProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           <Button
-            startContent={<Upload size={14} />}
-            isLoading={props.importing}
+            startContent={<Sparkles size={14} />}
             className="bauhaus-button bauhaus-button-outline !px-4 !py-2 !text-[11px]"
             onPress={props.onImport}
           >
-            智能导入
+            AI 导入
           </Button>
           <Button
             startContent={<Save size={14} />}

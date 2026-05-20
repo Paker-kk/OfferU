@@ -36,7 +36,7 @@ export const PROFILE_CATEGORY_DEFINITIONS = {
   },
   experience: {
     label: "工作经历",
-    resumeSectionType: "experience",
+    resumeSectionType: "workExperiences",
     fieldIds: {
       company: "experience.company_name",
       position: "experience.position_title",
@@ -47,7 +47,7 @@ export const PROFILE_CATEGORY_DEFINITIONS = {
   },
   project: {
     label: "项目经历",
-    resumeSectionType: "project",
+    resumeSectionType: "projects",
     fieldIds: {
       name: "project.name",
       role: "project.role",
@@ -59,7 +59,7 @@ export const PROFILE_CATEGORY_DEFINITIONS = {
   },
   skill: {
     label: "技能清单",
-    resumeSectionType: "skill",
+    resumeSectionType: "skills",
     fieldIds: {
       category: "skill.category",
       items: "skill.items",
@@ -67,7 +67,7 @@ export const PROFILE_CATEGORY_DEFINITIONS = {
   },
   certificate: {
     label: "证书资质",
-    resumeSectionType: "skill",
+    resumeSectionType: "certificates",
     fieldIds: {
       name: "certificate.name",
       scoreOrLevel: "certificate.score_or_level",
@@ -567,24 +567,37 @@ export function parseProfileSectionDraft(section: ProfileSectionLike): ProfileSe
 
 export function mapProfileSectionToResumeType(sectionType: string):
   | "education"
-  | "experience"
-  | "project"
-  | "skill"
-  | "custom" {
+  | "workExperiences"
+  | "internshipExperiences"
+  | "projects"
+  | "skills"
+  | "certificates"
+  | "awards"
+  | "personalExperiences" {
   const key = normalizeProfileCategoryKey(sectionType);
+  if (key === "custom:c_internship") return "internshipExperiences";
+  if (key === "custom:c_awards") return "awards";
+  if (key === "custom:c_personal") return "personalExperiences";
   if (key in PROFILE_CATEGORY_DEFINITIONS) {
     return PROFILE_CATEGORY_DEFINITIONS[key as BuiltinProfileCategoryKey].resumeSectionType as
       | "education"
-      | "experience"
-      | "project"
-      | "skill";
+      | "workExperiences"
+      | "projects"
+      | "skills"
+      | "certificates";
   }
-  return "custom";
+  return "personalExperiences";
 }
 
 export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Record<string, any> {
   const key = normalizeProfileCategoryKey(section.category_key || section.section_type);
   const draft = parseProfileSectionDraft(section);
+  const normalized = getNormalized(section.content_json || {});
+  const sourceMeta = {
+    _source_profile_section_id: section.id,
+    _source_profile_updated_at: asString(section.updated_at),
+    _source_profile_category_key: key,
+  };
 
   if (key === "education") {
     const d = draft as Extract<ProfileSectionDraft, { school: string }>;
@@ -596,9 +609,7 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
       startDate: asString(d.startDate),
       endDate: asString(d.endDate),
       description: asString(d.description),
-      _source_profile_section_id: section.id,
-      _source_profile_updated_at: asString(section.updated_at),
-      _source_profile_category_key: key,
+      ...sourceMeta,
     };
   }
 
@@ -610,9 +621,18 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
       startDate: asString(d.startDate),
       endDate: asString(d.endDate),
       description: asString(d.description),
-      _source_profile_section_id: section.id,
-      _source_profile_updated_at: asString(section.updated_at),
-      _source_profile_category_key: key,
+      ...sourceMeta,
+    };
+  }
+
+  if (key === "custom:c_internship") {
+    return {
+      company: asString(normalized.company || section.title),
+      position: asString(normalized.position),
+      startDate: asString(normalized.start_date || normalized.startDate),
+      endDate: asString(normalized.end_date || normalized.endDate),
+      description: asString(normalized.description),
+      ...sourceMeta,
     };
   }
 
@@ -625,46 +645,49 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
       startDate: asString(d.startDate),
       endDate: asString(d.endDate),
       description: asString(d.description),
-      _source_profile_section_id: section.id,
-      _source_profile_updated_at: asString(section.updated_at),
-      _source_profile_category_key: key,
+      ...sourceMeta,
     };
   }
 
   if (key === "skill") {
     const d = draft as Extract<ProfileSectionDraft, { itemsText: string }>;
     return {
-      _entryType: "skill",
       category: asString(d.category || section.title || "技能"),
       items: asStringList(d.itemsText),
-      _source_profile_section_id: section.id,
-      _source_profile_updated_at: asString(section.updated_at),
-      _source_profile_category_key: key,
+      remark: asString(normalized.description || normalized.remark),
+      ...sourceMeta,
     };
   }
 
   if (key === "certificate") {
     const d = draft as Extract<ProfileSectionDraft, { issuer: string; date: string; scoreOrLevel: string }>;
     return {
-      _entryType: "certificate",
       name: asString(d.name || section.title),
       scoreOrLevel: asString(d.scoreOrLevel),
       issuer: asString(d.issuer),
       date: asString(d.date),
       url: asString(d.url),
-      _source_profile_section_id: section.id,
-      _source_profile_updated_at: asString(section.updated_at),
-      _source_profile_category_key: key,
+      ...sourceMeta,
     };
   }
 
-  const d = draft as Extract<ProfileSectionDraft, { subtitle: string; highlightsText: string }>;
+  if (key === "custom:c_awards") {
+    return {
+      awardName: asString(section.title || normalized.name || normalized.subtitle),
+      issuer: asString(normalized.issuer),
+      awardedAt: asString(normalized.date || normalized.awardedAt),
+      description: asString(normalized.description),
+      ...sourceMeta,
+    };
+  }
+
+  const d = draft as Extract<ProfileSectionDraft, { subtitle: string; description: string }>;
   return {
-    subtitle: asString(d.subtitle || section.title),
-    description: asString(d.description),
-    _source_profile_section_id: section.id,
-    _source_profile_updated_at: asString(section.updated_at),
-    _source_profile_category_key: key,
+    experienceTitle: asString(d.subtitle || section.title),
+    startDate: asString(normalized.start_date || normalized.startDate),
+    endDate: asString(normalized.end_date || normalized.endDate),
+    description: asString(d.description || normalized.description),
+    ...sourceMeta,
   };
 }
 

@@ -101,7 +101,7 @@ class ResumeUpdate(BaseModel):
 
 class SectionCreate(BaseModel):
     """创建段落的请求体"""
-    section_type: str  # education / experience / skill / project / certificate / custom
+    section_type: str  # education / workExperiences / internshipExperiences / projects / skills / certificates / awards / personalExperiences
     title: str = ""
     sort_order: int = 0
     visible: bool = True
@@ -327,11 +327,11 @@ async def create_resume(data: ResumeCreate, db: AsyncSession = Depends(get_db)):
             title="教育经历", sort_order=0, content_json=[],
         ),
         ResumeSection(
-            resume_id=resume.id, section_type="experience",
+            resume_id=resume.id, section_type="workExperiences",
             title="工作经历", sort_order=1, content_json=[],
         ),
         ResumeSection(
-            resume_id=resume.id, section_type="skill",
+            resume_id=resume.id, section_type="skills",
             title="技能", sort_order=2, content_json=[],
         ),
     ]
@@ -752,8 +752,8 @@ async def resolve_logo(
 #   5. StreamingResponse 返回二进制流
 # =============================================
 
-# 默认 HTML 模板：双栏专业简历（左侧深色栏 + 右侧主内容）
-# 使用 CSS 变量实现样式可调，并与前端预览视觉保持一致
+# 默认 HTML 模板：Reference 风格（照片+姓名+校徽三栏头部，黑色正文横线分区）
+# 与前端 ResumeReference 模板视觉一致，用于 WeasyPrint/ReportLab fallback
 DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
 <html>
 <head>
@@ -775,12 +775,11 @@ DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
         margin: 0;
     }
 
-    html,
-    body {
+    html, body {
         margin: 0;
         padding: 0;
-        width: 100%%;
-        height: 100%%;
+        width: 100%;
+        height: 100%;
         background: #ffffff;
     }
 
@@ -788,285 +787,329 @@ DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
         font-family: var(--font-family);
         font-size: var(--body-size);
         line-height: var(--line-height);
-        color: #1f1f1f;
+        color: #000000;
         background: #ffffff;
     }
 
     .page {
-        width: 100%%;
+        width: 210mm;
         min-height: 297mm;
-        display: flex;
-    }
-
-    .sidebar {
-        width: 32%%;
-        flex-shrink: 0;
-        background: var(--primary-color);
-        color: #ffffff;
-        padding: 22pt 16pt;
+        padding: var(--page-margin);
         box-sizing: border-box;
-        min-height: 297mm;
     }
 
-    .photo-wrap {
-        text-align: center;
-        margin-top: 2pt;
-    }
-
-    .photo-wrap img {
-        width: 72px;
-        height: 72px;
-        border-radius: 50%%;
-        object-fit: cover;
-        border: 2px solid rgba(255, 255, 255, 0.28);
-    }
-
-    .photo-fallback {
-        width: 72px;
-        height: 72px;
-        border-radius: 50%%;
-        border: 2px dashed rgba(255, 255, 255, 0.28);
-        color: rgba(255, 255, 255, 0.35);
-        margin: 0 auto;
+    /* ── Header: photo + name/contact + logo ── */
+    .header {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        font-weight: 500;
+        align-items: flex-start;
+        min-height: 30mm;
+        margin-bottom: 6mm;
+    }
+
+    .photo-slot {
+        flex-shrink: 0;
+        width: 23mm;
+        min-height: 30mm;
+        margin-right: 2mm;
+    }
+
+    .photo-slot img {
+        display: block;
+        width: 23mm;
+        height: 30mm;
+        object-fit: cover;
+        object-position: center top;
+    }
+
+    .identity {
+        flex: 1;
+        min-width: 0;
     }
 
     .name {
-        margin-top: 8pt;
-        text-align: center;
-        font-size: 16pt;
-        font-weight: 700;
-        letter-spacing: 1px;
+        font-size: 20pt;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.05;
+        margin: 0 0 4mm;
+        color: #000000;
     }
 
-    .sidebar-title {
-        margin-top: 14pt;
-        margin-bottom: 5pt;
-        padding-bottom: 3pt;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        font-size: max(8pt, calc(var(--heading-size) - 1pt));
-        letter-spacing: 1px;
-        font-weight: 700;
+    .contact-lines {
+        font-size: 11.5pt;
+        font-weight: 400;
+        line-height: 1.38;
+        color: #000000;
     }
 
-    .contact-line {
-        font-size: max(7pt, calc(var(--body-size) - 1.2pt));
-        line-height: 1.55;
-        opacity: 0.95;
-        word-break: break-all;
-        margin-bottom: 3pt;
+    .contact-lines p {
+        margin: 0;
     }
 
-    .skill-group {
-        margin-bottom: 5pt;
-    }
-
-    .skill-category {
-        font-size: max(7pt, calc(var(--body-size) - 0.8pt));
-        font-weight: 700;
-        margin-bottom: 3pt;
-        opacity: 0.9;
-    }
-
-    .skills-list {
+    .logo-slot {
+        flex-shrink: 0;
+        margin-left: 4mm;
+        max-width: 50mm;
         display: flex;
-        flex-wrap: wrap;
-        gap: 3pt;
+        align-items: flex-start;
+        justify-content: flex-end;
+        min-height: 22mm;
     }
 
-    .skill-tag {
-        display: inline-block;
-        background: rgba(255, 255, 255, 0.14);
-        color: rgba(255, 255, 255, 0.9);
-        border-radius: 3pt;
-        padding: 1pt 6pt;
-        font-size: max(6.5pt, calc(var(--body-size) - 2pt));
+    .logo-slot img {
+        display: block;
+        max-height: 18mm;
+        max-width: 50mm;
+        object-fit: contain;
     }
 
-    .main {
-        flex: 1;
-        background: #ffffff;
-        color: #222;
-        padding: 22pt 24pt;
-        box-sizing: border-box;
-        min-height: 297mm;
-    }
-
+    /* ── Sections ── */
     .section {
-        margin-bottom: 11pt;
+        margin-top: 6mm;
     }
 
     .section-title {
-        margin: 0 0 5pt;
-        padding-bottom: 2pt;
-        border-bottom: 1.5px solid #333;
-        font-size: var(--heading-size);
-        font-weight: 700;
-        color: #111;
-        letter-spacing: 0.6px;
+        border-bottom: 1.2pt solid #000000;
+        font-size: 15pt;
+        font-weight: 800;
+        line-height: 1.15;
+        margin: 0 0 3mm;
+        padding-bottom: 1mm;
+        color: #000000;
     }
 
-    .summary {
-        color: #4b4b4b;
-        font-style: italic;
-        font-size: max(8pt, calc(var(--body-size) - 0.3pt));
+    .section-body {
+        display: flex;
+        flex-direction: column;
+        gap: 2.4mm;
     }
 
+    /* ── Entry items ── */
     .entry {
-        margin-bottom: 7pt;
+        break-inside: avoid;
     }
 
-    .entry-head {
+    .entry-row {
         display: flex;
         justify-content: space-between;
-        gap: 8pt;
         align-items: baseline;
+        gap: 4mm;
     }
 
-    .entry-title {
-        font-weight: 700;
-        color: #1e1e1e;
+    .entry-main {
+        font-size: 11.5pt;
+        line-height: 1.35;
+        min-width: 0;
     }
 
-    .entry-meta {
+    .entry-main strong {
+        font-weight: 800;
+    }
+
+    .entry-date {
+        font-size: 11.5pt;
+        line-height: 1.35;
+        text-align: right;
+        white-space: nowrap;
         flex-shrink: 0;
-        color: #6f6f6f;
-        font-size: max(7pt, calc(var(--body-size) - 1.3pt));
     }
 
     .entry-sub {
-        margin-top: 1pt;
-        color: #5f5f5f;
-        font-size: max(7.5pt, calc(var(--body-size) - 0.7pt));
+        font-size: 11pt;
+        margin-top: 1mm;
     }
 
     .entry-desc {
-        margin-top: 2pt;
-        color: #333;
+        font-size: 11pt;
+        margin-top: 1mm;
     }
 
     .entry-desc ul {
-        padding-left: 15pt;
-        margin: 2pt 0;
+        list-style-type: disc;
+        margin: 1mm 0 0;
+        padding-left: 6mm;
     }
 
     .entry-desc li {
-        margin-bottom: 2pt;
+        margin: 0 0 1mm;
+        padding-left: 0.5mm;
+    }
+
+    .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5mm;
+        margin-top: 1.4mm;
+        font-size: 11pt;
+    }
+
+    .tags span {
+        border-radius: 2px;
+        padding: 0 1.5mm;
+    }
+
+    .summary-text {
+        font-size: 11pt;
+        margin: 0;
     }
 </style>
 </head>
 <body>
-    {% set skill_sections = sections | selectattr("visible") | selectattr("section_type", "equalto", "skill") | list %}
-    {% set main_sections = sections | selectattr("visible") | rejectattr("section_type", "equalto", "skill") | list %}
-
     <div class="page">
-        <aside class="sidebar">
-            <div class="photo-wrap">
-                {% if photo_url %}
-                    <img src="{{ photo_url }}" />
-                {% else %}
-                    <div class="photo-fallback">?</div>
-                {% endif %}
+        <div class="header">
+            {% if photo_url %}
+            <div class="photo-slot">
+                <img src="{{ photo_url }}" />
             </div>
-            <div class="name">{{ name }}</div>
-
-            {% if contact_line %}
-                <div class="sidebar-title">联系方式</div>
-                {% for c in contact_line.split(" · ") %}
-                    {% if c.strip() %}
-                        <div class="contact-line">{{ c }}</div>
+            {% endif %}
+            <div class="identity">
+                <div class="name">{{ name }}</div>
+                <div class="contact-lines">
+                    {% if contact_phone or contact_email %}
+                    <p>
+                        {% if contact_phone %}电话：{{ contact_phone }}{% endif %}
+                        {% if contact_phone and contact_email %} | {% endif %}
+                        {% if contact_email %}邮箱：{{ contact_email }}{% endif %}
+                    </p>
                     {% endif %}
-                {% endfor %}
+                    {% if contact_website %}
+                    <p>个人网站：{{ contact_website }}</p>
+                    {% endif %}
+                    {% if contact_age or contact_gender or contact_native_place %}
+                    <p>
+                        {% if contact_age %}年龄：{{ contact_age }}{% endif %}
+                        {% if contact_age and (contact_gender or contact_native_place) %} | {% endif %}
+                        {% if contact_gender %}性别：{{ contact_gender }}{% endif %}
+                        {% if contact_gender and contact_native_place %} | {% endif %}
+                        {% if contact_native_place %}籍贯：{{ contact_native_place }}{% endif %}
+                    </p>
+                    {% endif %}
+                    {% if contact_status %}
+                    <p>当前状态：{{ contact_status }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% if logo_url %}
+            <div class="logo-slot">
+                <img src="{{ logo_url }}" />
+            </div>
             {% endif %}
+        </div>
 
-            {% for sec in skill_sections %}
-                <div class="sidebar-title">{{ sec.title }}</div>
-                {% for group in sec.content_json %}
-                    <div class="skill-group">
-                        {% if group.category %}<div class="skill-category">{{ group.category }}</div>{% endif %}
-                        <div class="skills-list">
-                            {% for s in group.get("items", []) %}
-                                <span class="skill-tag">{{ s }}</span>
-                            {% endfor %}
-                        </div>
-                    </div>
-                {% endfor %}
-            {% endfor %}
-        </aside>
+        {% if summary %}
+        <div class="section">
+            <div class="section-title">个人评价</div>
+            <div class="summary-text">{{ summary }}</div>
+        </div>
+        {% endif %}
 
-        <main class="main">
-            {% if summary %}
-                <section class="section">
-                    <h2 class="section-title">职业概述</h2>
-                    <div class="summary">{{ summary }}</div>
-                </section>
-            {% endif %}
-
-            {% for section in main_sections %}
-            <section class="section">
-                <h2 class="section-title">{{ section.title }}</h2>
-
+        {% for section in sections %}
+        {% if section.visible %}
+        <div class="section">
+            <div class="section-title">{{ section.title }}</div>
+            <div class="section-body">
                 {% if section.section_type == "education" %}
                     {% for item in section.content_json %}
                     <div class="entry">
-                        <div class="entry-head">
-                            <div class="entry-title">{{ item.school }}{% if item.degree %} — {{ item.degree }}{% endif %}{% if item.major %}, {{ item.major }}{% endif %}</div>
-                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        <div class="entry-row">
+                            <div class="entry-main"><strong>{{ item.school }}{% if item.degree %} — {{ item.degree }}{% endif %}{% if item.major %}, {{ item.major }}{% endif %}</strong></div>
+                            {% if item.startDate or item.endDate %}
+                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                            {% endif %}
                         </div>
-                        <div class="entry-sub">{% if item.gpa %}GPA: {{ item.gpa }}{% endif %}</div>
+                        {% if item.gpa %}<div class="entry-sub">GPA: {{ item.gpa }}</div>{% endif %}
                         {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
                     </div>
                     {% endfor %}
 
-                {% elif section.section_type == "experience" %}
+                {% elif section.section_type == "workExperiences" or section.section_type == "internshipExperiences" %}
                     {% for item in section.content_json %}
                     <div class="entry">
-                        <div class="entry-head">
-                            <div class="entry-title">{{ item.position }}{% if item.company %} @ {{ item.company }}{% endif %}</div>
-                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        <div class="entry-row">
+                            <div class="entry-main"><strong>{{ item.position }}{% if item.company %} @ {{ item.company }}{% endif %}</strong></div>
+                            {% if item.startDate or item.endDate %}
+                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                            {% endif %}
                         </div>
                         {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
                     </div>
                     {% endfor %}
 
-                {% elif section.section_type == "project" %}
+                {% elif section.section_type == "projects" %}
                     {% for item in section.content_json %}
                     <div class="entry">
-                        <div class="entry-head">
-                            <div class="entry-title">{{ item.name }}{% if item.role %} — {{ item.role }}{% endif %}</div>
-                            <div class="entry-meta">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        <div class="entry-row">
+                            <div class="entry-main"><strong>{{ item.name }}{% if item.role %} — {{ item.role }}{% endif %}</strong></div>
+                            {% if item.startDate or item.endDate %}
+                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                            {% endif %}
                         </div>
                         {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
                         {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
                     </div>
                     {% endfor %}
 
-                {% elif section.section_type == "certificate" %}
+                {% elif section.section_type == "skills" %}
                     {% for item in section.content_json %}
                     <div class="entry">
-                        <div class="entry-head">
-                            <div class="entry-title">{{ item.name }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</div>
-                            <div class="entry-meta">{{ item.date }}</div>
+                        {% if item.category %}
+                        <div class="entry-main"><strong>{{ item.category }}</strong></div>
+                        {% endif %}
+                        {% if item.items %}
+                        <div class="tags">
+                            {% for s in item.items %}
+                            <span>{{ s }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "certificates" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-row">
+                            <div class="entry-main"><strong>{{ item.name }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</strong></div>
+                            {% if item.date %}<div class="entry-date">{{ item.date }}</div>{% endif %}
                         </div>
                         {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "awards" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        <div class="entry-row">
+                            <div class="entry-main"><strong>{{ item.awardName }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</strong></div>
+                            {% if item.awardedAt %}<div class="entry-date">{{ item.awardedAt }}</div>{% endif %}
+                        </div>
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+
+                {% elif section.section_type == "personalExperiences" %}
+                    {% for item in section.content_json %}
+                    <div class="entry">
+                        {% if item.experienceTitle %}<div class="entry-main"><strong>{{ item.experienceTitle }}</strong></div>{% endif %}
+                        {% if item.startDate or item.endDate %}
+                        <div class="entry-sub">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
+                        {% endif %}
+                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
                     </div>
                     {% endfor %}
 
                 {% else %}
                     {% for item in section.content_json %}
                     <div class="entry">
-                        {% if item.subtitle %}<div class="entry-title">{{ item.subtitle }}</div>{% endif %}
+                        {% if item.subtitle or item.title %}<div class="entry-main"><strong>{{ item.subtitle or item.title }}</strong></div>{% endif %}
                         {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
                     </div>
                     {% endfor %}
                 {% endif %}
-            </section>
-            {% endfor %}
-        </main>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
     </div>
 </body>
 </html>
@@ -1111,6 +1154,16 @@ def _build_contact_line(contact_json: Optional[dict]) -> str:
     return " · ".join(str(p).strip() for p in contact_parts if str(p).strip())
 
 
+def _resolve_logo_url_for_render(contact_json: Optional[dict]) -> str:
+    """从 contact_json 中提取校徽 URL 并转换为本地 file:// URI。"""
+    c = contact_json or {}
+    for key in ("schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"):
+        url = c.get(key, "")
+        if url:
+            return _resolve_photo_url_for_render(url)
+    return ""
+
+
 def _serialize_export_sections(resume: Resume) -> list[dict]:
     return [
         {
@@ -1145,11 +1198,19 @@ async def _resolve_export_style(resume: Resume, db: AsyncSession) -> dict:
 
 async def _render_resume_html_for_export(resume: Resume, db: AsyncSession) -> str:
     style = await _resolve_export_style(resume, db)
+    c = resume.contact_json or {}
 
     return DEFAULT_HTML_TEMPLATE.render(
         name=resume.user_name,
         photo_url=_resolve_photo_url_for_render(resume.photo_url or ""),
-        contact_line=_build_contact_line(resume.contact_json),
+        logo_url=_resolve_logo_url_for_render(resume.contact_json),
+        contact_phone=c.get("phone", ""),
+        contact_email=c.get("email", ""),
+        contact_website=c.get("website", "") or c.get("personalWebsite", "") or c.get("homepage", "") or c.get("github", "") or c.get("linkedin", ""),
+        contact_age=c.get("age", ""),
+        contact_gender=c.get("gender", "") or c.get("sex", ""),
+        contact_native_place=c.get("nativePlace", "") or c.get("hometown", "") or c.get("籍贯", ""),
+        contact_status=c.get("status", "") or c.get("currentStatus", "") or c.get("当前状态", ""),
         summary=resume.summary or "",
         sections=_serialize_export_sections(resume),
         primary_color=style.get("primaryColor", "#222"),
@@ -1376,6 +1437,7 @@ async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> 
     """
     Render the dedicated frontend print route so PDF output matches the React preview.
     Falls back to the legacy HTML renderer when Playwright or Chromium is unavailable.
+    优先使用系统已安装的 Chrome/Edge 浏览器，避免需要下载 Playwright 自带的 Chromium。
     """
     try:
         from playwright.async_api import async_playwright
@@ -1384,7 +1446,19 @@ async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> 
 
     print_url = f"{FRONTEND_BASE_URL}/resume/print/{resume_id}"
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        # 尝试按优先级使用系统浏览器：Chrome > Edge > Playwright Chromium
+        launched = False
+        browser = None
+        for channel in ["chrome", "msedge", "chromium"]:
+            try:
+                browser = await p.chromium.launch(channel=channel)
+                launched = True
+                break
+            except Exception:
+                continue
+        if not launched:
+            # 最后尝试不指定 channel（使用 Playwright 自带浏览器）
+            browser = await p.chromium.launch()
         try:
             page = await browser.new_page(viewport={"width": 1240, "height": 1754}, device_scale_factor=1)
             await page.goto(print_url, wait_until="networkidle", timeout=30000)
@@ -1505,12 +1579,10 @@ async def export_image(
     """
     导出完整简历为 PNG 图片
     ─────────────────────────────────────────────
-    1. 复用与 PDF 相同的 HTML 模板渲染
-    2. WeasyPrint 先生成 PDF（二进制）
-    3. PyMuPDF 将所有页光栅化并纵向拼接成单张 PNG
+    1. 优先使用 Playwright 渲染（与前端预览一致）
+    2. Fallback: WeasyPrint/ReportLab 生成 PDF，PyMuPDF 光栅化为 PNG
     """
     resume = await _get_resume_or_404(resume_id, db, load_sections=True)
-    html_str = await _render_resume_html_for_export(resume, db)
     safe_scale = _normalize_export_image_scale(scale)
     cache_key = _build_export_image_cache_key(resume, safe_scale)
     cached_png = _get_cached_export_image(cache_key)
@@ -1526,7 +1598,12 @@ async def export_image(
             },
         )
 
-    pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
+    # 优先 Playwright，fallback 到 WeasyPrint/ReportLab
+    try:
+        pdf_bytes = await _render_resume_pdf_with_playwright(resume_id, resume)
+    except Exception:
+        html_str = await _render_resume_html_for_export(resume, db)
+        pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
 
     try:
         png_bytes = await anyio.to_thread.run_sync(_render_resume_png_from_pdf, pdf_bytes, safe_scale)

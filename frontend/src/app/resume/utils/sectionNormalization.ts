@@ -1,9 +1,12 @@
 export type ResumeEditorSectionType =
   | "education"
-  | "experience"
-  | "project"
-  | "skill"
-  | "custom";
+  | "workExperiences"
+  | "internshipExperiences"
+  | "projects"
+  | "skills"
+  | "certificates"
+  | "awards"
+  | "personalExperiences";
 
 export interface ResumeEditorSection {
   id: number;
@@ -19,11 +22,46 @@ export const RESUME_SECTION_DEFINITIONS: ReadonlyArray<{
   label: string;
 }> = [
   { key: "education", label: "教育经历" },
-  { key: "experience", label: "工作经历" },
-  { key: "project", label: "项目经历" },
-  { key: "skill", label: "技能与证书" },
-  { key: "custom", label: "个人经历" },
+  { key: "workExperiences", label: "工作经历" },
+  { key: "internshipExperiences", label: "实习经历" },
+  { key: "projects", label: "项目经历" },
+  { key: "skills", label: "技能" },
+  { key: "certificates", label: "证书" },
+  { key: "awards", label: "获奖经历" },
+  { key: "personalExperiences", label: "个人经历" },
 ];
+
+const LEGACY_SECTION_TYPE_MAP: Record<string, ResumeEditorSectionType> = {
+  education: "education",
+  experience: "workExperiences",
+  project: "projects",
+  skill: "skills",
+  certificate: "certificates",
+  custom: "personalExperiences",
+};
+
+function asText(input: unknown): string {
+  return typeof input === "string" ? input.trim() : String(input ?? "").trim();
+}
+
+function asTextList(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.map((item) => asText(item)).filter(Boolean);
+  }
+  const text = asText(input);
+  if (!text) return [];
+  return text
+    .split(/[，,、\n]/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeDescription(input: unknown): string {
+  if (Array.isArray(input)) {
+    return input.map((item) => asText(item)).filter(Boolean).join("\n");
+  }
+  return asText(input);
+}
 
 export function getResumeSectionLabel(sectionType: string): string {
   return (
@@ -32,146 +70,138 @@ export function getResumeSectionLabel(sectionType: string): string {
   );
 }
 
-export function normalizeResumeSectionType(
-  sectionType: string
-): ResumeEditorSectionType {
-  if (sectionType === "certificate") return "skill";
-  if (
-    sectionType === "education" ||
-    sectionType === "experience" ||
-    sectionType === "project" ||
-    sectionType === "skill" ||
-    sectionType === "custom"
-  ) {
-    return sectionType;
+export function normalizeResumeSectionType(sectionType: string): ResumeEditorSectionType {
+  if (RESUME_SECTION_DEFINITIONS.some((item) => item.key === sectionType)) {
+    return sectionType as ResumeEditorSectionType;
   }
-  return "custom";
+  return LEGACY_SECTION_TYPE_MAP[sectionType] || "personalExperiences";
 }
 
-function looksLikeCertificateEntry(item: Record<string, any>): boolean {
-  if (item._entryType === "certificate") return true;
-  if (item._entryType === "skill") return false;
-  return Boolean(
-    item.name ||
-      item.certificateName ||
-      item.issuer ||
-      item.date ||
-      item.acquiredAt ||
-      item.scoreOrLevel
-  );
-}
-
-function normalizeSkillEntry(item: Record<string, any>): Record<string, any> {
-  const rawItems = Array.isArray(item.items)
-    ? item.items
-    : typeof item.itemsText === "string"
-      ? item.itemsText.split(/[，,、\n]/g)
-      : [];
-  const normalizedItems = rawItems
-    .map((entry) => String(entry || "").trim())
-    .filter(Boolean);
+function normalizeEducationItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
   return {
-    _entryType: "skill",
-    category: String(item.category || "").trim(),
-    items: normalizedItems,
-    _source_profile_section_id: item._source_profile_section_id,
-    _source_profile_updated_at: item._source_profile_updated_at,
-    _source_profile_category_key: item._source_profile_category_key,
+    ...row,
+    school: asText(row.school || row.schoolName),
+    degree: asText(row.degree || row.educationLevel),
+    major: asText(row.major),
+    gpa: asText(row.gpa),
+    startDate: asText(row.startDate),
+    endDate: asText(row.endDate || row.graduationDate),
+    description: normalizeDescription(row.description || row.descriptions),
   };
 }
 
-function normalizeCertificateEntry(
-  item: Record<string, any>
-): Record<string, any> {
+function normalizeWorkItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
   return {
-    _entryType: "certificate",
-    name: String(item.name || item.certificateName || "").trim(),
-    scoreOrLevel: String(item.scoreOrLevel || "").trim(),
-    issuer: String(item.issuer || "").trim(),
-    date: String(item.date || item.acquiredAt || "").trim(),
-    url: String(item.url || "").trim(),
-    _source_profile_section_id: item._source_profile_section_id,
-    _source_profile_updated_at: item._source_profile_updated_at,
-    _source_profile_category_key: item._source_profile_category_key,
+    ...row,
+    company: asText(row.company || row.companyName),
+    position: asText(row.position || row.positionName),
+    startDate: asText(row.startDate),
+    endDate: asText(row.endDate),
+    description: normalizeDescription(row.description || row.descriptions),
   };
 }
 
-export function normalizeSkillOrCertificateEntry(
-  item: any,
-  sourceSectionType?: string
-): Record<string, any> {
-  const raw = item && typeof item === "object" ? (item as Record<string, any>) : {};
-  const forcedCertificate = sourceSectionType === "certificate";
-  if (forcedCertificate || looksLikeCertificateEntry(raw)) {
-    return normalizeCertificateEntry(raw);
-  }
-  return normalizeSkillEntry(raw);
+function normalizeInternshipItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  return {
+    ...row,
+    company: asText(row.company || row.companyName),
+    position: asText(row.position || row.positionName),
+    startDate: asText(row.startDate),
+    endDate: asText(row.endDate),
+    description: normalizeDescription(row.description || row.descriptions),
+  };
+}
+
+function normalizeProjectItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  return {
+    ...row,
+    name: asText(row.name || row.projectName),
+    role: asText(row.role || row.projectRole),
+    url: asText(row.url || row.projectLink),
+    startDate: asText(row.startDate),
+    endDate: asText(row.endDate),
+    description: normalizeDescription(row.description || row.descriptions),
+  };
+}
+
+function normalizeSkillItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  const items = asTextList(row.items);
+  const skillName = asText(row.skillName);
+  const category = asText(row.category || row.proficiency);
+  return {
+    ...row,
+    category: category || (skillName ? "技能" : ""),
+    items: items.length > 0 ? items : skillName ? [skillName] : [],
+    remark: asText(row.remark),
+  };
+}
+
+function normalizeCertificateItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  return {
+    ...row,
+    name: asText(row.name || row.certificateName),
+    scoreOrLevel: asText(row.scoreOrLevel),
+    issuer: asText(row.issuer),
+    date: asText(row.date || row.acquiredAt),
+    url: asText(row.url),
+  };
+}
+
+function normalizeAwardItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  return {
+    ...row,
+    awardName: asText(row.awardName || row.name || row.title),
+    issuer: asText(row.issuer),
+    awardedAt: asText(row.awardedAt || row.date),
+    description: normalizeDescription(row.description || row.descriptions),
+  };
+}
+
+function normalizePersonalExperienceItem(item: any): Record<string, any> {
+  const row = item && typeof item === "object" ? item : {};
+  return {
+    ...row,
+    experienceTitle: asText(row.experienceTitle || row.subtitle || row.title),
+    startDate: asText(row.startDate),
+    endDate: asText(row.endDate),
+    description: normalizeDescription(row.description || row.descriptions),
+  };
+}
+
+function normalizeSectionItems(type: ResumeEditorSectionType, contentJson: any[]): any[] {
+  const list = Array.isArray(contentJson) ? contentJson : [];
+  if (type === "education") return list.map((item) => normalizeEducationItem(item));
+  if (type === "workExperiences") return list.map((item) => normalizeWorkItem(item));
+  if (type === "internshipExperiences") return list.map((item) => normalizeInternshipItem(item));
+  if (type === "projects") return list.map((item) => normalizeProjectItem(item));
+  if (type === "skills") return list.map((item) => normalizeSkillItem(item));
+  if (type === "certificates") return list.map((item) => normalizeCertificateItem(item));
+  if (type === "awards") return list.map((item) => normalizeAwardItem(item));
+  return list.map((item) => normalizePersonalExperienceItem(item));
 }
 
 export function normalizeResumeSectionsForEditor(
-  sections: ResumeEditorSection[]
+  sections: ResumeEditorSection[],
 ): ResumeEditorSection[] {
   const sorted = [...(sections || [])].sort(
-    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
   );
-  const normalized: ResumeEditorSection[] = [];
-  let mergedSkillSection: ResumeEditorSection | null = null;
 
-  for (const section of sorted) {
+  return sorted.map((section, index) => {
     const normalizedType = normalizeResumeSectionType(section.section_type);
-    const currentContent = Array.isArray(section.content_json)
-      ? section.content_json
-      : [];
-
-    if (normalizedType === "skill") {
-      const nextItems = currentContent.map((item) =>
-        normalizeSkillOrCertificateEntry(item, section.section_type)
-      );
-      if (!mergedSkillSection) {
-        mergedSkillSection = {
-          ...section,
-          section_type: "skill",
-          title: "技能与证书",
-          content_json: nextItems,
-        };
-        normalized.push(mergedSkillSection);
-      } else {
-        mergedSkillSection.content_json = [
-          ...(Array.isArray(mergedSkillSection.content_json)
-            ? mergedSkillSection.content_json
-            : []),
-          ...nextItems,
-        ];
-      }
-      continue;
-    }
-
-    normalized.push({
+    return {
       ...section,
       section_type: normalizedType,
-      content_json: currentContent,
-    });
-  }
-
-  return normalized.map((item, index) => ({
-    ...item,
-    sort_order: index,
-  }));
-}
-
-export function splitSkillAndCertificateEntries(contentJson: any[]): {
-  skills: Record<string, any>[];
-  certificates: Record<string, any>[];
-} {
-  const skills: Record<string, any>[] = [];
-  const certificates: Record<string, any>[] = [];
-  for (const raw of contentJson || []) {
-    const normalized = normalizeSkillOrCertificateEntry(raw);
-    if (normalized._entryType === "certificate") {
-      certificates.push(normalized);
-    } else {
-      skills.push(normalized);
-    }
-  }
-  return { skills, certificates };
+      title: section.title || getResumeSectionLabel(normalizedType),
+      content_json: normalizeSectionItems(normalizedType, section.content_json),
+      sort_order: index,
+    };
+  });
 }

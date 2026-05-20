@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Card, CardBody, Input, Textarea } from "@nextui-org/react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
+import RichTextEditor from "@/app/resume/components/RichTextEditor";
 import {
   type ResumeArchive,
   type ResumeAwardItem,
@@ -66,6 +67,7 @@ function useSectionState(focusSection: string | undefined) {
 function collsapsedOrDefault(value: boolean | undefined): boolean {
   return value ?? false;
 }
+
 
 function DescriptionArrayEditor(props: {
   label: string;
@@ -187,6 +189,7 @@ function SingleDescriptionEditor(props: {
     />
   );
 }
+
 
 function SectionFrame(props: {
   sectionKey: string;
@@ -332,7 +335,10 @@ function EducationItemEditor(props: {
         }
         variant="bordered"
       />
-      <DescriptionArrayEditor label="描述（多条）" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} minHeight={80} placeholder="补充说明（可选）" />
+      </div>
     </ItemShell>
   );
 }
@@ -361,7 +367,10 @@ function WorkItemEditor(props: {
         <Input label="开始时间" value={item.startDate} onValueChange={(v) => props.onChange({ ...item, startDate: v })} variant="bordered" />
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
-      <SingleDescriptionEditor label="工作描述" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">工作描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述你的工作职责和成果..." />
+      </div>
     </ItemShell>
   );
 }
@@ -389,7 +398,10 @@ function InternshipItemEditor(props: {
         <Input label="开始时间" value={item.startDate} onValueChange={(v) => props.onChange({ ...item, startDate: v })} variant="bordered" />
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
-      <SingleDescriptionEditor label="实习描述" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">实习描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述实习职责和成果..." />
+      </div>
     </ItemShell>
   );
 }
@@ -418,7 +430,10 @@ function ProjectItemEditor(props: {
         <Input label="开始时间" value={item.startDate} onValueChange={(v) => props.onChange({ ...item, startDate: v })} variant="bordered" />
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
-      <SingleDescriptionEditor label="项目描述" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">项目描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述项目亮点和你的贡献..." />
+      </div>
     </ItemShell>
   );
 }
@@ -497,7 +512,10 @@ function AwardItemEditor(props: {
         <Input label="颁发机构" value={item.issuer} onValueChange={(v) => props.onChange({ ...item, issuer: v })} variant="bordered" />
         <Input label="获奖时间" value={item.awardedAt} onValueChange={(v) => props.onChange({ ...item, awardedAt: v })} variant="bordered" />
       </div>
-      <DescriptionArrayEditor label="描述（多条）" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">获奖描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="补充奖项背景与成果..." />
+      </div>
     </ItemShell>
   );
 }
@@ -524,7 +542,10 @@ function PersonalExperienceItemEditor(props: {
         <Input label="开始时间" value={item.startDate} onValueChange={(v) => props.onChange({ ...item, startDate: v })} variant="bordered" />
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
-      <DescriptionArrayEditor label="经历描述（多条）" values={item.descriptions} onChange={(next) => props.onChange({ ...item, descriptions: next })} />
+      <div>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">经历描述</label>
+        <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="输入个人经历内容..." />
+      </div>
     </ItemShell>
   );
 }

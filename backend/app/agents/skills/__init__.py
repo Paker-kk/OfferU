@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 
 from app.agents.desensitize import desensitize, restore
 from app.agents.skills.base import BaseSkill
@@ -47,25 +47,30 @@ class SkillPipeline:
             SectionReorderSkill(),
         ]
 
+    _PROGRESS_LABELS: dict[str, str] = {
+        "jd_analysis": "正在解析 JD 要求...",
+        "match_analysis": "JD 解析完成，正在匹配简历...",
+        "content_rewrite": "匹配完成，正在生成改写建议...",
+        "section_reorder": "正在优化章节排序...",
+    }
+
     async def run(
         self,
         resume_text: str,
         resume_data: Optional[dict],
         jd_text: str,
+        on_progress: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> dict:
         """
         执行完整的分析 Pipeline
 
         参数:
-          resume_text: 简历纯文本
-          resume_data: 简历结构化 JSON（可选，含 sections）
+          resume_text: 简历文本
+          resume_data: 简历结构化 JSON（可选）
           jd_text: 目标岗位描述全文
+          on_progress: 可选进度回调 async fn(skill_name, label)
 
         返回: 聚合的分析结果
-          {
-            "jd_analysis": { ... },      # Skill 1 输出
-            "match_analysis": { ... },    # Skill 2 输出
-          }
         """
         # 截断过长内容防止 token 爆炸
         resume_safe = resume_text[:12000]
@@ -86,6 +91,9 @@ class SkillPipeline:
 
         # 依次执行每个 Skill
         for skill in self._skills:
+            label = self._PROGRESS_LABELS.get(skill.name, f"正在执行 {skill.name}...")
+            if on_progress:
+                await on_progress(skill.name, label)
             try:
                 output = await skill.execute(context)
                 if output:

@@ -759,7 +759,7 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
               <div key={config.path} className="bauhaus-panel-sm space-y-2 bg-[var(--surface)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-black">
-                    {config.label}锛?{Array.isArray(moduleValue) ? moduleValue.length : 0} 条）
+                    {config.label}（{Array.isArray(moduleValue) ? moduleValue.length : 0} 条）
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <OverrideBadge overridden={overridden} />

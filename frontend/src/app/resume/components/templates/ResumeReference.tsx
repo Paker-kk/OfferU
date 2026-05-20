@@ -1,5 +1,5 @@
 import type { NormalizedResumeData, NormalizedResumeItem, ResumeTemplateType } from "./templateSettings";
-import { cleanRichHtml, HighlightText, sortSections } from "./shared";
+import { cleanRichHtml, hasRichDescription, hasRichSummary, HighlightText, sortSections } from "./shared";
 
 function contactValue(contact: Record<string, string>, keys: string[]) {
   for (const key of keys) {
@@ -23,37 +23,48 @@ function ReferenceHeader({
   const nativePlace = contactValue(contact, ["nativePlace", "hometown", "籍贯"]);
   const status = contactValue(contact, ["status", "currentStatus", "当前状态"]);
   const logoUrl = contactValue(contact, ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"]);
-  const showPhoto = template !== "reference-no-photo" && data.photoUrl;
+  const showPhoto = !!data.photoUrl;
+  const hasLogo = !!logoUrl;
+  const headerClass = [
+    "reference-header",
+    !showPhoto && "reference-header-no-photo",
+    !hasLogo && "reference-header-no-logo",
+    !showPhoto && !hasLogo && "reference-header-text-only",
+  ].filter(Boolean).join(" ");
 
   return (
-    <header className="reference-header">
-      <div className="reference-photo-slot">
-        {showPhoto && <img src={data.photoUrl} alt="" className="reference-photo" />}
-      </div>
+    <header className={headerClass}>
+      {showPhoto && (
+        <div className="reference-photo-slot">
+          <img src={data.photoUrl} alt="" className="reference-photo" />
+        </div>
+      )}
       <div className="reference-identity">
         <h1 className="reference-name">{data.userName || "姓名"}</h1>
         <div className="reference-contact-lines">
           <p>
-            {contact.phone && <>电话： {contact.phone}</>}
+            {contact.phone && <>电话：{contact.phone}</>}
             {contact.phone && contact.email && <span> | </span>}
-            {contact.email && <>邮箱： {contact.email}</>}
+            {contact.email && <>邮箱：{contact.email}</>}
           </p>
-          {website && <p>个人网站： {website}</p>}
+          {website && <p>个人网站：{website}</p>}
           {(age || gender || nativePlace) && (
             <p>
-              {age && <>年龄： {age}</>}
+              {age && <>年龄：{age}</>}
               {age && (gender || nativePlace) && <span> | </span>}
-              {gender && <>性别： {gender}</>}
+              {gender && <>性别：{gender}</>}
               {gender && nativePlace && <span> | </span>}
-              {nativePlace && <>籍贯： {nativePlace}</>}
+              {nativePlace && <>籍贯：{nativePlace}</>}
             </p>
           )}
-          {status && <p>当前状态： {status}</p>}
+          {status && <p>当前状态：{status}</p>}
         </div>
       </div>
-      <div className="reference-logo-slot">
-        {logoUrl && <img src={logoUrl} alt="" className="reference-logo" />}
-      </div>
+      {hasLogo && (
+        <div className="reference-logo-slot">
+          <img src={logoUrl} alt="" className="reference-logo" />
+        </div>
+      )}
     </header>
   );
 }
@@ -68,7 +79,7 @@ function ReferenceItem({ item, keywords }: { item: NormalizedResumeItem; keyword
   const primaryTitle = item.organization || item.title;
   const secondaryTitle = item.organization && item.title !== item.organization ? item.title : item.subtitle;
   const extra = [secondaryTitle, item.location].filter(Boolean).join(" ");
-  const hasStructuredHtml = Boolean(item.descriptionHtml && /<\s*(ul|ol|li)\b/i.test(item.descriptionHtml));
+  const rich = hasRichDescription(item.descriptionHtml);
 
   return (
     <article className="reference-item">
@@ -86,7 +97,7 @@ function ReferenceItem({ item, keywords }: { item: NormalizedResumeItem; keyword
         {item.date && <div className="reference-date">{item.date}</div>}
       </div>
       {item.url && <div className="reference-line">{item.url}</div>}
-      {item.descriptionHtml && hasStructuredHtml ? (
+      {item.descriptionHtml && rich ? (
         <ReferenceRichText html={item.descriptionHtml} />
       ) : item.bullets.length ? (
         <ul className="reference-bullets">
@@ -148,9 +159,13 @@ export function ResumeReference({
       {data.summary && (
         <section className="reference-section">
           <h2 className="reference-section-title">个人评价</h2>
-          <p className="reference-summary">
-            <HighlightText text={data.summary} keywords={highlightKeywords} />
-          </p>
+          {hasRichSummary(data.summaryHtml) ? (
+            <ReferenceRichText html={data.summaryHtml} />
+          ) : (
+            <p className="reference-summary">
+              <HighlightText text={data.summary} keywords={highlightKeywords} />
+            </p>
+          )}
         </section>
       )}
       {sections.map((section) => (

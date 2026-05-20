@@ -12,15 +12,48 @@ export function dateRange(start?: string, end?: string) {
 export function cleanRichHtml(value?: string) {
   if (!value) return "";
   return value
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/\son\w+="[^"]*"/gi, "")
-    .replace(/\son\w+='[^']*'/gi, "")
-    .replace(/\sstyle="[^"]*"/gi, "")
-    .replace(/\sstyle='[^']*'/gi, "");
+    .replace(/<(script|iframe|object|embed|form|meta|base|svg|applet)[\s>][\s\S]*?<\/\1>/gi, "")
+    .replace(/<(script|iframe|object|embed|form|meta|base|svg|applet)\b[^>]*\/?>/gi, "")
+    .replace(/\son\w+=["'][^"']*["']/gi, "")
+    .replace(/\son\w+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(href|src)\s*=\s*["']?\s*javascript\s*:/gi, "$1=\"")
+    .replace(/\sstyle="([^"]*)"/gi, (_, content) => {
+      const safe = content.match(/text-align:\s*(left|center|right|justify)/i);
+      return safe ? ` style="${safe[0]}"` : "";
+    })
+    .replace(/\sstyle='([^']*)'/gi, (_, content) => {
+      const safe = content.match(/text-align:\s*(left|center|right|justify)/i);
+      return safe ? ` style="${safe[0]}"` : "";
+    });
+}
+
+const RICH_HTML_RE = /<\s*(strong|b|em|i|u|s|strike|ul|ol|li|a)\b/i;
+const RICH_SUMMARY_RE = /<\s*(strong|b|em|i|u|s|strike|ul|ol|li|a|p)\b/i;
+
+export function hasRichDescription(html?: string): boolean {
+  return Boolean(html && RICH_HTML_RE.test(html));
+}
+
+export function hasRichSummary(html?: string): boolean {
+  return Boolean(html && RICH_SUMMARY_RE.test(html));
 }
 
 export function HighlightText({ text, keywords }: { text: string; keywords: string[] }) {
   return <KeywordHighlightView text={text} keywords={keywords} />;
+}
+
+export function RichSummary({ data, keywords }: { data: NormalizedResumeData; keywords: string[] }) {
+  if (hasRichSummary(data.summaryHtml)) {
+    return <div className="resume-rich-summary" dangerouslySetInnerHTML={{ __html: cleanRichHtml(data.summaryHtml) }} />;
+  }
+  if (data.summary) {
+    return (
+      <p className="resume-summary-text">
+        <HighlightText text={data.summary} keywords={keywords} />
+      </p>
+    );
+  }
+  return null;
 }
 
 export function ContactLine({ data }: { data: NormalizedResumeData }) {
@@ -90,6 +123,7 @@ export function ResumeItem({
   const subtitle = [item.organization && item.organization !== title ? item.organization : "", item.subtitle, item.location]
     .filter(Boolean)
     .join(" / ");
+  const rich = hasRichDescription(item.descriptionHtml);
   return (
     <article className="resume-item">
       <div className="resume-row-tight">
@@ -108,7 +142,9 @@ export function ResumeItem({
         {item.date && <span className="resume-date">{item.date}</span>}
       </div>
       {item.url && <div className="resume-meta">{item.url}</div>}
-      {item.bullets.length > 0 && (
+      {rich && item.descriptionHtml ? (
+        <div className="resume-rich-description" dangerouslySetInnerHTML={{ __html: cleanRichHtml(item.descriptionHtml) }} />
+      ) : item.bullets.length > 0 ? (
         <ul className="resume-list">
           {item.bullets.map((bullet, index) => (
             <li key={`${bullet}-${index}`}>
@@ -119,7 +155,7 @@ export function ResumeItem({
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
       {item.tags && item.tags.length > 0 && (
         <div className={compact ? "mt-1" : "mt-2"}>
           {item.tags.map((tag) => (
@@ -139,7 +175,7 @@ export function sortSections(data: NormalizedResumeData) {
 
 export function splitTwoColumnSections(data: NormalizedResumeData) {
   const sections = sortSections(data);
-  const sidebarKeys = new Set(["skill", "certificate", "education"]);
+  const sidebarKeys = new Set(["skill", "skills", "certificate", "certificates", "education"]);
   return {
     main: sections.filter((section) => !sidebarKeys.has(section.key)),
     sidebar: sections.filter((section) => sidebarKeys.has(section.key)),

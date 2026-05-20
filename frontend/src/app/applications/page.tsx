@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1141,8 +1141,8 @@ export default function ApplicationsPage() {
       </section>
 
       {hasSelection && (
-        <div className="sticky bottom-4 z-40 mt-3 flex justify-center px-4 pb-3">
-          <div className="bauhaus-panel flex w-full max-w-[980px] flex-nowrap items-center gap-3 overflow-x-auto bg-[var(--surface)] px-4 py-3">
+        <div className="fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]">
+          <div className="pointer-events-auto bauhaus-panel flex w-full max-w-[980px] flex-nowrap items-center gap-3 overflow-x-auto bg-[var(--surface)] px-4 py-3">
             <p className="whitespace-nowrap text-sm font-medium text-black/75">
               已选 <span className="font-semibold text-[var(--primary-red)]">{selectedIds.size}</span> 条记录
             </p>

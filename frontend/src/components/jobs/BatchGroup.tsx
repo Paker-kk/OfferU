@@ -116,14 +116,14 @@ export function BatchGroup({
       {/* ── 批次一键操作栏 ── */}
       {expanded && (
         <div className="flex items-center gap-2 px-4 py-2 border-t border-black/5 bg-black/[0.02]">
-          {triageStatus === "unscreened" && (
+          {triageStatus === "inbox" && (
             <>
               <Button
                 size="sm"
                 variant="flat"
                 color="primary"
                 startContent={<Star size={12} />}
-                onPress={() => onBatchTriage(batchJobIds, "screened")}
+                onPress={() => onBatchTriage(batchJobIds, "picked")}
               >
                 全部筛入
               </Button>
@@ -138,12 +138,12 @@ export function BatchGroup({
               </Button>
             </>
           )}
-          {triageStatus === "screened" && (
+          {triageStatus === "picked" && (
             <Button
               size="sm"
               variant="flat"
               startContent={<Undo2 size={12} />}
-              onPress={() => onBatchTriage(batchJobIds, "unscreened")}
+              onPress={() => onBatchTriage(batchJobIds, "inbox")}
             >
               全部退回
             </Button>
@@ -153,7 +153,7 @@ export function BatchGroup({
               size="sm"
               variant="flat"
               startContent={<Undo2 size={12} />}
-              onPress={() => onBatchTriage(batchJobIds, "unscreened")}
+              onPress={() => onBatchTriage(batchJobIds, "inbox")}
             >
               全部恢复
             </Button>

@@ -77,7 +77,15 @@ export default function AgentPage() {
 
   const latestMode = useMemo(() => {
     const latest = [...messages].reverse().find((message) => message.response?.mode);
-    return latest?.response?.mode || "ready";
+    const mode = latest?.response?.mode || "ready";
+    const modeLabels: Record<string, string> = {
+      ready: "就绪",
+      planning: "规划中",
+      executing: "执行中",
+      completed: "已完成",
+      error: "出错",
+    };
+    return modeLabels[mode] || mode;
   }, [messages]);
 
   const sendMessage = async (text?: string, confirmedActionIds?: string[]) => {
@@ -144,11 +152,11 @@ export default function AgentPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <div className="bauhaus-panel-sm flex h-12 w-12 items-center justify-center bg-[#F0C020] text-black">
+                <div className="bauhaus-panel-sm flex h-12 w-12 items-center justify-center bg-[#e4c46a] text-black">
                   <Bot size={22} />
                 </div>
                 <div>
-                  <p className="bauhaus-label text-black/55">Harness Workspace</p>
+                  <p className="bauhaus-label text-black/55">全局助手工作台</p>
                   <h1 className="mt-1 text-3xl font-black text-black md:text-4xl">
                     OfferU 全局助手
                   </h1>
@@ -181,10 +189,10 @@ export default function AgentPage() {
                 key={action.label}
                 className={`cursor-pointer border-2 border-black px-3 py-2 text-sm font-semibold ${
                   index % 3 === 0
-                    ? "bg-[#F0C020] text-black"
+                    ? "bg-[#e4c46a] text-black"
                     : index % 3 === 1
                       ? "bg-white text-black"
-                      : "bg-[#F7E4E1] text-black"
+                      : "bg-[#f7ece9] text-black"
                 }`}
                 onClick={() => sendMessage(action.prompt)}
               >
@@ -210,7 +218,7 @@ export default function AgentPage() {
       </ScrollShadow>
 
       {pendingActions.length > 0 && (
-        <section className="bauhaus-panel-sm bg-[#F7E4E1] p-4">
+        <section className="bauhaus-panel-sm bg-[#f7ece9] p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-black text-black">需要确认的动作</p>
@@ -235,7 +243,7 @@ export default function AgentPage() {
       )}
 
       {error && (
-        <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+        <div className="bauhaus-panel-sm bg-[#c95548] px-4 py-3 text-sm font-medium text-white">
           {error}
         </div>
       )}
@@ -282,7 +290,7 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       <div
         className={`flex h-11 w-11 shrink-0 items-center justify-center border-2 border-black ${
-          isUser ? "bg-[#D02020] text-white" : "bg-[#F0C020] text-black"
+          isUser ? "bg-[#c95548] text-white" : "bg-[#e4c46a] text-black"
         }`}
       >
         {isUser ? <User size={16} /> : <Sparkles size={16} />}
@@ -291,7 +299,7 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
       <div className={`max-w-[92%] md:max-w-[84%] ${isUser ? "text-right" : ""}`}>
         <div
           className={`inline-block whitespace-pre-wrap border-2 border-black px-4 py-3.5 text-[15px] font-medium leading-7 shadow-[3px_3px_0_0_rgba(18,18,18,0.28)] md:px-5 md:py-4 md:text-base ${
-            isUser ? "bg-[#F7E4E1] text-black" : "bg-white text-black"
+            isUser ? "bg-[#f7ece9] text-black" : "bg-white text-black"
           }`}
         >
           {message.content}
@@ -318,7 +326,7 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
             {response.next_steps && response.next_steps.length > 0 && (
               <Card className="bauhaus-panel-sm rounded-none bg-[var(--surface-muted)] shadow-none">
                 <CardBody className="p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">Next steps</p>
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-black/45">下一步</p>
                   <ul className="mt-2 space-y-1 text-sm font-medium leading-6 text-black/72">
                     {response.next_steps.map((step) => (
                       <li key={step}>- {step}</li>
@@ -350,7 +358,7 @@ function CareerPathGrid({ paths }: { paths: HarnessAgentCareerPath[] }) {
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {path.search_keywords.map((keyword) => (
-                <Chip key={keyword} size="sm" className="border border-black bg-[#F0C020] text-[10px] text-black">
+                <Chip key={keyword} size="sm" className="border border-black bg-[#e4c46a] text-[10px] text-black">
                   {keyword}
                 </Chip>
               ))}
@@ -384,7 +392,7 @@ function JobCardGrid({ jobs }: { jobs: HarnessAgentJobCard[] }) {
                     href={job.apply_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-3 inline-block text-xs font-bold text-[#D02020] underline"
+                    className="mt-3 inline-block text-xs font-bold text-[#c95548] underline"
                   >
                     打开投递链接
                   </a>

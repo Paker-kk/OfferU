@@ -1,4 +1,4 @@
-﻿// =============================================
+// =============================================
 // 岗位列表页 — 卡片式展示 + 多维度筛选 + 批量选择
 // =============================================
 // 筛选：关键词搜索 / 数据源 / 时间范围 / 岗位类型 / 学历 / 校招
@@ -110,13 +110,13 @@ const bauhausIconButtonClassName =
   "min-h-11 min-w-11 border border-black/15 bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)]";
 
 function resolveTriageTab(raw: string | null): "all" | "inbox" | "picked" | "ignored" {
-  if (!raw) return "all";
+  if (!raw) return "inbox";
   const value = raw.toLowerCase();
   if (value === "all") return "all";
   if (value === "inbox" || value === "unscreened") return "inbox";
   if (value === "picked" || value === "screened") return "picked";
   if (value === "ignored") return "ignored";
-  return "all";
+  return "inbox";
 }
 
 export default function JobsPage() {
@@ -146,7 +146,7 @@ export default function JobsPage() {
   const [triageStatus, setTriageStatus] = useState<"all" | "inbox" | "picked" | "ignored">(() =>
     resolveTriageTab(searchParams.get("tab"))
   );
-  const [period, setPeriod] = useState<string>("week");
+  const [period, setPeriod] = useState<string>("");
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
@@ -204,7 +204,7 @@ export default function JobsPage() {
   const { data, isLoading, isValidating, mutate: mutateJobs } = useJobs({
     page,
     page_size: 21,
-    period,
+    period: period || undefined,
     source: source || undefined,
     keyword: debouncedKeyword || undefined,
     job_type: jobType || undefined,
@@ -238,7 +238,7 @@ export default function JobsPage() {
   );
   const totalPages = Math.ceil((data?.total ?? 0) / (data?.page_size ?? 20));
   const isAllSelected = totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs;
-  const activeFilterCount = [keyword, source, jobType, education].filter(Boolean).length + (isCampus ? 1 : 0);
+  const activeFilterCount = [keyword, source, jobType, education].filter(Boolean).length + (isCampus ? 1 : 0) + (period ? 1 : 0);
   const hasFilters = activeFilterCount > 0;
   const triageMeta = {
     all: {
@@ -336,7 +336,7 @@ export default function JobsPage() {
       const result = await jobsApi.list({
         page: nextPage,
         page_size: pageSize,
-        period,
+        period: period || undefined,
         source: source || undefined,
         keyword: debouncedKeyword || undefined,
         job_type: jobType || undefined,
@@ -522,7 +522,7 @@ export default function JobsPage() {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("from_scraper");
     params.delete("task_id");
-    router.replace(`/jobs?${params.toString()}`);
+    router.replace(`/jobs?${params.toString()}`, { scroll: false });
   }, [fromScraper, refreshAfterMutation, router, scraperTaskId, scraperTasks, searchParams]);
 
   useEffect(() => {
@@ -541,6 +541,7 @@ export default function JobsPage() {
     setPage(1);
     setKeyword("");
     setDebouncedKeyword("");
+    setPeriod("");
     setSource("");
     setJobType("");
     setEducation("");
@@ -662,7 +663,7 @@ export default function JobsPage() {
                     } else {
                       params.delete("pool_id");
                     }
-                    router.push(`/jobs?${params.toString()}`);
+                    router.push(`/jobs?${params.toString()}`, { scroll: false });
                   }}
                   color="primary"
                   variant="solid"
@@ -674,10 +675,10 @@ export default function JobsPage() {
                     tabContent: "font-semibold text-[11px] text-black/72 group-data-[selected=true]:text-black",
                   }}
                 >
-                  <Tab key="all" title="全部" />
                   <Tab key="inbox" title="未筛选" />
                   <Tab key="picked" title="已筛选" />
                   <Tab key="ignored" title="回收站" />
+                  <Tab key="all" title="全部" />
                 </Tabs>
               </div>
 
@@ -730,6 +731,7 @@ export default function JobsPage() {
                   }}
                   classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
                 >
+                  <SelectItem key="">全部时间</SelectItem>
                   <SelectItem key="today">今日</SelectItem>
                   <SelectItem key="week">本周</SelectItem>
                   <SelectItem key="month">本月</SelectItem>
@@ -751,7 +753,7 @@ export default function JobsPage() {
                       } else {
                         params.set("pool_id", value);
                       }
-                      router.push(`/jobs?${params.toString()}`);
+                      router.push(`/jobs?${params.toString()}`, { scroll: false });
                     }}
                     classNames={{ ...bauhausSelectClassNames, base: "w-full" }}
                     items={poolFilterOptions}
@@ -863,7 +865,7 @@ export default function JobsPage() {
           } else {
             params.delete("pool_id");
           }
-          router.push(`/jobs?${params.toString()}`);
+          router.push(`/jobs?${params.toString()}`, { scroll: false });
         }}
         variant="solid"
         color="primary"
@@ -871,10 +873,10 @@ export default function JobsPage() {
           tabList: "bg-white/5",
         }}
       >
-        <Tab key="all" title="全部" />
         <Tab key="inbox" title="未筛选" />
         <Tab key="picked" title="已筛选" />
         <Tab key="ignored" title="回收站" />
+        <Tab key="all" title="全部" />
       </Tabs>
 
       {/* 筛选栏 */}
@@ -924,7 +926,7 @@ export default function JobsPage() {
                   } else {
                     params.set("pool_id", value);
                   }
-                  router.push(`/jobs?${params.toString()}`);
+                  router.push(`/jobs?${params.toString()}`, { scroll: false });
                 }}
                 classNames={{ base: "w-48", trigger: "bg-white/5 border border-white/10" }}
                 items={poolFilterOptions}

@@ -37,10 +37,10 @@ async def init_db():
     """创建所有表（首次启动时调用）+ 自动补全缺失列"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # 轻量级迁移：检查已有表并补全缺失列（仅 SQLite）
         await conn.run_sync(_auto_migrate)
     await seed_templates()
     await seed_system_batches()
+    await migrate_triage_status()
 
 
 def _auto_migrate(connection):
@@ -194,3 +194,42 @@ async def seed_system_batches():
                 )
             )
             await session.commit()
+
+
+async def migrate_triage_status():
+    """将旧的 triage_status 值（screened/unscreened）归一化为 picked/inbox"""
+    import logging
+    from sqlalchemy import text
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        async with async_session() as session:
+            need_migrate = (
+                await session.execute(
+                    text(
+                        "SELECT COUNT(*) FROM jobs WHERE triage_status IN ('screened','unscreened')"
+                        " UNION ALL "
+                        "SELECT COUNT(*) FROM pools WHERE scope IN ('screened','unscreened')"
+                    )
+                )
+            ).all()
+            if all(row[0] == 0 for row in need_migrate):
+                return
+
+            await session.execute(
+                text("UPDATE jobs SET triage_status = 'picked' WHERE triage_status = 'screened'")
+            )
+            await session.execute(
+                text("UPDATE jobs SET triage_status = 'inbox' WHERE triage_status = 'unscreened'")
+            )
+            await session.execute(
+                text("UPDATE pools SET scope = 'picked' WHERE scope = 'screened'")
+            )
+            await session.execute(
+                text("UPDATE pools SET scope = 'inbox' WHERE scope = 'unscreened'")
+            )
+            await session.commit()
+            logger.info("migrate_triage_status: normalized legacy screened/unscreened values")
+    except Exception as exc:
+        logger.error("migrate_triage_status failed: %s", exc)

@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 import httpx
 from openai import AsyncOpenAI
@@ -191,17 +191,15 @@ async def chat_completion(
     """
     client, default_model = _get_client()
 
-    # 根据 tier 选择模型，fallback 到配置中的默认模型
+    # 用户配置的模型始终优先，tier 映射仅作为 fallback
+    # 如需分档，在设置中配置 tier_model_map 即可覆盖
     settings = get_settings()
     provider = (settings.llm_provider or "deepseek").strip().lower()
-
-    # 优先使用用户自定义 tier 映射，否则使用硬编码默认
     user_tier_map = getattr(settings, "tier_model_map", None) or {}
     if user_tier_map:
         model = user_tier_map.get(tier, default_model)
     else:
-        provider_tiers = TIER_MODEL_MAP.get(provider, {})
-        model = provider_tiers.get(tier, default_model)
+        model = default_model
 
     kwargs: dict = {
         "model": model,
@@ -227,6 +225,52 @@ async def chat_completion(
     except Exception as e:
         _logger.error(f"[LLM Error] {provider}/{model} (tier={tier}): {e}")
         return None
+
+
+async def chat_completion_stream(
+    messages: list[dict],
+    temperature: float = 0.3,
+    json_mode: bool = False,
+    max_tokens: int = 4096,
+    tier: str = "standard",
+) -> AsyncGenerator[str, None]:
+    """流式 LLM Chat Completion，逐 token yield 文本。
+
+    参数同 chat_completion，返回 async generator。
+    """
+    client, default_model = _get_client()
+
+    settings = get_settings()
+    provider = (settings.llm_provider or "deepseek").strip().lower()
+    user_tier_map = getattr(settings, "tier_model_map", None) or {}
+    if user_tier_map:
+        model = user_tier_map.get(tier, default_model)
+    else:
+        model = default_model
+
+    kwargs: dict = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    if json_mode and settings.llm_provider != "ollama":
+        kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        stream = await client.chat.completions.create(**kwargs)
+        async for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+    except asyncio.TimeoutError:
+        _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}, stream): 超过 {settings.llm_timeout}s")
+        return
+    except Exception as e:
+        _logger.error(f"[LLM Error] {provider}/{model} (tier={tier}, stream): {e}")
+        return
 
 
 def extract_json(text: str) -> Optional[dict]:

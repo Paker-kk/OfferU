@@ -74,10 +74,13 @@ import { CSS } from "@dnd-kit/utilities";
 /** 段落类型选项（包含图标和主题色） */
 const SECTION_TYPES = [
   { key: "education", label: "教育经历", icon: GraduationCap, color: "text-[#1040C0]" },
-  { key: "experience", label: "工作经历", icon: Briefcase, color: "text-[#D02020]" },
-  { key: "skill", label: "技能与证书", icon: Wrench, color: "text-[#F0C020]" },
-  { key: "project", label: "项目经历", icon: FolderKanban, color: "text-[#1040C0]" },
-  { key: "custom", label: "个人经历", icon: LayoutList, color: "text-[#121212]" },
+  { key: "workExperiences", label: "工作经历", icon: Briefcase, color: "text-[#D02020]" },
+  { key: "internshipExperiences", label: "实习经历", icon: Briefcase, color: "text-[#C04A20]" },
+  { key: "projects", label: "项目经历", icon: FolderKanban, color: "text-[#1040C0]" },
+  { key: "skills", label: "技能", icon: Wrench, color: "text-[#F0C020]" },
+  { key: "certificates", label: "证书", icon: LayoutList, color: "text-[#2F7A5B]" },
+  { key: "awards", label: "获奖经历", icon: Sparkles, color: "text-[#D02020]" },
+  { key: "personalExperiences", label: "个人经历", icon: LayoutList, color: "text-[#121212]" },
 ];
 
 const bauhausFieldClassNames = {
@@ -111,7 +114,7 @@ const bauhausSelectClassNames = {
 
 /** 根据 section_type 获取图标和颜色 */
 function getSectionMeta(type: string) {
-  return SECTION_TYPES.find((t) => t.key === type) || SECTION_TYPES[4];
+  return SECTION_TYPES.find((t) => t.key === type) || SECTION_TYPES[SECTION_TYPES.length - 1];
 }
 
 // =============================================
@@ -153,7 +156,7 @@ export default function ResumeEditorPage() {
   const router = useRouter();
   const resumeId = Number(params.id);
   const { data: resume, mutate } = useResume(resumeId);
-  const { data: profileData } = useProfile();
+  const { data: profileData, mutate: mutateProfile } = useProfile();
 
   // ---- 本地编辑状态 ----
   const [userName, setUserName] = useState("");
@@ -283,7 +286,6 @@ export default function ResumeEditorPage() {
   const { data: config } = useConfig();
   const profileSourceSyncEnabled = Boolean((config as any)?.profile_source_sync_enabled);
   const serverSnapshotRef = useRef("");
-  const mergedLegacySectionIdsRef = useRef<number[]>([]);
 
   const getProfileSectionResumeType = useCallback((section: ProfileSection) => {
     return mapProfileSectionToResumeType(section.category_key || section.section_type);
@@ -473,13 +475,6 @@ export default function ResumeEditorPage() {
   useEffect(() => {
     if (!resume) return;
     const normalizedSections = normalizeResumeSectionsForEditor(resume.sections || []);
-    const normalizedIds = new Set(normalizedSections.map((section) => section.id));
-    mergedLegacySectionIdsRef.current = (resume.sections || [])
-      .filter((section: any) =>
-        (section.section_type === "skill" || section.section_type === "certificate")
-        && !normalizedIds.has(section.id)
-      )
-      .map((section: any) => section.id);
     const serverSnapshot = JSON.stringify({
       userName: resume.user_name || "",
       title: resume.title || "",
@@ -603,18 +598,6 @@ export default function ResumeEditorPage() {
           sort_order: sec.sort_order,
         });
       }
-      if (mergedLegacySectionIdsRef.current.length > 0) {
-        const failedIds: number[] = [];
-        for (const legacySectionId of mergedLegacySectionIdsRef.current) {
-          try {
-            await deleteSection(resumeId, legacySectionId);
-          } catch (err) {
-            console.error(`Delete legacy section failed: ${legacySectionId}`, err);
-            failedIds.push(legacySectionId);
-          }
-        }
-        mergedLegacySectionIdsRef.current = failedIds;
-      }
       serverSnapshotRef.current = JSON.stringify({
         userName,
         title,
@@ -658,31 +641,7 @@ export default function ResumeEditorPage() {
     const label = getResumeSectionLabel(type);
     const sectionType = RESUME_SECTION_DEFINITIONS.some((item) => item.key === type)
       ? type
-      : "custom";
-    if (sectionType === "skill") {
-      const existingSkillSection = sections.find((item) => item.section_type === "skill");
-      if (existingSkillSection) {
-        setSections((prev) =>
-          prev.map((item) => {
-            if (item.id !== existingSkillSection.id) return item;
-            const current = Array.isArray(item.content_json) ? item.content_json : [];
-            return {
-              ...item,
-              content_json: [
-                ...current,
-                { _entryType: "skill", ...createEmptySectionItem("skill") },
-              ],
-            };
-          })
-        );
-        setExpandedSections((prev) => {
-          const next = new Set(prev);
-          next.add(existingSkillSection.id);
-          return next;
-        });
-        return;
-      }
-    }
+      : "personalExperiences";
     const maxOrder = sections.length > 0 ? Math.max(...sections.map((s) => s.sort_order)) : -1;
     const res = await createSection(resumeId, {
       section_type: sectionType,
@@ -697,15 +656,26 @@ export default function ResumeEditorPage() {
     }
   };
 
-  const openProfileImportModal = useCallback((targetSectionId: number | null = null) => {
+  const openProfileImportModal = useCallback(async (targetSectionId: number | null = null) => {
     setProfileImportError("");
     setProfileImportTargetSectionId(targetSectionId);
 
-    let candidates = profileSections;
+    let latestProfile = profileData;
+    try {
+      const refreshed = await mutateProfile();
+      if (refreshed) {
+        latestProfile = refreshed;
+      }
+    } catch (error: any) {
+      setProfileImportError(error?.message || "档案数据刷新失败，已使用本地缓存。");
+    }
+
+    const sourceSections = buildProfileSectionsForResumeImport(latestProfile);
+    let candidates = sourceSections;
     if (targetSectionId != null) {
       const targetSection = sections.find((item) => item.id === targetSectionId);
       if (targetSection) {
-        candidates = profileSections.filter(
+        candidates = sourceSections.filter(
           (item) => getProfileSectionResumeType(item) === targetSection.section_type
         );
       }
@@ -713,7 +683,7 @@ export default function ResumeEditorPage() {
 
     setSelectedProfileSectionIds(new Set(candidates.map((item) => item.id)));
     onProfileImportOpen();
-  }, [getProfileSectionResumeType, onProfileImportOpen, profileSections, sections]);
+  }, [getProfileSectionResumeType, mutateProfile, onProfileImportOpen, profileData, sections]);
 
   const closeProfileImportModal = useCallback(() => {
     setProfileImportError("");
@@ -740,9 +710,7 @@ export default function ResumeEditorPage() {
           ...item,
           content_json: [
             ...current,
-            item.section_type === "skill"
-              ? { _entryType: "skill", ...createEmptySectionItem(item.section_type) }
-              : createEmptySectionItem(item.section_type),
+            createEmptySectionItem(item.section_type),
           ],
         };
       })
@@ -796,7 +764,26 @@ export default function ResumeEditorPage() {
   const importFromProfile = useCallback(async () => {
     if (selectedProfileSectionIds.size === 0) return;
 
-    const sourcePool = profileImportTargetSectionId == null ? profileSections : visibleProfileSections;
+    let latestProfile = profileData;
+    try {
+      const refreshed = await mutateProfile();
+      if (refreshed) latestProfile = refreshed;
+    } catch (error: any) {
+      setProfileImportError(error?.message || "档案数据刷新失败，已使用本地缓存。");
+    }
+
+    const latestSections = buildProfileSectionsForResumeImport(latestProfile).slice().sort((a, b) => a.sort_order - b.sort_order);
+    const latestVisibleSections = profileImportTargetSectionId == null
+      ? latestSections
+      : (() => {
+          const targetSection = profileImportTargetSection;
+          if (!targetSection) return latestSections;
+          return latestSections.filter(
+            (item) => getProfileSectionResumeType(item) === targetSection.section_type
+          );
+        })();
+
+    const sourcePool = profileImportTargetSectionId == null ? latestSections : latestVisibleSections;
     const sourceSections = sourcePool.filter((item) => selectedProfileSectionIds.has(item.id));
     if (sourceSections.length === 0) return;
 
@@ -834,20 +821,16 @@ export default function ResumeEditorPage() {
           const normalizedCategoryKey = normalizeProfileCategoryKey(
             profileSection.category_key || profileSection.section_type
           );
-          const moduleTitle =
-            resumeSectionType === "skill"
-              ? getResumeSectionLabel("skill")
-              : resolveProfileCategoryLabel(
-                  normalizedCategoryKey,
-                  profileSection.category_label
-                );
+          const moduleTitle = getResumeSectionLabel(resumeSectionType) || resolveProfileCategoryLabel(
+            normalizedCategoryKey,
+            profileSection.category_label
+          );
 
           if (existingIndex >= 0) {
             const current = Array.isArray(nextSections[existingIndex].content_json)
               ? nextSections[existingIndex].content_json
               : [];
-            const shouldUpdateTitle =
-              nextSections[existingIndex].section_type !== "custom" || !nextSections[existingIndex].title;
+            const shouldUpdateTitle = !nextSections[existingIndex].title;
             nextSections[existingIndex] = {
               ...nextSections[existingIndex],
               title: shouldUpdateTitle ? moduleTitle : nextSections[existingIndex].title,
@@ -889,12 +872,13 @@ export default function ResumeEditorPage() {
   }, [
     closeProfileImportModal,
     getProfileSectionResumeType,
+    mutateProfile,
     profileImportTargetSectionId,
-    profileSections,
+    profileData,
+    profileImportTargetSection,
     resumeId,
     sections,
     selectedProfileSectionIds,
-    visibleProfileSections,
   ]);
 
   /** 删除段落 */
@@ -1180,7 +1164,7 @@ export default function ResumeEditorPage() {
             <Button
               startContent={<ArrowDownToLine size={14} />}
               size="sm"
-              onPress={() => openProfileImportModal(null)}
+              onPress={() => { void openProfileImportModal(null); }}
               data-testid="resume-import-all-button"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
             >
@@ -1402,10 +1386,9 @@ export default function ResumeEditorPage() {
                   const sourceCategoryKey = Array.isArray(sec.content_json)
                     ? sec.content_json.find((item: any) => item?._source_profile_category_key)?._source_profile_category_key
                     : "";
-                  const sectionDisplayTitle =
-                    sec.section_type === "custom" && sourceCategoryKey
-                      ? resolveProfileCategoryLabel(sourceCategoryKey)
-                      : (getResumeSectionLabel(sec.section_type) || sec.title || "未命名模块");
+                  const sectionDisplayTitle = sourceCategoryKey
+                    ? getResumeSectionLabel(sec.section_type) || resolveProfileCategoryLabel(sourceCategoryKey)
+                    : (getResumeSectionLabel(sec.section_type) || sec.title || "未命名模块");
                   return (
                     <SortableSectionItem key={sec.id} id={sec.id}>
                     <div
@@ -1464,7 +1447,7 @@ export default function ResumeEditorPage() {
                             size="sm"
                             variant="light"
                             className="bauhaus-button bauhaus-button-outline !h-8 !px-3 !py-2 !text-[10px]"
-                            onPress={() => openProfileImportModal(sec.id)}
+                            onPress={() => { void openProfileImportModal(sec.id); }}
                             data-testid={`resume-section-import-${sec.id}`}
                           >
                             档案
@@ -1513,7 +1496,7 @@ export default function ResumeEditorPage() {
                 <Button
                   size="sm"
                   className="bauhaus-button bauhaus-button-blue !h-10 !justify-center !px-4 !py-3 !text-[11px]"
-                  onPress={() => openProfileImportModal(null)}
+                  onPress={() => { void openProfileImportModal(null); }}
                   data-testid="resume-import-all-button-bottom"
                 >
                   从档案导入

@@ -56,13 +56,13 @@ const item = {
 
 const CATEGORY_CLASS: Record<string, string> = {
   application: "border-2 border-black bg-white text-black font-semibold",
-  written_test: "border-2 border-black bg-[#1040C0] text-white font-semibold",
-  assessment: "border-2 border-black bg-[#1040C0] text-white font-semibold",
-  interview_1: "border-2 border-black bg-[#F0C020] text-black font-semibold",
-  interview_2: "border-2 border-black bg-[#F0C020] text-black font-semibold",
-  interview_hr: "border-2 border-black bg-[#D02020] text-white font-semibold",
+  written_test: "border-2 border-black bg-[#e4ece6] text-black font-semibold",
+  assessment: "border-2 border-black bg-[#e4ece6] text-black font-semibold",
+  interview_1: "border-2 border-black bg-[#f3ead2] text-black font-semibold",
+  interview_2: "border-2 border-black bg-[#f3ead2] text-black font-semibold",
+  interview_hr: "border-2 border-black bg-[#f7ece9] text-black font-semibold",
   offer: "border-2 border-black bg-black text-white font-semibold",
-  rejection: "border-2 border-black bg-[#D02020] text-white font-semibold",
+  rejection: "border-2 border-black bg-[#f7ece9] text-black font-semibold",
   unknown: "border-2 border-black bg-white text-black font-semibold",
 };
 
@@ -143,15 +143,15 @@ export default function EmailPage() {
       <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Mail Intake</span>
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">邮件接入</span>
             <div>
-              <p className="bauhaus-label text-black/55">Inbox Parser</p>
+              <p className="bauhaus-label text-black/55">收件箱解析</p>
               <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Read
+                读取
                 <br />
-                Parse
+                解析
                 <br />
-                Route
+                路由
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
                 把邮箱授权、通知分类和日历同步集中到一块面板里，避免面试邮件遗漏，
@@ -161,23 +161,23 @@ export default function EmailPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Gmail</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isGmail ? "Linked" : "Pending"}</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/55">Gmail</p>
+              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isGmail ? "已连接" : "待连接"}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">IMAP</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isImap ? "Linked" : "Pending"}</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/55">IMAP</p>
+              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isImap ? "已连接" : "待连接"}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Parsed</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/55">已解析</p>
               <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{notifications?.length ?? 0}</p>
             </div>
           </div>
         </div>
       </motion.section>
 
-      <motion.section variants={item} className="bauhaus-panel-sm flex items-start gap-3 bg-[#F0C020] p-4 text-black">
+      <motion.section variants={item} className="bauhaus-panel-sm flex items-start gap-3 bg-[#f3ead2] p-4 text-black">
         <Info size={16} className="mt-0.5 shrink-0" />
         <p className="text-sm font-medium leading-relaxed text-black/78">
           本功能仅供个人学习和求职使用，请勿用于商业抓取或批量数据采集。使用前请确认已阅读平台条款和邮件服务规则。
@@ -224,7 +224,7 @@ export default function EmailPage() {
       <motion.section variants={item}>
         <Card className="bauhaus-panel rounded-none bg-white shadow-none">
           <CardBody className="flex flex-col gap-4 p-5 md:flex-row md:items-center">
-            <div className="bauhaus-panel-sm flex h-12 w-12 items-center justify-center bg-[#1040C0] text-white">
+            <div className="bauhaus-panel-sm flex h-12 w-12 items-center justify-center bg-[#e4ece6] text-black">
               <Mail size={22} />
             </div>
             <div className="flex-1">
@@ -234,12 +234,12 @@ export default function EmailPage() {
                   ? `${isImap ? `IMAP: ${emailStatus?.imap_user}` : ""}${isImap && isGmail ? " + " : ""}${isGmail ? "Gmail OAuth" : ""} · 已解析 ${notifications?.length ?? 0} 条通知`
                   : "尚未连接邮箱。支持 QQ邮箱 / 163邮箱 / Gmail IMAP 直连，也支持 Gmail OAuth。"}
               </p>
-              {syncResult && <p className="mt-2 text-sm font-medium text-[#1040C0]">{syncResult}</p>}
+              {syncResult && <p className="mt-2 text-sm font-medium text-[#7a8f7e]">{syncResult}</p>}
             </div>
             <Chip
               variant="flat"
               className={`border-2 border-black font-semibold ${
-                isConnected ? "bg-[#F0C020] text-black" : "bg-white text-black"
+                isConnected ? "bg-[#f3ead2] text-black" : "bg-white text-black"
               }`}
             >
               {isConnected ? "已连接" : "未连接"}
@@ -252,14 +252,14 @@ export default function EmailPage() {
         <ModalContent className={bauhausModalContentClassName}>
           {(onClose) => (
             <>
-              <ModalHeader className="border-b-2 border-black bg-[#1040C0] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+              <ModalHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em] text-black">
                 <div className="flex items-center gap-2">
                   <Shield size={20} />
                   IMAP 邮箱直连
                 </div>
               </ModalHeader>
               <ModalBody className="space-y-4 px-6 py-6">
-                <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-sm font-medium leading-relaxed text-black/78">
+                <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-sm font-medium leading-relaxed text-black/78">
                   QQ邮箱 / 163邮箱需要使用授权码而不是登录密码。输入完成后会先做连接校验，再保存到本地配置。
                 </div>
                 <Select
@@ -291,7 +291,7 @@ export default function EmailPage() {
                   classNames={bauhausFieldClassNames}
                 />
                 {imapError && (
-                  <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+                  <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#f7ece9] px-4 py-3 text-sm font-medium text-[#b7483c]">
                     <AlertCircle size={14} /> {imapError}
                   </div>
                 )}
@@ -351,7 +351,7 @@ export default function EmailPage() {
                     </div>
 
                     {notification.interview_time && (
-                      <Chip size="sm" variant="flat" className="border-2 border-black bg-[#1040C0] font-semibold text-white">
+                      <Chip size="sm" variant="flat" className="border-2 border-black bg-[#e4ece6] font-semibold text-black">
                         <Clock size={12} className="mr-1" />
                         {new Date(notification.interview_time).toLocaleString("zh-CN")}
                       </Chip>
@@ -359,7 +359,7 @@ export default function EmailPage() {
                   </div>
 
                   {notification.action_required && (
-                    <div className="bauhaus-panel-sm bg-[#F0C020] px-4 py-3 text-sm font-medium text-black">
+                    <div className="bauhaus-panel-sm bg-[#f3ead2] px-4 py-3 text-sm font-medium text-black">
                       下一步：{notification.action_required}
                     </div>
                   )}
@@ -374,11 +374,11 @@ export default function EmailPage() {
         </div>
       ) : (
         <motion.div variants={item}>
-          <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+          <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-black shadow-none">
             <CardBody className="p-10 text-center">
-              <Mail size={54} className="mx-auto" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Notifications Yet</p>
-              <p className="mt-3 text-sm font-medium text-white/80">
+              <Mail size={54} className="mx-auto text-black/30" />
+              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无通知</p>
+              <p className="mt-3 text-sm font-medium text-black/60">
                 先完成邮箱连接，然后同步邮件，这里会出现面试、笔试和 Offer 通知。
               </p>
             </CardBody>

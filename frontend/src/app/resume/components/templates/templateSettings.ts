@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 export type ResumeTemplateType =
   | "reference"
   | "reference-compact"
-  | "reference-no-photo"
   | "swiss-single"
   | "swiss-two-column"
   | "modern"
@@ -64,6 +63,7 @@ export interface NormalizedResumeData {
   title: string;
   photoUrl?: string;
   summary: string;
+  summaryHtml?: string;
   contact: Record<string, string>;
   sections: NormalizedResumeSection[];
 }
@@ -82,11 +82,6 @@ export const TEMPLATE_OPTIONS: Array<{
     id: "reference-compact",
     name: "附件同款·紧凑",
     description: "保持附件样式，压缩段落间距，适合内容较多的简历。",
-  },
-  {
-    id: "reference-no-photo",
-    name: "附件同款·无照片",
-    description: "保持附件排版，但隐藏证件照区域。",
   },
 ];
 
@@ -169,7 +164,7 @@ function asSpacingLevel(value: unknown, fallback: SpacingLevel): SpacingLevel {
 }
 
 function asTemplate(value: unknown): ResumeTemplateType {
-  if (value === "reference" || value === "reference-compact" || value === "reference-no-photo") {
+  if (value === "reference" || value === "reference-compact") {
     return value;
   }
   return DEFAULT_TEMPLATE_SETTINGS.template;
@@ -229,7 +224,7 @@ function lineHeightToLevel(value: unknown, fallback: SpacingLevel): SpacingLevel
 export function normalizeTemplateSettings(config: Record<string, any> = {}): ResumeTemplateSettings {
   const rawTemplate = config.template || config.templateType;
   const template = asTemplate(rawTemplate);
-  const isLegacyTemplate = rawTemplate !== "reference" && rawTemplate !== "reference-compact" && rawTemplate !== "reference-no-photo";
+  const isLegacyTemplate = rawTemplate !== "reference" && rawTemplate !== "reference-compact";
   return {
     template,
     pageSize: config.pageSize === "LETTER" ? "LETTER" : "A4",
