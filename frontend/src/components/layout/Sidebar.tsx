@@ -3,15 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
-  Bot,
   Briefcase,
-  Bug,
   Calendar,
   FileText,
   GraduationCap,
   LayoutDashboard,
-  Mail,
   Settings,
   Send,
   Sparkles,
@@ -20,16 +16,12 @@ import {
 
 const navItems = [
   { href: "/", label: "仪表盘", icon: LayoutDashboard },
-  { href: "/scraper", label: "抓取器", icon: Bug },
   { href: "/jobs", label: "岗位库", icon: Briefcase },
   { href: "/optimize", label: "AI 优化", icon: Sparkles },
   { href: "/resume", label: "简历", icon: FileText },
   { href: "/applications", label: "投递", icon: Send },
   { href: "/interview", label: "面试", icon: GraduationCap },
   { href: "/calendar", label: "日程", icon: Calendar },
-  { href: "/email", label: "邮件", icon: Mail },
-  { href: "/analytics", label: "分析", icon: BarChart3 },
-  { href: "/agent", label: "助手", icon: Bot },
   { href: "/profile", label: "档案", icon: UserRound },
   { href: "/settings", label: "设置", icon: Settings },
 ];
@@ -132,7 +124,7 @@ export function Sidebar() {
           }`}
         >
           {collapsed ? (
-            <p className="text-center text-[10px] font-semibold">AI助手</p>
+            <p className="text-center text-[10px] font-semibold">行动</p>
           ) : (
             <>
               <p className="text-[11px] font-medium text-black/50">专注岗位与行动</p>

@@ -7,14 +7,15 @@ import {
   Autocomplete,
   AutocompleteItem,
   Button,
+  Chip,
   Input,
   Card,
   CardBody,
+  Textarea,
 } from "@nextui-org/react";
 import {
   Sparkles,
   Key,
-  Upload,
   Briefcase,
   ArrowRight,
   ArrowLeft,
@@ -25,7 +26,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
-import { createResume, updateConfig, useConfig } from "@/lib/hooks";
+import { createResume, updateConfig, useConfig, type ProfileImportResult } from "@/lib/hooks";
+import { profileApi, resumeApi } from "@/lib/api";
+import AIImportModal, { AI_IMPORT_PROMPT, parseAiImportJson } from "@/app/profile/components/AIImportModal";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -34,6 +37,166 @@ interface OnboardingWizardProps {
 
 const TOTAL_STEPS = 4;
 const CUSTOM_OPTION = "__custom__";
+
+type StarterQuizOption = {
+  value: string;
+  label: string;
+  description: string;
+  traits: string[];
+  roles: string[];
+  proofAngles: string[];
+};
+
+type StarterQuizQuestion = {
+  id: string;
+  title: string;
+  prompt: string;
+  options: StarterQuizOption[];
+};
+
+const STARTER_QUIZ_QUESTIONS: StarterQuizQuestion[] = [
+  {
+    id: "work_style",
+    title: "遇到一件新任务，你更像哪一种？",
+    prompt: "选更像你的那边，不需要想标准答案。",
+    options: [
+      {
+        value: "organizer",
+        label: "先拆目标和节奏",
+        description: "我会把任务、人和时间排清楚。",
+        traits: ["组织推进型", "执行闭环"],
+        roles: ["运营", "项目助理", "产品运营"],
+        proofAngles: ["流程推进", "跨方协作", "交付结果"],
+      },
+      {
+        value: "researcher",
+        label: "先找真实需求",
+        description: "我会先问用户、同学或业务方卡在哪。",
+        traits: ["用户洞察型", "问题拆解"],
+        roles: ["用户研究", "产品助理", "市场洞察"],
+        proofAngles: ["用户反馈", "需求分析", "问题定义"],
+      },
+    ],
+  },
+  {
+    id: "output_style",
+    title: "哪种产出更像你的强项？",
+    prompt: "这会影响简历后面突出内容、数据还是产品感。",
+    options: [
+      {
+        value: "content",
+        label: "能被看见的内容",
+        description: "文章、视频、活动文案、账号内容都算。",
+        traits: ["内容表达型", "传播敏感"],
+        roles: ["内容运营", "品牌市场", "新媒体运营"],
+        proofAngles: ["内容作品", "传播数据", "受众反馈"],
+      },
+      {
+        value: "data",
+        label: "能说清问题的数据",
+        description: "我喜欢用表格、对比和指标找下一步。",
+        traits: ["数据分析型", "理性归因"],
+        roles: ["商业分析", "数据运营", "产品运营"],
+        proofAngles: ["数据分析", "指标变化", "决策依据"],
+      },
+    ],
+  },
+  {
+    id: "team_role",
+    title: "团队里你常常承担什么角色？",
+    prompt: "Agent 后续会按这个方向追问你的经历证据。",
+    options: [
+      {
+        value: "connector",
+        label: "把资源和人拉起来",
+        description: "我会沟通、协调、推进合作。",
+        traits: ["资源整合型", "沟通协调"],
+        roles: ["BD", "活动运营", "校园招聘"],
+        proofAngles: ["资源拓展", "合作对象", "活动规模"],
+      },
+      {
+        value: "builder",
+        label: "把方案和作品做扎实",
+        description: "我愿意沉下去打磨方案、产品或研究。",
+        traits: ["方案打磨型", "作品导向"],
+        roles: ["产品助理", "行业研究", "策划"],
+        proofAngles: ["方案产出", "作品链接", "方法论"],
+      },
+    ],
+  },
+  {
+    id: "proof_style",
+    title: "你更容易拿出哪种证明？",
+    prompt: "简历里最缺的通常就是这些 proof points。",
+    options: [
+      {
+        value: "numbers",
+        label: "数字结果",
+        description: "人数、金额、增长、排名、周期、覆盖范围。",
+        traits: ["结果证明型", "指标意识"],
+        roles: ["增长运营", "数据运营", "商业分析"],
+        proofAngles: ["人数/金额", "增长比例", "排名/周期"],
+      },
+      {
+        value: "portfolio",
+        label: "作品案例",
+        description: "文章、报告、Demo、原型、活动物料。",
+        traits: ["作品证明型", "案例表达"],
+        roles: ["内容策划", "产品助理", "市场策划"],
+        proofAngles: ["作品案例", "方案文档", "展示链接"],
+      },
+    ],
+  },
+  {
+    id: "job_strategy",
+    title: "你现在更想怎么投？",
+    prompt: "这会影响推荐方向是稳入口还是冲成长。",
+    options: [
+      {
+        value: "stable",
+        label: "先拿稳入口",
+        description: "希望方向清楚、门槛匹配、能尽快投起来。",
+        traits: ["稳健求职型", "匹配优先"],
+        roles: ["运营", "HR", "市场助理"],
+        proofAngles: ["岗位匹配点", "基础能力", "可迁移经验"],
+      },
+      {
+        value: "growth",
+        label: "愿意冲成长方向",
+        description: "可以接受学习曲线，想往 AI、产品、增长靠。",
+        traits: ["成长探索型", "高潜迁移"],
+        roles: ["AI 产品运营", "产品助理", "增长运营"],
+        proofAngles: ["学习速度", "迁移能力", "AI 工具使用"],
+      },
+    ],
+  },
+];
+
+function rankStarterItems(items: string[], limit: number) {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(item, (counts.get(item) || 0) + 1);
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([item]) => item)
+    .slice(0, limit);
+}
+
+function buildStarterCareerProfile(options: StarterQuizOption[]) {
+  const traits = rankStarterItems(options.flatMap((option) => option.traits), 4);
+  const suggestedRoles = rankStarterItems(options.flatMap((option) => option.roles), 5);
+  const proofAngles = Array.from(new Set(options.flatMap((option) => option.proofAngles))).slice(0, 6);
+  const archetype = traits.length >= 2 ? `${traits[0]} + ${traits[1]}` : traits[0] || "探索型";
+  return {
+    archetype,
+    traits,
+    suggestedRoles,
+    proofAngles,
+    summary:
+      traits.length > 0
+        ? `你的简历更适合围绕「${traits.slice(0, 2).join(" / ")}」来讲，后面优先补 ${proofAngles.slice(0, 3).join("、") || "可验证成果"}。`
+        : "先完成这组选择，我会把答案转成岗位方向和经历追问线索。",
+  };
+}
 
 interface ProviderModelPreset {
   id: string;
@@ -201,15 +364,24 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const modelSelectionRef = useRef(false);
   const urlSelectionRef = useRef(false);
 
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [resumeMode, setResumeMode] = useState<"choose" | "create" | "upload">("choose");
   const [userName, setUserName] = useState("");
   const [school, setSchool] = useState("");
   const [major, setMajor] = useState("");
+  const [targetRole, setTargetRole] = useState("");
+  const [experienceNotes, setExperienceNotes] = useState(["", "", ""]);
   const [selectedTemplate, setSelectedTemplate] = useState("general");
   const [creatingResume, setCreatingResume] = useState(false);
   const [resumeCreated, setResumeCreated] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [aiImportStep, setAiImportStep] = useState(0);
+  const [aiImportCopied, setAiImportCopied] = useState(false);
+  const [aiImportJsonText, setAiImportJsonText] = useState("");
+  const [aiImportError, setAiImportError] = useState("");
+  const [aiImportParsing, setAiImportParsing] = useState(false);
 
   const goNext = () => {
     setDirection(1);
@@ -219,6 +391,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const goBack = () => {
     setDirection(-1);
     setStep((value) => Math.max(value - 1, 0));
+  };
+
+  const handleQuizNext = () => {
+    const firstRole = careerProfile.suggestedRoles[0] || "";
+    if (!targetRole && firstRole) {
+      setTargetRole(firstRole);
+    }
+    goNext();
   };
 
   const currentFormPreset = useMemo(
@@ -241,6 +421,25 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     }
     return [{ id: currentFormPreset.default_base_url, name: `默认地址 · ${currentFormPreset.default_base_url}` }];
   }, [currentFormPreset]);
+
+  const selectedQuizOptions = useMemo(
+    () =>
+      STARTER_QUIZ_QUESTIONS.flatMap((question) => {
+        const option = question.options.find((item) => item.value === quizAnswers[question.id]);
+        return option ? [{ question, option }] : [];
+      }),
+    [quizAnswers]
+  );
+  const careerProfile = useMemo(
+    () => buildStarterCareerProfile(selectedQuizOptions.map((item) => item.option)),
+    [selectedQuizOptions]
+  );
+  const quizComplete = selectedQuizOptions.length === STARTER_QUIZ_QUESTIONS.length;
+  const experiencePlaceholders = [
+    `例：我做过一个${careerProfile.proofAngles[0] || "项目/活动"}，当时目标是...我负责...最后...`,
+    `例：一段最能证明${careerProfile.traits[0] || "能力"}的经历，背景是...动作是...结果是...`,
+    `例：我能补充一个${careerProfile.proofAngles[1] || "作品/数据"}，人数/金额/增长/反馈是...`,
+  ];
 
   const resolvedFormServiceName = useMemo(() => {
     if (formProviderChoice === CUSTOM_OPTION) return formCustomServiceName.trim();
@@ -466,19 +665,91 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     setCreatingResume(true);
 
     try {
+      const proofNotes = experienceNotes.map((item) => item.trim()).filter(Boolean);
       const templateTitles: Record<string, string> = {
         tech: "技术岗简历",
         business: "商科岗简历",
         general: "我的简历",
       };
+      const careerProfilePayload = {
+        ...careerProfile,
+        target_role: targetRole.trim(),
+        proof_notes: proofNotes,
+        answers: selectedQuizOptions.reduce<Record<string, string>>((acc, item) => {
+          acc[item.question.id] = item.option.label;
+          return acc;
+        }, {}),
+      };
 
-      await createResume({
+      await profileApi.update({
+        name: userName.trim(),
+        base_info_json: {
+          name: userName.trim(),
+          school: school.trim(),
+          major: major.trim(),
+          job_intention: targetRole.trim(),
+          career_profile: careerProfilePayload,
+        },
+      });
+
+      for (const role of careerProfile.suggestedRoles.slice(0, 3)) {
+        try {
+          await profileApi.createTargetRole({
+            role_name: role,
+            fit: role === targetRole.trim() ? "primary" : "secondary",
+          });
+        } catch {
+          // 目标岗位重复时允许继续创建简历。
+        }
+      }
+
+      const created: any = await createResume({
         user_name: userName.trim(),
         title: templateTitles[selectedTemplate] || "我的简历",
-        school: school.trim() || undefined,
-        major: major.trim() || undefined,
+        summary: careerProfile.summary,
+        source_profile_snapshot: careerProfilePayload,
         template: selectedTemplate,
       });
+
+      const resumeId = Number(created?.id || 0);
+      const sections = Array.isArray(created?.sections) ? created.sections : [];
+      const educationSection = sections.find((item: any) => item.section_type === "education");
+      const experienceSection = sections.find((item: any) => item.section_type === "experience");
+      const skillSection = sections.find((item: any) => item.section_type === "skill");
+
+      if (resumeId && educationSection?.id && (school.trim() || major.trim())) {
+        await resumeApi.updateSection(resumeId, educationSection.id, {
+          content_json: [
+            {
+              school: school.trim(),
+              major: major.trim(),
+              description: [school.trim(), major.trim()].filter(Boolean).join(" · "),
+            },
+          ],
+        });
+      }
+
+      if (resumeId && experienceSection?.id && proofNotes.length > 0) {
+        await resumeApi.updateSection(resumeId, experienceSection.id, {
+          title: "经历素材",
+          content_json: proofNotes.map((note, index) => ({
+            position: `待打磨经历 ${index + 1}`,
+            company: "",
+            description: note,
+          })),
+        });
+      }
+
+      if (resumeId && skillSection?.id && careerProfile.proofAngles.length > 0) {
+        await resumeApi.updateSection(resumeId, skillSection.id, {
+          content_json: [
+            {
+              category: "优先补强关键词",
+              items: careerProfile.proofAngles.slice(0, 6),
+            },
+          ],
+        });
+      }
 
       setResumeCreated(true);
       setTimeout(goNext, 800);
@@ -529,6 +800,89 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     }
   };
 
+  const handleAiImportForWizard = async (result: ProfileImportResult) => {
+    try {
+      // 从 AI 解析结果中提取文本，创建简历
+      const baseInfo = result.base_info || {};
+      const sections = result.bullets || [];
+      const textParts: string[] = [];
+      if (baseInfo.name) textParts.push(baseInfo.name);
+      if (baseInfo.phone) textParts.push(baseInfo.phone);
+      if (baseInfo.email) textParts.push(baseInfo.email);
+      if (baseInfo.job_intention) textParts.push(`求职意向：${baseInfo.job_intention}`);
+      if (baseInfo.summary) textParts.push(baseInfo.summary);
+
+      for (const bullet of sections) {
+        const normalized = bullet.content_json?.normalized || {};
+        const values = Object.values(normalized).filter((v) => v && typeof v === "string");
+        if (values.length) textParts.push(values.join(" | "));
+      }
+
+      const rawText = textParts.join("\n");
+      const titleName = baseInfo.name || "AI 导入简历";
+
+      await createResume({
+        user_name: baseInfo.name || "待完善",
+        title: titleName,
+        raw_text: rawText,
+      });
+
+      setUploadResult("已通过 AI 导入创建简历，稍后可以继续在简历编辑器中精修。");
+      setResumeCreated(true);
+      setTimeout(goNext, 1000);
+    } catch {
+      setUploadResult("AI 导入创建简历失败，请重试或选择快速创建。");
+    }
+  };
+
+  // === 内联 AI 导入处理 ===
+  const handleCopyPromptInline = async () => {
+    try {
+      await navigator.clipboard.writeText(AI_IMPORT_PROMPT);
+      setAiImportCopied(true);
+      setTimeout(() => setAiImportCopied(false), 2000);
+      setAiImportStep(1);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = AI_IMPORT_PROMPT;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setAiImportCopied(true);
+      setTimeout(() => setAiImportCopied(false), 2000);
+      setAiImportStep(1);
+    }
+  };
+
+  const handlePasteFromClipboardInline = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setAiImportJsonText(text);
+    } catch {
+      setAiImportError("无法读取剪贴板，请手动粘贴。");
+    }
+  };
+
+  const handleConfirmAiImportInline = () => {
+    if (!aiImportJsonText.trim()) {
+      setAiImportError("请先粘贴 AI 返回的 JSON 结果。");
+      return;
+    }
+    setAiImportParsing(true);
+    setAiImportError("");
+    try {
+      const result = parseAiImportJson(aiImportJsonText);
+      handleAiImportForWizard(result);
+    } catch (err: any) {
+      setAiImportError(err.message || "解析失败，请确认 JSON 格式正确。");
+    } finally {
+      setAiImportParsing(false);
+    }
+  };
+
   const handleFinish = (goToPage?: string) => {
     onComplete();
     if (goToPage) {
@@ -547,9 +901,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const stepDetails = [
     {
       id: "01",
-      label: "欢迎",
-      headline: ["你好", "OfferU"],
-      note: "先用几步把智能能力、简历与职位流转入口接通。",
+      label: "职业画像",
+      headline: ["了解", "你"],
+      note: "先像 MBTI 一样选几题，把你的求职方向、可讲素材和证明点定下来。",
       activePanel: "bg-[#efe3bc] text-black",
     },
     {
@@ -561,9 +915,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     },
     {
       id: "03",
-      label: "简历底稿",
+      label: "档案底稿",
       headline: ["创建", "底稿"],
-      note: "创建第一份基础简历，之后再为不同岗位克隆和定制。",
+      note: "不只填姓名学校，先补目标岗位和 3 条可追问的经历素材。",
       activePanel: "bg-[#f7ece9] text-black",
     },
     {
@@ -697,7 +1051,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
               <AnimatePresence mode="wait" custom={direction}>
                 {step === 0 && (
                   <motion.div
-                    key="welcome"
+                    key="career-profile"
                     custom={direction}
                     variants={slideVariants}
                     initial="enter"
@@ -707,31 +1061,86 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     className="space-y-6"
                   >
                     <div className="space-y-4">
-                      <span className="bauhaus-chip bg-[#efe3bc] text-black">从这里开始</span>
+                      <span className="bauhaus-chip bg-[#efe3bc] text-black">职业画像测试</span>
                       <div>
                         <h2 className="text-4xl font-bold leading-tight md:text-6xl">
-                          搭建你的
+                          先了解
                           <br />
-                          求职中枢
+                          你怎么做事
                         </h2>
                         <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
-                          OfferU 会在几步内配置智能能力、建立第一份基础简历，并把你送进岗位抓取与筛选工作流。
+                          像 MBTI 一样选更像你的答案。系统会把结果转成岗位方向、简历素材线索和后续 Agent 追问重点。
                         </p>
                       </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="bauhaus-panel-sm bg-[#efe3bc] p-4">
-                        <p className="bauhaus-label text-black/55">1</p>
-                        <p className="mt-3 text-xl font-semibold">连接模型</p>
+                    <div className="grid gap-4 xl:grid-cols-[1fr_0.72fr]">
+                      <div className="space-y-4">
+                        {STARTER_QUIZ_QUESTIONS.map((question, index) => (
+                          <div key={question.id} className="bauhaus-panel-sm bg-white p-4 text-black">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="bauhaus-label text-black/50">Question {index + 1}</p>
+                                <h3 className="mt-2 text-lg font-semibold">{question.title}</h3>
+                                <p className="mt-1 text-sm font-medium leading-relaxed text-black/55">{question.prompt}</p>
+                              </div>
+                              {quizAnswers[question.id] && <CheckCircle2 size={18} className="mt-1 shrink-0" />}
+                            </div>
+                            <div className="mt-3 grid gap-2 md:grid-cols-2">
+                              {question.options.map((option) => {
+                                const selected = quizAnswers[question.id] === option.value;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() =>
+                                      setQuizAnswers((prev) => ({
+                                        ...prev,
+                                        [question.id]: option.value,
+                                      }))
+                                    }
+                                    className={`border px-4 py-3 text-left transition-transform hover:-translate-y-[1px] ${
+                                      selected
+                                        ? "border-black bg-[#efe3bc] text-black"
+                                        : "border-black/15 bg-[#F0F0F0] text-black"
+                                    }`}
+                                  >
+                                    <span className="block text-sm font-semibold">{option.label}</span>
+                                    <span className="mt-1 block text-xs font-medium leading-5 text-black/55">{option.description}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">2</p>
-                        <p className="mt-3 text-xl font-semibold">创建底稿</p>
-                      </div>
-                      <div className="bauhaus-panel-sm bg-[#e8d2cd] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">3</p>
-                        <p className="mt-3 text-xl font-semibold">进入流程</p>
+
+                      <div className="space-y-4">
+                        <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
+                          <p className="bauhaus-label text-black/55">当前画像</p>
+                          <p className="mt-3 text-2xl font-semibold">{careerProfile.archetype}</p>
+                          <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">{careerProfile.summary}</p>
+                        </div>
+                        <div className="bauhaus-panel-sm bg-white p-4 text-black">
+                          <p className="bauhaus-label text-black/55">推荐方向</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(careerProfile.suggestedRoles.length > 0 ? careerProfile.suggestedRoles : ["运营", "产品助理", "内容运营"]).slice(0, 5).map((role) => (
+                              <Chip key={role} size="sm" variant="flat" className="bg-[#efe3bc] text-black">
+                                {role}
+                              </Chip>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+                          <p className="bauhaus-label text-black/55">后面优先追问</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(careerProfile.proofAngles.length > 0 ? careerProfile.proofAngles : ["人数/金额", "作品案例", "结果反馈"]).slice(0, 6).map((angle) => (
+                              <Chip key={angle} size="sm" variant="bordered" className="border-black/20 text-black">
+                                {angle}
+                              </Chip>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -739,9 +1148,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                       <Button
                         className="bauhaus-button bauhaus-button-red"
                         endContent={<ArrowRight size={16} />}
-                        onPress={goNext}
+                        isDisabled={!quizComplete}
+                        onPress={handleQuizNext}
                       >
-                        开始设置
+                        生成求职画像
                       </Button>
                       <Button
                         className="bauhaus-button bauhaus-button-outline"
@@ -1058,7 +1468,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                   快速创建
                                 </p>
                                 <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
-                                  回答几个基础问题，快速生成第一份可编辑简历。
+                                  补姓名、目标方向和 1-3 条经历素材，生成第一份可继续打磨的简历。
                                 </p>
                               </div>
                             </CardBody>
@@ -1070,14 +1480,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             onPress={() => setResumeMode("upload")}
                           >
                             <CardBody className="flex min-h-[220px] flex-col justify-between p-5">
-                              <Upload size={34} strokeWidth={2.4} />
+                              <Sparkles size={34} strokeWidth={2.4} />
                               <div>
                                 <p className="bauhaus-label text-black/55">方案二</p>
                                 <p className="mt-3 text-3xl font-bold">
-                                  上传解析
+                                  AI 导入
                                 </p>
                                 <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
-                                  导入现有 PDF 或 Word 简历，自动解析为可继续优化的初稿。
+                                  借助 AI 工具解析现有简历，快速生成结构化的简历初稿。
                                 </p>
                               </div>
                             </CardBody>
@@ -1116,6 +1526,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                 autoFocus
                                 classNames={bauhausFieldClassNames}
                               />
+                              <Input
+                                label="目标方向"
+                                placeholder="例如 AI 产品运营、内容运营、增长运营"
+                                variant="bordered"
+                                size="sm"
+                                value={targetRole}
+                                onValueChange={setTargetRole}
+                                classNames={bauhausFieldClassNames}
+                              />
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <Input
                                   label="学校"
@@ -1136,10 +1555,43 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                   classNames={bauhausFieldClassNames}
                                 />
                               </div>
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="bauhaus-label text-black/55">经历素材</p>
+                                  <p className="mt-1 text-xs font-medium leading-relaxed text-black/55">
+                                    先随便写 1-3 条，不用像简历。Agent 后面会继续追问数字、作品和结果。
+                                  </p>
+                                </div>
+                                {experienceNotes.map((note, index) => (
+                                  <Textarea
+                                    key={index}
+                                    label={`素材 ${index + 1}`}
+                                    placeholder={experiencePlaceholders[index]}
+                                    variant="bordered"
+                                    minRows={2}
+                                    value={note}
+                                    onValueChange={(value) =>
+                                      setExperienceNotes((prev) => {
+                                        const next = [...prev];
+                                        next[index] = value;
+                                        return next;
+                                      })
+                                    }
+                                    classNames={bauhausFieldClassNames}
+                                  />
+                                ))}
+                              </div>
                             </CardBody>
                           </Card>
 
                           <div className="space-y-4">
+                            <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
+                              <p className="bauhaus-label text-black/55">画像结果</p>
+                              <p className="mt-3 text-xl font-semibold">{careerProfile.archetype}</p>
+                              <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                                {careerProfile.summary}
+                              </p>
+                            </div>
                             <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
                               <p className="bauhaus-label text-black/55">模板类型</p>
                               <p className="mt-3 text-2xl font-semibold">
@@ -1193,16 +1645,104 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     ) : (
                       <div className="space-y-6">
                         <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
-                          <CardBody className="space-y-4 p-6 text-center">
-                            <Upload size={44} strokeWidth={2.4} className="mx-auto" />
-                            <div>
-                              <p className="text-3xl font-bold">
-                                上传简历
-                              </p>
-                              <p className="mt-3 text-sm font-medium leading-relaxed text-black/72">
-                                支持 PDF 和 Word。系统会自动解析文本并创建一份可继续编辑的草稿。
-                              </p>
+                          <CardBody className="space-y-5 p-6">
+                            <div className="flex items-center gap-3">
+                              <Sparkles size={28} strokeWidth={2.4} className="text-[var(--primary-red)]" />
+                              <p className="text-2xl font-bold">AI 导入简历</p>
                             </div>
+
+                            {/* 内联 3 步骤 */}
+                            {aiImportStep === 0 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  点击下方按钮复制提示词，然后前往 AI 工具上传简历并发送提示词。
+                                </p>
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  startContent={<Sparkles size={16} />}
+                                  onPress={handleCopyPromptInline}
+                                >
+                                  {aiImportCopied ? "已复制，进入下一步" : "复制提示词"}
+                                </Button>
+                              </div>
+                            )}
+
+                            {aiImportStep === 1 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  提示词已复制。请前往 AI 工具上传简历并发送提示词，然后复制返回的 JSON。
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {[
+                                    { name: "豆包", url: "https://www.doubao.com/chat/" },
+                                    { name: "ChatGPT", url: "https://chat.openai.com/" },
+                                    { name: "通义千问", url: "https://tongyi.aliyun.com/qianwen/" },
+                                    { name: "Kimi", url: "https://kimi.moonshot.cn/" },
+                                  ].map((tool) => (
+                                    <a
+                                      key={tool.name}
+                                      href={tool.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium text-black/70 transition hover:border-black/30 hover:text-black"
+                                    >
+                                      {tool.name}
+                                    </a>
+                                  ))}
+                                </div>
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  onPress={() => setAiImportStep(2)}
+                                >
+                                  我已复制 JSON，下一步
+                                </Button>
+                              </div>
+                            )}
+
+                            {aiImportStep === 2 && (
+                              <div className="space-y-4">
+                                <p className="text-sm leading-relaxed text-black/70">
+                                  将 AI 返回的 JSON 粘贴到下方，点击确认导入。
+                                </p>
+                                <Textarea
+                                  minRows={6}
+                                  maxRows={12}
+                                  placeholder='粘贴 AI 返回的 JSON...'
+                                  value={aiImportJsonText}
+                                  onValueChange={setAiImportJsonText}
+                                  variant="bordered"
+                                  classNames={{ inputWrapper: "border-black/20 bg-white font-mono text-sm" }}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="bauhaus-button bauhaus-button-outline flex-1"
+                                    onPress={handlePasteFromClipboardInline}
+                                  >
+                                    从剪贴板粘贴
+                                  </Button>
+                                  <Button
+                                    className="bauhaus-button bauhaus-button-outline flex-1"
+                                    onPress={() => setAiImportJsonText("")}
+                                    isDisabled={!aiImportJsonText}
+                                  >
+                                    清空
+                                  </Button>
+                                </div>
+                                {aiImportError && (
+                                  <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                                    {aiImportError}
+                                  </div>
+                                )}
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  isDisabled={!aiImportJsonText.trim()}
+                                  isLoading={aiImportParsing}
+                                  onPress={handleConfirmAiImportInline}
+                                >
+                                  确认导入
+                                </Button>
+                              </div>
+                            )}
 
                             {uploadResult && (
                               <div
@@ -1215,30 +1755,14 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                 {uploadResult}
                               </div>
                             )}
-
-                            <label className="inline-flex cursor-pointer">
-                              <input
-                                type="file"
-                                accept=".pdf,.docx"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                                disabled={uploadingFile}
-                              />
-                              <Button
-                                as="span"
-                                className="bauhaus-button bauhaus-button-blue pointer-events-none"
-                                isLoading={uploadingFile}
-                              >
-                                {uploadingFile ? "解析中..." : "选择文件"}
-                              </Button>
-                            </label>
                           </CardBody>
                         </Card>
 
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <Button
                             className="bauhaus-button bauhaus-button-outline"
-                            onPress={() => setResumeMode("choose")}
+                            startContent={<ArrowLeft size={16} />}
+                            onPress={() => { setResumeMode("choose"); setAiImportStep(0); }}
                           >
                             返回方式选择
                           </Button>

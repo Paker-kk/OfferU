@@ -1,0 +1,641 @@
+/*
+ * Resume template styles adapted for OfferU from Paker-kk/Resume-Matcher
+ * (Apache-2.0). The API/data model remains OfferU-native; only the visual
+ * grammar, template taxonomy, and print rules are mirrored.
+ */
+
+.swiss-resume {
+  --resume-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --resume-text-primary: #000000;
+  --resume-text-secondary: #374151;
+  --resume-text-tertiary: #4b5563;
+  --resume-text-body: #1f2937;
+  --resume-border-primary: #9ca3af;
+  --resume-border-secondary: #d1d5db;
+  --resume-border-tertiary: #e5e7eb;
+  --resume-accent-bg: #f3f4f6;
+  --resume-accent-primary: #1d4ed8;
+  --resume-accent-light: #dbeafe;
+}
+
+.resume-body {
+  width: 210mm;
+  min-height: 297mm;
+  background: #ffffff;
+  color: var(--resume-text-body);
+  font-family: var(--body-font);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
+  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.resume-print .resume-body {
+  box-shadow: none;
+}
+
+.resume-print {
+  background: #ffffff;
+  margin: 0 auto;
+  min-height: 100vh;
+  width: 210mm;
+}
+
+.resume-print .swiss-resume {
+  display: block;
+}
+
+.resume-print-page-shell {
+  background: #eeeeee;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+  position: fixed;
+  z-index: 9999;
+}
+
+.resume-header {
+  margin-bottom: var(--section-gap);
+  padding-bottom: calc(var(--item-gap) * 1.25);
+}
+
+.resume-name {
+  color: var(--resume-text-primary);
+  font-family: var(--header-font);
+  font-size: calc(var(--font-size-base) * var(--header-scale));
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.resume-title {
+  color: var(--resume-text-body);
+  font-size: calc(var(--font-size-base) * 1.15);
+  margin-top: 0.25rem;
+}
+
+.resume-meta {
+  color: var(--resume-text-tertiary);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--resume-font-mono);
+  font-size: calc(var(--font-size-base) * 0.82);
+  gap: 0.25rem 0.625rem;
+  margin-top: 0.5rem;
+}
+
+.resume-section {
+  break-inside: auto;
+  margin-bottom: var(--section-gap);
+  page-break-inside: auto;
+}
+
+.resume-section:last-child {
+  margin-bottom: 0;
+}
+
+.resume-section-title,
+.resume-section-title-sm,
+.resume-section-title-accent,
+.resume-section-title-accent-sm {
+  break-after: avoid;
+  color: var(--resume-text-primary);
+  font-family: var(--header-font);
+  font-size: calc(var(--font-size-base) * var(--section-header-scale));
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--item-gap);
+  orphans: 3;
+  padding-bottom: 0.125rem;
+  page-break-after: avoid;
+  text-transform: uppercase;
+  widows: 3;
+}
+
+.resume-section-title,
+.resume-section-title-sm {
+  border-bottom: 1px solid var(--resume-border-primary);
+}
+
+.resume-section-title-sm,
+.resume-section-title-accent-sm {
+  font-size: calc(var(--font-size-base) * var(--section-header-scale) * 0.88);
+}
+
+.resume-section-title-accent,
+.resume-section-title-accent-sm {
+  border-bottom: 2px solid var(--resume-accent-primary);
+  color: var(--resume-accent-primary);
+}
+
+.resume-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--item-gap);
+}
+
+.resume-item {
+  break-inside: avoid;
+  margin-bottom: var(--item-gap);
+  page-break-inside: avoid;
+}
+
+.resume-row-tight {
+  align-items: baseline;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: calc(var(--item-gap) * 0.6);
+}
+
+.resume-row {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: var(--item-gap);
+}
+
+.resume-item-title {
+  color: var(--resume-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.resume-item-subtitle {
+  color: var(--resume-text-secondary);
+  font-size: calc(var(--font-size-base) * 0.95);
+  font-weight: 600;
+}
+
+.resume-date {
+  color: var(--resume-text-tertiary);
+  flex-shrink: 0;
+  font-family: var(--resume-font-mono);
+  font-size: calc(var(--font-size-base) * 0.75);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.resume-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--item-gap) * 0.75);
+  margin-left: 1rem;
+}
+
+.resume-list li {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.resume-link,
+.resume-body a {
+  color: var(--resume-text-primary);
+  text-decoration: none;
+}
+
+.resume-link:hover,
+.resume-body a:hover {
+  text-decoration: underline;
+}
+
+.resume-skill-pill {
+  display: inline-flex;
+  font-size: calc(var(--font-size-base) * 0.85);
+  margin: 0 0.35rem 0.15rem 0;
+  padding: 0.125rem 0.375rem;
+  white-space: nowrap;
+}
+
+.resume-body strong,
+.resume-body b {
+  font-weight: 700;
+}
+
+.resume-body em,
+.resume-body i {
+  font-style: italic;
+}
+
+.resume-body u {
+  text-decoration: underline;
+}
+
+.resume-body s,
+.resume-body strike {
+  text-decoration: line-through;
+}
+
+.resume-rich-description {
+  line-height: var(--line-height);
+  margin-left: 1rem;
+}
+
+.resume-rich-description ul,
+.resume-rich-summary ul {
+  list-style-type: disc;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.resume-rich-description ol,
+.resume-rich-summary ol {
+  list-style-type: decimal;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.resume-rich-description li {
+  margin-bottom: calc(var(--item-gap) * 0.5);
+  padding-left: 0.2em;
+}
+
+.resume-rich-description li::marker {
+  font-size: 0.85em;
+}
+
+.resume-rich-description p {
+  margin: 0 0 calc(var(--item-gap) * 0.5);
+}
+
+.resume-rich-summary {
+  line-height: var(--line-height);
+}
+
+.resume-rich-summary p {
+  margin: 0 0 calc(var(--item-gap) * 0.5);
+}
+
+.resume-summary-text {
+  margin: 0;
+}
+
+.swiss-two-column,
+.modern-two-column {
+  align-items: start;
+  display: grid;
+  gap: var(--section-gap);
+  grid-template-columns: 65% 35%;
+  margin-top: var(--section-gap);
+}
+
+.swiss-two-column-main,
+.modern-two-column-main {
+  border-right: 1px solid var(--resume-border-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  overflow: hidden;
+  padding-right: 0.875rem;
+}
+
+.swiss-two-column-sidebar,
+.modern-two-column-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 0.75rem;
+}
+
+.modern-name-underline {
+  background-color: var(--resume-accent-primary);
+  height: 3px;
+  margin: 0.5rem auto 0;
+  width: 60px;
+}
+
+.modern-two-column-main {
+  border-right: 2px solid var(--resume-accent-primary);
+}
+
+.modern-name-accent {
+  display: inline-block;
+  padding-bottom: 0.25rem;
+  position: relative;
+}
+
+.modern-name-accent::after {
+  background: linear-gradient(to right, var(--resume-accent-primary) 0%, var(--resume-accent-primary) 60%, transparent 100%);
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.keyword-hit {
+  background: #fef08a;
+  color: #000000;
+  padding: 0 0.125rem;
+}
+
+.resume-template-shell {
+  background: #d5d5d0;
+  border: 2px solid #000000;
+  color: #000000;
+}
+
+.resume-body.reference,
+.resume-body.reference-compact {
+  --resume-font-mono: "Microsoft YaHei", "SimHei", Arial, sans-serif;
+  --resume-text-primary: #000000;
+  --resume-text-secondary: #000000;
+  --resume-text-tertiary: #000000;
+  --resume-text-body: #000000;
+  --resume-border-primary: #000000;
+  --resume-border-secondary: #000000;
+  --resume-border-tertiary: #000000;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.16);
+  color: #000000;
+  font-family: "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", Arial, sans-serif;
+  font-size: calc(11pt * var(--reference-scale, 1));
+  line-height: 1.38;
+  min-height: 297mm;
+  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+  width: 210mm;
+}
+
+.resume-body.reference-compact {
+  font-size: 10.5pt;
+  line-height: 1.28;
+}
+
+.reference-resume {
+  color: #000000;
+}
+
+.reference-header {
+  align-items: start;
+  display: grid;
+  grid-template-columns: 27mm 1fr 52mm;
+  min-height: 30mm;
+}
+
+.reference-photo-slot {
+  min-height: 30mm;
+}
+
+.reference-photo {
+  display: block;
+  height: 30mm;
+  object-fit: cover;
+  object-position: center top;
+  width: 23mm;
+}
+
+.reference-identity {
+  padding-left: 2mm;
+}
+
+.reference-name {
+  color: var(--resume-accent-primary, #000000);
+  font-size: 20pt;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.05;
+  margin: 0 0 4mm;
+}
+
+.reference-contact-lines {
+  font-size: 11.5pt;
+  font-weight: 400;
+  line-height: 1.38;
+}
+
+.reference-contact-lines p {
+  margin: 0;
+}
+
+.reference-logo-slot {
+  align-items: start;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 22mm;
+}
+
+.reference-logo {
+  display: block;
+  max-height: 18mm;
+  max-width: 50mm;
+  object-fit: contain;
+}
+
+.reference-section {
+  margin-top: 6mm;
+}
+
+.reference-section-title {
+  border-bottom: 1.2pt solid var(--resume-accent-primary, #000000);
+  color: var(--resume-accent-primary, #000000);
+  font-size: 15pt;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0 0 3mm;
+  padding-bottom: 1mm;
+}
+
+.reference-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2.4mm;
+}
+
+.reference-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.reference-item-row {
+  align-items: baseline;
+  display: grid;
+  gap: 4mm;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.reference-item-main {
+  font-size: 11.5pt;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.reference-item-main strong {
+  font-weight: 800;
+}
+
+.reference-date {
+  font-size: 11.5pt;
+  line-height: 1.35;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.reference-line,
+.reference-summary,
+.reference-rich,
+.reference-bullets,
+.reference-tags {
+  font-size: 11pt;
+}
+
+.reference-rich {
+  line-height: 1.38;
+  margin-top: 1mm;
+}
+
+.reference-rich p {
+  margin: 0 0 1.2mm;
+}
+
+.reference-rich ul {
+  list-style-type: disc;
+  margin: 1mm 0 0;
+  padding-left: 6mm;
+}
+
+.reference-rich ol {
+  list-style-type: decimal;
+  margin: 1mm 0 0;
+  padding-left: 6mm;
+}
+
+.reference-bullets {
+  list-style-type: disc;
+  margin: 1mm 0 0;
+  padding-left: 6mm;
+}
+
+.reference-rich li,
+.reference-bullets li {
+  margin: 0 0 1mm;
+  padding-left: 0.5mm;
+}
+
+.reference-rich strong,
+.reference-rich b,
+.reference-summary strong,
+.reference-summary b {
+  font-weight: 800;
+}
+
+.reference-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5mm;
+  margin-top: 1.4mm;
+}
+
+.reference-tags span {
+  border-radius: 2px;
+  padding: 0 1.5mm;
+}
+
+.reference-compact .reference-section {
+  margin-top: 5mm;
+}
+
+.reference-compact .reference-section-body {
+  gap: 1.7mm;
+}
+
+/* No photo only: remove left column, keep logo column */
+.reference-header-no-logo:not(.reference-header-no-photo) {
+  grid-template-columns: 27mm 1fr 0;
+}
+
+/* No logo only: remove right column, keep photo column */
+.reference-header-no-photo:not(.reference-header-no-logo) {
+  grid-template-columns: 0 1fr 52mm;
+}
+
+/* No photo AND no logo: single column, identity takes full width */
+.reference-header-text-only {
+  grid-template-columns: 1fr;
+}
+
+.reference-header-text-only .reference-identity {
+  padding-left: 0;
+}
+
+.reference-header-no-photo .reference-identity {
+  padding-left: 0;
+}
+
+@page {
+  margin: 0;
+  size: A4;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .resume-print,
+  .resume-print * {
+    visibility: visible !important;
+  }
+
+  .resume-print {
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    max-width: 210mm !important;
+    min-height: 0 !important;
+    position: static !important;
+    width: 100% !important;
+  }
+
+  .resume-print-page-shell {
+    background: #ffffff !important;
+    display: block !important;
+    inset: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    position: static !important;
+  }
+
+  .resume-body {
+    background: #ffffff !important;
+    box-shadow: none !important;
+    break-inside: avoid-page !important;
+    page-break-inside: avoid !important;
+  }
+
+  .resume-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .resume-section-title,
+  .resume-section-title-sm,
+  .resume-section-title-accent,
+  .resume-section-title-accent-sm {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .modern-name-underline,
+  .modern-two-column-main,
+  .modern-name-accent::after,
+  .resume-section-title-accent,
+  .resume-section-title-accent-sm {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

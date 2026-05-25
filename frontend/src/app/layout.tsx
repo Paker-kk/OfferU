@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
+import "./resume/components/templates/resumeTemplate.css";
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/layout/Sidebar";
 

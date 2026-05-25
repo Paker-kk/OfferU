@@ -19,7 +19,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc, case, update
+from sqlalchemy import and_, case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -37,6 +37,12 @@ TRIAGE_ALIAS_GROUPS = {
     "picked": {"picked", "screened"},
     "ignored": {"ignored"},
 }
+INTERNAL_TEST_BATCH_PREFIXES = ("test-", "test_", "ui-ext-", "mock-")
+INTERNAL_TEST_COMPANY_PREFIX = "OfferU "
+INTERNAL_TEST_URL_MARKERS = (
+    "example.com/jobs/test-",
+    "example.com/apply/test-",
+)
 
 
 def _to_internal_status(status: str) -> str:
@@ -59,6 +65,25 @@ def _status_filter_values(status: str) -> list[str]:
     if internal == "ignored":
         return ["ignored"]
     return [status]
+
+
+def _public_job_filter():
+    batch_filters = [
+        or_(Job.batch_id.is_(None), ~Job.batch_id.ilike(f"{prefix}%"))
+        for prefix in INTERNAL_TEST_BATCH_PREFIXES
+    ]
+    url_filters = [
+        or_(Job.url.is_(None), ~Job.url.ilike(f"%{marker}%"))
+        for marker in INTERNAL_TEST_URL_MARKERS
+    ] + [
+        or_(Job.apply_url.is_(None), ~Job.apply_url.ilike(f"%{marker}%"))
+        for marker in INTERNAL_TEST_URL_MARKERS
+    ]
+    return and_(
+        *batch_filters,
+        or_(Job.company.is_(None), ~Job.company.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
+        *url_filters,
+    )
 
 
 def _parse_posted_at(value: Optional[str]) -> Optional[datetime]:
@@ -190,7 +215,7 @@ async def list_jobs(
     - keyword: 模糊匹配标题或公司名
     - job_type / education / is_campus: 精确筛选
     """
-    query = select(Job)
+    query = select(Job).where(_public_job_filter())
 
     # 数据源筛选
     if source:
@@ -289,6 +314,7 @@ async def list_batches(
             func.sum(case((Job.triage_status == "ignored", 1), else_=0)).label("ignored_count"),
             func.max(Job.created_at).label("latest_created_at"),
         )
+        .where(_public_job_filter())
         .group_by(Job.batch_id)
         .order_by(desc(func.max(Job.created_at)))
         .limit(limit)
@@ -388,13 +414,13 @@ async def job_stats(
     # 总数
     stats_q = select(
         func.count(Job.id).label("total"),
-    ).where(Job.created_at >= since)
+    ).where(_public_job_filter(), Job.created_at >= since)
     row = (await db.execute(stats_q)).one()
 
     # 来源分布
     source_q = (
         select(Job.source, func.count(Job.id).label("count"))
-        .where(Job.created_at >= since)
+        .where(_public_job_filter(), Job.created_at >= since)
         .group_by(Job.source)
     )
     sources = (await db.execute(source_q)).all()
@@ -421,7 +447,7 @@ async def job_trend(
             date_col,
             func.count(Job.id).label("count"),
         )
-        .where(Job.created_at >= since)
+        .where(_public_job_filter(), Job.created_at >= since)
         .group_by(date_col)
         .order_by(date_col)
     )
@@ -446,26 +472,26 @@ async def weekly_report(db: AsyncSession = Depends(get_db)):
     # --- 本周汇总 ---
     tw_q = select(
         func.count(Job.id).label("total"),
-    ).where(Job.created_at >= this_week_start)
+    ).where(_public_job_filter(), Job.created_at >= this_week_start)
     tw = (await db.execute(tw_q)).one()
 
     # --- 上周汇总（用于环比） ---
     lw_q = select(
         func.count(Job.id).label("total"),
-    ).where(Job.created_at >= last_week_start, Job.created_at < this_week_start)
+    ).where(_public_job_filter(), Job.created_at >= last_week_start, Job.created_at < this_week_start)
     lw = (await db.execute(lw_q)).one()
 
     # --- 来源分布 ---
     source_q = (
         select(Job.source, func.count(Job.id).label("count"))
-        .where(Job.created_at >= this_week_start)
+        .where(_public_job_filter(), Job.created_at >= this_week_start)
         .group_by(Job.source)
     )
     sources = (await db.execute(source_q)).all()
 
     # --- 热门关键词 ---
     kw_q = select(Job.keywords).where(
-        Job.created_at >= this_week_start, Job.keywords.isnot(None)
+        _public_job_filter(), Job.created_at >= this_week_start, Job.keywords.isnot(None)
     )
     kw_rows = (await db.execute(kw_q)).scalars().all()
     kw_counter: dict[str, int] = {}
@@ -490,16 +516,22 @@ async def triage_counts(db: AsyncSession = Depends(get_db)):
     """返回分拣状态计数（兼容旧状态和新状态命名）。"""
     unscreened = (
         await db.execute(
-            select(func.count(Job.id)).where(Job.triage_status.in_(_status_filter_values("unscreened")))
+            select(func.count(Job.id)).where(
+                _public_job_filter(),
+                Job.triage_status.in_(_status_filter_values("unscreened")),
+            )
         )
     ).scalar() or 0
     screened = (
         await db.execute(
-            select(func.count(Job.id)).where(Job.triage_status.in_(_status_filter_values("screened")))
+            select(func.count(Job.id)).where(
+                _public_job_filter(),
+                Job.triage_status.in_(_status_filter_values("screened")),
+            )
         )
     ).scalar() or 0
     ignored = (
-        await db.execute(select(func.count(Job.id)).where(Job.triage_status == "ignored"))
+        await db.execute(select(func.count(Job.id)).where(_public_job_filter(), Job.triage_status == "ignored"))
     ).scalar() or 0
 
     return {
@@ -545,7 +577,7 @@ async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_
 @router.get("/{job_id}")
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
     """获取单个岗位详情"""
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    result = await db.execute(select(Job).where(Job.id == job_id, _public_job_filter()))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -560,6 +592,15 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
     """
     created = 0
     skipped = 0
+    accepted_hash_keys: list[str] = []
+    created_hash_keys: list[str] = []
+    skipped_hash_keys: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    def append_unique(target: list[str], value: str) -> None:
+        key = (value or "").strip()
+        if key and key not in target:
+            target.append(key)
 
     ingest_batch_id = req.batch_id or f"manual-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     await _ensure_batch(
@@ -574,6 +615,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
         if existing.scalar_one_or_none():
             skipped += 1
+            append_unique(accepted_hash_keys, item.hash_key)
+            append_unique(skipped_hash_keys, item.hash_key)
             continue
 
         job_batch_id = item.batch_id or ingest_batch_id
@@ -618,6 +661,8 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         )
         db.add(job)
         created += 1
+        append_unique(accepted_hash_keys, item.hash_key)
+        append_unique(created_hash_keys, item.hash_key)
 
     await db.flush()
     batch = (await db.execute(select(Batch).where(Batch.id == ingest_batch_id))).scalar_one_or_none()
@@ -625,7 +670,15 @@ async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
         batch.total_fetched = (batch.total_fetched or 0) + created
 
     await db.commit()
-    return {"created": created, "skipped": skipped, "batch_id": ingest_batch_id}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "batch_id": ingest_batch_id,
+        "accepted_hash_keys": accepted_hash_keys,
+        "created_hash_keys": created_hash_keys,
+        "skipped_hash_keys": skipped_hash_keys,
+        "failed": failed,
+    }
 
 
 async def _ensure_batch(

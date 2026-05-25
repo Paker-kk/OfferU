@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Spinner } from "@nextui-org/react";
+import { Button, Spinner } from "@nextui-org/react";
 import {
   type ArchiveTab,
   type PersonalArchive,
@@ -18,13 +18,15 @@ import {
   sanitizePersonalArchive,
   buildProfileBaseInfoForSave,
 } from "@/lib/personalArchive";
-import { importProfileResume, updateProfileData, useProfile } from "@/lib/hooks";
+import { importProfileResume, updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
 import ArchiveIntroCard from "./components/archive/ArchiveIntroCard";
 import ArchiveCompletenessBar from "./components/archive/ArchiveCompletenessBar";
 import ArchiveTabsHeader from "./components/archive/ArchiveTabsHeader";
 import ArchiveSettingsDialog from "./components/archive/ArchiveSettingsDialog";
 import ResumeArchiveEditor from "./components/archive/ResumeArchiveEditor";
 import ApplicationArchiveEditor from "./components/archive/ApplicationArchiveEditor";
+import { ProfileOnboarding } from "./components/ProfileOnboarding";
+import AIImportModal from "./components/AIImportModal";
 
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
@@ -33,32 +35,50 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ArchiveTab>("resume");
   const [focusSection, setFocusSection] = useState<string | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [aiImportOpen, setAiImportOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastProfileArchiveUpdatedAtRef = useRef("");
+  const archiveDirtyRef = useRef(false);
+  const autoOpenedOnboardingRef = useRef(false);
 
   // Sync archive from profile data
   useEffect(() => {
     if (!profile) return;
-    setArchive((prev) => {
-      const fromProfile = normalizePersonalArchiveFromProfile(profile);
-      // Preserve local edits by checking if archive was already modified
-      if (prev.updatedAt && prev.updatedAt !== fromProfile.updatedAt) return prev;
-      return fromProfile;
-    });
+    const fromProfile = normalizePersonalArchiveFromProfile(profile);
+    const incomingStamp = fromProfile.updatedAt || String(profile.updated_at || "");
+    lastProfileArchiveUpdatedAtRef.current = incomingStamp;
+    if (!archiveDirtyRef.current) {
+      setArchive(fromProfile);
+    }
   }, [profile]);
 
   const metrics = useMemo(() => computeArchiveCompleteness(archive), [archive]);
-
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 5500);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!profile || autoOpenedOnboardingRef.current || archiveDirtyRef.current) return;
+    const profileArchive = normalizePersonalArchiveFromProfile(profile);
+    const isBlankProfile =
+      !profileArchive.resumeArchive.basicInfo.name.trim() &&
+      profileArchive.resumeArchive.education.length === 0 &&
+      profileArchive.resumeArchive.projects.length === 0 &&
+      profileArchive.resumeArchive.workExperiences.length === 0 &&
+      profileArchive.resumeArchive.internshipExperiences.length === 0;
+    if (!isBlankProfile) return;
+    autoOpenedOnboardingRef.current = true;
+    setShowOnboarding(true);
+  }, [profile]);
 
   // === Save ===
   const handleSave = async () => {
@@ -71,6 +91,7 @@ export default function ProfilePage() {
         name: sanitized.resumeArchive.basicInfo.name || "默认档案",
         base_info_json: { ...(profile?.base_info_json || {}), ...baseInfoPayload },
       });
+      archiveDirtyRef.current = false;
       await mutate();
       setNotice("档案已保存");
     } catch (err: any) {
@@ -82,7 +103,50 @@ export default function ProfilePage() {
 
   // === Import ===
   const triggerImport = () => {
-    fileInputRef.current?.click();
+    setAiImportOpen(true);
+  };
+
+  const handleAiImport = (result: ProfileImportResult) => {
+    const importedBase = result.base_info || {};
+    const importedBaseInfo = {
+      ...(profile?.base_info_json || {}),
+      personal_archive: undefined,
+      ...importedBase,
+    };
+    const rawArchive = normalizePersonalArchiveFromProfile({
+      ...profile,
+      name: importedBase.name || profile?.name || "",
+      base_info_json: importedBaseInfo,
+      sections: result.bullets?.map((b: any) => ({
+        ...b,
+        category_key: b.section_type,
+        category_label: "",
+        title: b.title || "",
+        content_json: b.content_json || {},
+        confidence: b.confidence ?? 0.7,
+        source: "ai_import",
+      })) || [],
+    } as any);
+    rawArchive.resumeArchive.basicInfo = {
+      ...rawArchive.resumeArchive.basicInfo,
+      name: importedBase.name || rawArchive.resumeArchive.basicInfo.name,
+      phone: importedBase.phone || rawArchive.resumeArchive.basicInfo.phone,
+      email: importedBase.email || rawArchive.resumeArchive.basicInfo.email,
+      currentCity: importedBase.current_city || rawArchive.resumeArchive.basicInfo.currentCity,
+      jobIntention: importedBase.job_intention || rawArchive.resumeArchive.basicInfo.jobIntention,
+      website: importedBase.website || rawArchive.resumeArchive.basicInfo.website,
+      github: importedBase.github || rawArchive.resumeArchive.basicInfo.github,
+    };
+
+    const importedSummary = importedBase.summary || importedBase.personal_summary;
+    if (importedSummary && !rawArchive.resumeArchive.personalSummary) {
+      rawArchive.resumeArchive.personalSummary = importedSummary;
+    }
+
+    const syncedArchive = applyResumeToApplicationSync(rawArchive, [...SHARED_ROOT_PATHS], true).nextArchive;
+    archiveDirtyRef.current = true;
+    setArchive(syncedArchive);
+    setNotice("已导入 AI 解析结果");
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,6 +207,7 @@ export default function ProfilePage() {
         ...syncedArchive.applicationArchive.jobPreference,
         expectedPosition: basicInfo.jobIntention || syncedArchive.applicationArchive.jobPreference.expectedPosition,
       };
+      archiveDirtyRef.current = true;
       setArchive(syncedArchive);
       setNotice(`已导入 ${file.name}`);
     } catch (err: any) {
@@ -180,6 +245,7 @@ export default function ProfilePage() {
       setSyncing(true);
       setError("");
       const { nextArchive, syncedPaths } = applyResumeToApplicationSync(archive, [...SHARED_ROOT_PATHS]);
+      archiveDirtyRef.current = true;
       setArchive(nextArchive);
       setNotice(syncedPaths.length > 0 ? `已同步 ${syncedPaths.length} 个字段` : "无需同步");
     } catch (err: any) {
@@ -191,6 +257,7 @@ export default function ProfilePage() {
 
   // === Override ===
   const handleToggleOverride = (path: string, enabled: boolean) => {
+    archiveDirtyRef.current = true;
     setArchive((prev) =>
       enabled ? markApplicationOverride(prev, path) : clearApplicationOverride(prev, path)
     );
@@ -224,23 +291,46 @@ export default function ProfilePage() {
       transition={{ type: "spring", damping: 18 }}
       className="space-y-5"
     >
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.docx"
-        className="hidden"
-        onChange={handleFileChange}
-        disabled={importing}
+      {/* AI Import Modal */}
+      <AIImportModal
+        open={aiImportOpen}
+        onClose={() => setAiImportOpen(false)}
+        onImport={handleAiImport}
       />
+
+      {showOnboarding && (
+        <ProfileOnboarding
+          currentArchive={archive}
+          profile={profile}
+          onClose={() => setShowOnboarding(false)}
+          onComplete={async (nextArchive) => {
+            archiveDirtyRef.current = false;
+            setArchive(nextArchive);
+            setShowOnboarding(false);
+            await mutate();
+            setNotice("新人投递档案已生成，可以开始继续补细节或直接制作简历。");
+          }}
+        />
+      )}
 
       {/* Header */}
       <ArchiveIntroCard
         onImport={triggerImport}
         onSave={handleSave}
         saving={saving}
-        importing={importing}
       />
+
+      <div className="bauhaus-panel-sm flex flex-col gap-3 bg-[var(--surface)] p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-black">新人投递档案向导</p>
+          <p className="mt-1 text-xs text-black/55">
+            按 4 步补齐实名、教育、岗位、经历和技能，系统会同步生成简历档案与网申档案。
+          </p>
+        </div>
+        <Button className="bauhaus-button bauhaus-button-black" onPress={() => setShowOnboarding(true)}>
+          开始向导
+        </Button>
+      </div>
 
       {/* Completeness */}
       <ArchiveCompletenessBar metrics={metrics} onJump={handleJump} />
@@ -275,6 +365,7 @@ export default function ProfilePage() {
           missingSections={missingSections}
           saving={saving}
           onChange={(nextResume, changedPaths) => {
+            archiveDirtyRef.current = true;
             setArchive((prev) => ({
               ...prev,
               updatedAt: new Date().toISOString(),
@@ -287,6 +378,7 @@ export default function ProfilePage() {
                 resumeArchive: nextResume,
               }, changedPaths);
               if (synced.syncedPaths.length > 0) {
+                archiveDirtyRef.current = true;
                 setArchive(synced.nextArchive);
                 return;
               }
@@ -303,6 +395,7 @@ export default function ProfilePage() {
           missingSections={missingSections}
           saving={saving}
           onChange={(nextApp) => {
+            archiveDirtyRef.current = true;
             setArchive((prev) => ({
               ...prev,
               updatedAt: new Date().toISOString(),
@@ -321,10 +414,13 @@ export default function ProfilePage() {
         autoSyncEnabled={archive.syncSettings.autoSyncEnabled}
         onClose={() => setSettingsOpen(false)}
         onAutoSyncChange={(next) =>
-          setArchive((prev) => ({
-            ...prev,
-            syncSettings: { ...prev.syncSettings, autoSyncEnabled: next },
-          }))
+          {
+            archiveDirtyRef.current = true;
+            setArchive((prev) => ({
+              ...prev,
+              syncSettings: { ...prev.syncSettings, autoSyncEnabled: next },
+            }));
+          }
         }
         onOneClickSync={handleOneClickSync}
         syncing={syncing}

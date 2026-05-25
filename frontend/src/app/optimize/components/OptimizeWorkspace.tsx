@@ -6,10 +6,8 @@ import { Button, Chip, Input, Select, SelectItem, Spinner } from "@nextui-org/re
 import {
   CheckCircle2,
   FolderOpen,
-  Layers3,
   ListChecks,
-  Play,
-  RefreshCw,
+  MessageSquare,
   Search,
   Sparkles,
 } from "lucide-react";
@@ -17,15 +15,14 @@ import { jobsApi } from "@/lib/api";
 import { bauhausFieldClassNames, bauhausSelectClassNames } from "@/lib/bauhaus";
 import {
   Job,
-  OptimizeDoneEvent,
-  OptimizeGenerateResult,
-  OptimizeProgressEvent,
   ResumeBrief,
-  streamOptimizeGenerate,
   useProfile,
   usePools,
   useResumes,
 } from "@/lib/hooks";
+import { normalizePersonalArchiveFromProfile } from "@/lib/personalArchive";
+import { OptimizeChatPanel } from "./OptimizeChatPanel";
+import { ConversationList } from "./ConversationList";
 
 type PoolFilter = "all" | "ungrouped" | number;
 
@@ -34,23 +31,6 @@ interface OptimizeWorkspaceProps {
 }
 
 const MAX_GENERATE_JOB_COUNT = 20;
-
-const SECTION_TYPE_LABELS: Record<string, string> = {
-  education: "教育",
-  internship: "实习",
-  experience: "经历",
-  project: "项目",
-  activity: "活动",
-  competition: "竞赛",
-  skill: "技能",
-  certificate: "证书",
-  honor: "荣誉",
-  language: "语言",
-};
-
-function formatSectionTypeLabel(sectionType: string) {
-  return SECTION_TYPE_LABELS[sectionType] || sectionType;
-}
 
 function getPoolButtonClassName(active: boolean, tone: "yellow" | "red" | "white" = "white") {
   if (active) {
@@ -80,14 +60,9 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   const [mode, setMode] = useState<"per_job" | "combined">("per_job");
   const [selectedJobIds, setSelectedJobIds] = useState<number[]>(normalizedSeedJobIds);
   const [referenceResumeId, setReferenceResumeId] = useState<number | null>(null);
+  const [showConversationList, setShowConversationList] = useState(false);
+  const [loadSessionId, setLoadSessionId] = useState<string | null>(null);
 
-  const [generating, setGenerating] = useState(false);
-  const [progressEvents, setProgressEvents] = useState<OptimizeProgressEvent[]>([]);
-  const [results, setResults] = useState<OptimizeGenerateResult[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [doneSummary, setDoneSummary] = useState<OptimizeDoneEvent | null>(null);
-
-  const abortRef = useRef<AbortController | null>(null);
   const { data: profileData, isLoading: loadingProfile } = useProfile();
 
   useEffect(() => {
@@ -101,26 +76,29 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     lastAppliedSeedRef.current = seedSignature;
   }, [normalizedSeedJobIds]);
 
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
-
   const poolIdForQuery = poolFilter === "all" ? undefined : poolFilter;
   const { data: pools } = usePools("picked");
   const { data: resumeListData } = useResumes();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [jobsTotal, setJobsTotal] = useState(0);
-  const profileSectionCount = profileData?.sections?.length || 0;
+  const archive = useMemo(() => normalizePersonalArchiveFromProfile(profileData), [profileData]);
+  const profileSectionCount = useMemo(() => {
+    const r = archive.resumeArchive;
+    return (
+      r.education.length +
+      r.workExperiences.length +
+      r.internshipExperiences.length +
+      r.projects.length +
+      r.skills.length +
+      r.certificates.length +
+      r.awards.length +
+      r.personalExperiences.length
+    );
+  }, [archive]);
   const referenceResumes: ResumeBrief[] = Array.isArray(resumeListData) ? resumeListData : [];
   const overSelectionLimit = selectedJobIds.length > MAX_GENERATE_JOB_COUNT;
-  const canGenerate =
-    selectedJobIds.length > 0 &&
-    !generating &&
-    profileSectionCount > 0 &&
-    !overSelectionLimit;
+  const canStart = selectedJobIds.length > 0 && profileSectionCount > 0 && !overSelectionLimit;
 
   useEffect(() => {
     let cancelled = false;
@@ -193,13 +171,6 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     [jobsTotal, jobs.length]
   );
 
-  const progressRatio = useMemo(() => {
-    if (!doneSummary && progressEvents.length === 0) return 0;
-    const total = doneSummary?.total || selectedJobIds.length || 1;
-    const done = doneSummary ? doneSummary.created + doneSummary.failed : progressEvents.length;
-    return Math.min(100, Math.round((done / total) * 100));
-  }, [doneSummary, progressEvents.length, selectedJobIds.length]);
-
   const toggleJob = (jobId: number) => {
     setSelectedJobIds((prev) =>
       prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
@@ -221,74 +192,8 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     });
   };
 
-  const startGenerate = async () => {
-    if (!canGenerate) return;
-
-    const effectiveJobIds = Array.from(new Set(selectedJobIds));
-    if (effectiveJobIds.length > MAX_GENERATE_JOB_COUNT) {
-      setErrors([
-        `本次最多支持 ${MAX_GENERATE_JOB_COUNT} 个岗位，当前已选择 ${effectiveJobIds.length} 个，请先缩小范围后再生成。`,
-      ]);
-      return;
-    }
-
-    setGenerating(true);
-    setProgressEvents([]);
-    setResults([]);
-    setErrors([]);
-    setDoneSummary(null);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      await streamOptimizeGenerate(
-        {
-          job_ids: effectiveJobIds,
-          mode,
-          ...(referenceResumeId ? { reference_resume_id: referenceResumeId } : {}),
-        },
-        {
-          signal: controller.signal,
-          onEvent: ({ event, data }) => {
-            if (event === "progress") {
-              setProgressEvents((prev) => {
-                if (typeof data?.job_id !== "number") return [...prev, data as OptimizeProgressEvent];
-                const rest = prev.filter((item) => item.job_id !== data.job_id);
-                return [...rest, data as OptimizeProgressEvent];
-              });
-              return;
-            }
-
-            if (event === "result") {
-              setResults((prev) => [...prev, data as OptimizeGenerateResult]);
-              return;
-            }
-
-            if (event === "error") {
-              const line = `${data?.job_title || "任务"}: ${data?.message || "生成失败"}`;
-              setErrors((prev) => [...prev, line]);
-              return;
-            }
-
-            if (event === "done") {
-              setDoneSummary(data as OptimizeDoneEvent);
-            }
-          },
-        }
-      );
-    } catch (err: any) {
-      if (err?.name !== "AbortError") {
-        setErrors((prev) => [...prev, err.message || "生成失败"]);
-      }
-    } finally {
-      setGenerating(false);
-      abortRef.current = null;
-    }
-  };
-
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.95fr_1fr_1.05fr]">
+    <div className="grid gap-6 xl:grid-cols-[0.95fr_1fr_1.05fr] xl:items-start">
       <section className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-black">
         <div className="border-b border-black/12 p-5 md:p-6">
           <div className="flex items-start justify-between gap-4">
@@ -300,7 +205,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
                 <p className="bauhaus-label text-black/55">档案条目</p>
                 <p className="mt-2 text-2xl font-bold">
@@ -432,16 +337,6 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
             参考简历只会影响表达方式和版面倾向，事实来源仍然限定为档案中已确认的内容。
           </div>
-
-          <Button
-            className="bauhaus-button bauhaus-button-red w-full !justify-center"
-            startContent={<Play size={16} />}
-            onPress={startGenerate}
-            isDisabled={!canGenerate}
-            isLoading={generating}
-          >
-            开始批量生成
-          </Button>
         </div>
       </section>
 
@@ -536,159 +431,43 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
         </div>
       </section>
 
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-black">
-        <div className="border-b border-black/12 p-5 md:p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="bauhaus-label text-black/60">步骤三 · 查看输出</p>
-              <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">生成结果</h2>
+      <section className="bauhaus-panel relative overflow-hidden bg-[var(--surface)] text-black h-[calc(100vh-6rem)]">
+        <div className="absolute inset-0 flex flex-col">
+          {/* Header bar with title and conversation list toggle */}
+          <div className="shrink-0 border-b border-black/12 px-5 py-3 md:px-6 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={18} strokeWidth={2.4} />
+              <span className="text-sm font-bold text-black/80">智能优化工作流</span>
             </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-black">
-              <p className="bauhaus-label text-black/55">进度</p>
-              <p className="mt-2 text-2xl font-bold">{progressRatio}%</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4 p-5 md:p-6">
-          <div className="flex items-center gap-2">
-            <Layers3 size={18} strokeWidth={2.6} />
-            <p className="bauhaus-label text-black/65">结果列表</p>
-          </div>
-
-          <div className="bauhaus-panel-sm overflow-hidden bg-white text-black">
-            <div
-              className="h-4 bg-[var(--surface-muted)]"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progressRatio}
+            <button
+              type="button"
+              onClick={() => setShowConversationList(!showConversationList)}
+              className="flex items-center gap-1.5 border border-black/15 bg-[var(--surface-muted)] px-3 py-1.5 text-sm font-semibold text-black/80 transition-colors hover:bg-[#e4ece6] hover:text-black"
             >
-              <div
-                className="h-full border-r border-black/20 bg-[#e4ece6] transition-all duration-300 ease-out"
-                style={{ width: `${progressRatio}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between px-4 py-3 text-sm font-semibold tracking-[0.02em]">
-              <span>已生成 {results.length} 份</span>
-              <span>{doneSummary ? `${doneSummary.created} 成功 / ${doneSummary.failed} 失败` : "等待开始"}</span>
-            </div>
+              <FolderOpen size={15} />
+              {showConversationList ? "返回对话" : "往期对话"}
+            </button>
           </div>
-
-          {doneSummary && (
-            <div className="bauhaus-panel-sm bg-[#e4ece6] px-4 py-4 text-sm font-medium leading-relaxed text-black">
-              本轮已完成，共生成 {doneSummary.created} 份简历，失败 {doneSummary.failed} 份。
-            </div>
-          )}
-
-          {errors.length > 0 && (
-            <div className="space-y-3">
-              {errors.map((line, idx) => (
-                <div
-                  key={`${line}-${idx}`}
-                  className="bauhaus-panel-sm bg-[#f7ece9] px-4 py-4 text-sm font-medium leading-relaxed text-[#8a1e1e]"
-                >
-                  {line}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-[var(--surface-muted)] p-3 text-black custom-scrollbar">
-            {results.length === 0 ? (
-              <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium leading-relaxed text-black/60">
-                生成后的简历、命中条目和缺失关键词会出现在这里。
-              </div>
+          <div className="flex-1 min-h-0">
+            {showConversationList ? (
+              <ConversationList
+                onSelect={(sid) => {
+                  setLoadSessionId(sid);
+                  setShowConversationList(false);
+                }}
+                onClose={() => setShowConversationList(false)}
+              />
             ) : (
-              results.map((item, index) => (
-                <article
-                  key={`${item.resume_id}-${item.mode}-${item.job_id || "combined"}`}
-                  className="border border-black/15 bg-white p-4 shadow-[1px_1px_0_0_rgba(18,18,18,0.12)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="bauhaus-label text-black/55">{item.mode === "combined" ? "综合版" : "逐岗位"}</p>
-                      <h3 className="mt-1 line-clamp-2 text-xl font-semibold leading-snug">
-                        {item.resume_title}
-                      </h3>
-                      <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
-                        {item.job_title || "多岗位综合版本"}
-                      </p>
-                    </div>
-
-                    <span
-                      className={`bauhaus-chip ${
-                        index % 3 === 0
-                          ? "bg-[#e4ece6] text-black"
-                          : index % 3 === 1
-                            ? "bg-[#f3ead2] text-black"
-                            : "bg-[#f7ece9] text-black"
-                      }`}
-                    >
-                      命中 {item.profile_hit_ratio}
-                    </span>
-                  </div>
-
-                  {(item.used_bullets || []).length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="bauhaus-label text-black/55">命中档案条目</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(item.used_bullets || []).slice(0, 6).map((bullet) => (
-                          <span
-                            key={`${item.resume_id}-${bullet.id}`}
-                            className="bauhaus-chip bg-[var(--surface-muted)] text-black"
-                          >
-                            {formatSectionTypeLabel(bullet.section_type)}
-                            {bullet.title}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(item.missing_keywords || []).length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="bauhaus-label text-black/55">待补关键词</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(item.missing_keywords || []).slice(0, 8).map((kw, keywordIndex) => (
-                          <span
-                            key={`${item.resume_id}-${kw}`}
-                            className={`bauhaus-chip ${
-                              keywordIndex % 2 === 0
-                                ? "bg-[#f7ece9] text-black"
-                                : "bg-[#f3ead2] text-black"
-                            }`}
-                          >
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Link href={`/resume/${item.resume_id}`} className="bauhaus-button bauhaus-button-blue">
-                      打开简历
-                    </Link>
-                  </div>
-                </article>
-              ))
+              <OptimizeChatPanel
+                jobIds={selectedJobIds}
+                mode={mode}
+                disabled={!canStart}
+                profileId={profileData?.id ?? null}
+                loadSessionId={loadSessionId}
+                onLoadSessionConsumed={() => setLoadSessionId(null)}
+              />
             )}
           </div>
-
-          <Button
-            className="bauhaus-button bauhaus-button-outline w-full !justify-center"
-            startContent={<RefreshCw size={15} />}
-            onPress={() => {
-              setProgressEvents([]);
-              setResults([]);
-              setErrors([]);
-              setDoneSummary(null);
-            }}
-            isDisabled={generating}
-          >
-            清空结果
-          </Button>
         </div>
       </section>
     </div>

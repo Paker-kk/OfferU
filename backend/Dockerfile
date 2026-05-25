@@ -22,7 +22,12 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+	--trusted-host pypi.org \
+	--trusted-host files.pythonhosted.org \
+	--trusted-host pypi.tuna.tsinghua.edu.cn \
+	-i https://pypi.tuna.tsinghua.edu.cn/simple/ \
+	-r requirements.txt
 
 COPY . .
 

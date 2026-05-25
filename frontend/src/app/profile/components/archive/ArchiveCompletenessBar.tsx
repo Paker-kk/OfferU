@@ -51,16 +51,16 @@ export default function ArchiveCompletenessBar(props: ArchiveCompletenessBarProp
           onPress={() => props.onJump("application")}
         />
         <MetricCard
-          title="待补充字段"
+          title="待补字段"
           value={`${metrics.missingFieldCount} 项`}
-          hint="点击可跳转到待补区域"
+          hint="点击跳到第一个待补区域"
           colorClass={cardToneBlue}
           onPress={() => props.onJump("missing")}
         />
         <MetricCard
           title="可同步字段"
           value={`${metrics.syncableFieldCount} 项`}
-          hint="点击可打开同步设置"
+          hint="点击打开同步设置"
           colorClass={cardToneGreen}
           onPress={() => props.onJump("syncable")}
         />

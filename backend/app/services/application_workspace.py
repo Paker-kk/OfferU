@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import (
@@ -28,6 +28,36 @@ FIELD_TYPES = {
     "boolean",
     "link",
 }
+
+INTERNAL_TEST_BATCH_PREFIXES = ("test-", "test_", "ui-ext-", "mock-")
+INTERNAL_TEST_COMPANY_PREFIX = "OfferU "
+INTERNAL_TEST_URL_MARKERS = (
+    "example.com/jobs/test-",
+    "example.com/apply/test-",
+)
+
+
+def _public_application_record_filter():
+    batch_filters = [
+        or_(Job.batch_id.is_(None), ~Job.batch_id.ilike(f"{prefix}%"))
+        for prefix in INTERNAL_TEST_BATCH_PREFIXES
+    ]
+    url_filters = [
+        or_(ApplicationRecord.job_link.is_(None), ~ApplicationRecord.job_link.ilike(f"%{marker}%"))
+        for marker in INTERNAL_TEST_URL_MARKERS
+    ] + [
+        or_(Job.url.is_(None), ~Job.url.ilike(f"%{marker}%"))
+        for marker in INTERNAL_TEST_URL_MARKERS
+    ] + [
+        or_(Job.apply_url.is_(None), ~Job.apply_url.ilike(f"%{marker}%"))
+        for marker in INTERNAL_TEST_URL_MARKERS
+    ]
+    return and_(
+        *batch_filters,
+        or_(ApplicationRecord.company_name.is_(None), ~ApplicationRecord.company_name.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
+        or_(Job.company.is_(None), ~Job.company.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
+        *url_filters,
+    )
 
 FIXED_FIELD_SPECS: list[dict[str, Any]] = [
     {
@@ -116,6 +146,10 @@ def _default_custom_template_fields() -> list[dict[str, Any]]:
     ]
 
 
+def _custom_field_defaults_by_key() -> dict[str, dict[str, Any]]:
+    return {item["field_key"]: item for item in _default_custom_template_fields()}
+
+
 def _default_template_schema() -> list[dict[str, Any]]:
     fields: list[dict[str, Any]] = []
     for index, spec in enumerate(FIXED_FIELD_SPECS):
@@ -152,6 +186,7 @@ def _normalize_schema(schema: list[dict[str, Any]] | None) -> list[dict[str, Any
     fixed_map: dict[str, dict[str, Any]] = {}
     custom_fields: list[dict[str, Any]] = []
     seen_custom: set[str] = set()
+    default_custom = _custom_field_defaults_by_key()
 
     for field in source:
         if not isinstance(field, dict):
@@ -166,20 +201,21 @@ def _normalize_schema(schema: list[dict[str, Any]] | None) -> list[dict[str, Any
         if field_key in FIXED_FIELD_KEYS or field_key in seen_custom:
             continue
         seen_custom.add(field_key)
-        field_type = str(field.get("type") or "text")
+        canonical = default_custom.get(field_key)
+        field_type = str((canonical or field).get("type") or "text")
         if field_type not in FIELD_TYPES:
             field_type = "text"
-        options = field.get("options")
+        options = (canonical or field).get("options")
         if not isinstance(options, list):
             options = []
         custom_fields.append(
             {
                 "field_key": field_key,
-                "label": str(field.get("label") or raw_key or "自定义字段"),
+                "label": str((canonical or field).get("label") or raw_key or "自定义字段"),
                 "type": field_type,
                 "fixed": False,
                 "visible": bool(field.get("visible", True)),
-                "width": int(field.get("width") or 180),
+                "width": int(field.get("width") or (canonical or {}).get("width") or 180),
                 "options": [str(item) for item in options if str(item).strip()],
                 "order": int(field.get("order") or 0),
             }
@@ -204,6 +240,10 @@ def _normalize_schema(schema: list[dict[str, Any]] | None) -> list[dict[str, Any
     custom_fields.sort(key=lambda item: item.get("order", 0))
     normalized: list[dict[str, Any]] = []
     normalized.extend(fixed_fields)
+    for default_field in _default_custom_template_fields():
+        if default_field["field_key"] in seen_custom:
+            continue
+        custom_fields.append(copy.deepcopy(default_field))
     for item in custom_fields:
         item["order"] = len(normalized)
         normalized.append(item)
@@ -368,16 +408,27 @@ async def get_workspace_payload(db: AsyncSession) -> dict[str, Any]:
                 ApplicationTableRecord.table_id,
                 func.count(ApplicationTableRecord.record_id).label("count"),
             )
+            .join(ApplicationRecord, ApplicationRecord.id == ApplicationTableRecord.record_id)
+            .outerjoin(Job, Job.id == ApplicationRecord.job_ref_id)
+            .where(_public_application_record_filter())
             .group_by(ApplicationTableRecord.table_id)
         )
     ).all()
     count_map = {int(row.table_id): int(row.count) for row in count_rows}
 
     current_table = next((table for table in tables if not table.is_total), tables[0])
-    total_records = (await db.execute(select(func.count(ApplicationRecord.id)))).scalar_one()
+    total_records = (
+        await db.execute(
+            select(func.count(ApplicationRecord.id))
+            .outerjoin(Job, Job.id == ApplicationRecord.job_ref_id)
+            .where(_public_application_record_filter())
+        )
+    ).scalar_one()
     duplicate_records = (
         await db.execute(
-            select(func.count(ApplicationRecord.id)).where(ApplicationRecord.is_duplicate.is_(True))
+            select(func.count(ApplicationRecord.id))
+            .outerjoin(Job, Job.id == ApplicationRecord.job_ref_id)
+            .where(_public_application_record_filter(), ApplicationRecord.is_duplicate.is_(True))
         )
     ).scalar_one()
 
@@ -418,7 +469,8 @@ async def list_table_records(
             ApplicationTableRecord,
             ApplicationTableRecord.record_id == ApplicationRecord.id,
         )
-        .where(ApplicationTableRecord.table_id == table.id)
+        .outerjoin(Job, Job.id == ApplicationRecord.job_ref_id)
+        .where(ApplicationTableRecord.table_id == table.id, _public_application_record_filter())
         .order_by(ApplicationRecord.updated_at.desc(), ApplicationRecord.id.desc())
     )
     if pattern:
@@ -622,6 +674,7 @@ async def create_records_from_jobs(
     *,
     table_id: int,
     job_ids: list[int],
+    skip_existing_in_table: bool = False,
 ) -> dict[str, Any]:
     if not job_ids:
         raise ValueError("job_ids 不能为空")
@@ -637,8 +690,30 @@ async def create_records_from_jobs(
     if missing:
         raise ValueError(f"以下岗位不存在: {missing}")
 
+    existing_job_ids: set[int] = set()
+    if skip_existing_in_table:
+        existing_rows = (
+            await db.execute(
+                select(ApplicationRecord.job_ref_id)
+                .join(
+                    ApplicationTableRecord,
+                    ApplicationTableRecord.record_id == ApplicationRecord.id,
+                )
+                .where(
+                    ApplicationTableRecord.table_id == target_table.id,
+                    ApplicationRecord.job_ref_id.in_(job_ids),
+                )
+            )
+        ).scalars().all()
+        existing_job_ids = {int(job_id) for job_id in existing_rows if job_id is not None}
+
     created_records: list[ApplicationRecord] = []
+    skipped_existing_job_ids: list[int] = []
     for job_id in job_ids:
+        if job_id in existing_job_ids:
+            skipped_existing_job_ids.append(job_id)
+            continue
+
         job = job_map[job_id]
         values = _build_fixed_values_from_job(job)
         record = await _create_record_no_commit(
@@ -658,6 +733,8 @@ async def create_records_from_jobs(
     duplicate_count = sum(1 for record in created_records if record.is_duplicate)
     return {
         "created": len(created_records),
+        "skipped_existing": len(skipped_existing_job_ids),
+        "skipped_existing_job_ids": skipped_existing_job_ids,
         "duplicate_created": duplicate_count,
         "items": [
             {

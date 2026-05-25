@@ -123,11 +123,11 @@ export default function JobDetailPage() {
               >
                 <ArrowLeft size={18} />
               </Button>
-              <span className="bauhaus-chip bg-[#F0C020]">Job Profile</span>
+              <span className="bauhaus-chip bg-[#f3ead2] text-black">岗位档案</span>
             </div>
 
             <div>
-              <p className="bauhaus-label text-black/55">Detail Sheet</p>
+              <p className="bauhaus-label text-black/55">详情表</p>
               <h1 className="mt-3 text-4xl font-black leading-[0.92] tracking-[-0.06em] text-black sm:text-5xl">
                 {job.title}
               </h1>
@@ -140,16 +140,16 @@ export default function JobDetailPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Source</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/55">来源</p>
               <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{job.source}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Keywords</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/55">关键词</p>
               <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{job.keywords?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white sm:col-span-2 xl:col-span-1">
-              <p className="bauhaus-label text-white/70">Actions</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black sm:col-span-2 xl:col-span-1">
+              <p className="bauhaus-label text-black/55">操作</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button onPress={() => setJoinModalOpen(true)} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]">
                   加入已筛选
@@ -166,7 +166,7 @@ export default function JobDetailPage() {
       {job.summary && (
         <Card className="bauhaus-panel rounded-none bg-white shadow-none">
           <CardBody className="p-5">
-            <p className="bauhaus-label text-black/55">AI Summary</p>
+            <p className="bauhaus-label text-black/55">AI 摘要</p>
             <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-black">岗位摘要</h2>
             <p className="mt-4 text-sm font-medium leading-relaxed text-black/72">{job.summary}</p>
           </CardBody>
@@ -176,7 +176,7 @@ export default function JobDetailPage() {
       <Card className="bauhaus-panel rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5">
           <div>
-            <p className="bauhaus-label text-black/55">Raw Description</p>
+            <p className="bauhaus-label text-black/55">原始描述</p>
             <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-black">职位描述</h2>
           </div>
           {job.raw_description ? (
@@ -202,9 +202,9 @@ export default function JobDetailPage() {
               variant="flat"
               className={`border-2 border-black font-semibold ${
                 index % 3 === 0
-                  ? "bg-[#1040C0] text-white"
+                  ? "bg-[#6f8396] text-white"
                   : index % 3 === 1
-                    ? "bg-[#F0C020] text-black"
+                    ? "bg-[#e4c46a] text-black"
                     : "bg-white text-black"
               }`}
             >
@@ -251,7 +251,7 @@ export default function JobDetailPage() {
 
       <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
             加入已筛选
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">
@@ -279,7 +279,7 @@ export default function JobDetailPage() {
 
       <Modal isOpen={trashConfirmOpen} onClose={() => setTrashConfirmOpen(false)} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#D02020] px-6 py-5 text-xl font-black tracking-[-0.06em] text-white">
+          <ModalHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em] text-black">
             移入回收站
           </ModalHeader>
           <ModalBody className="px-6 py-6">

@@ -18,16 +18,38 @@ import {
   Palette, Type, AlignVerticalSpaceAround,
   Maximize2, Shrink,
 } from "lucide-react";
+import TemplateSelector from "./TemplateSelector";
+import {
+  normalizeTemplateSettings,
+  styleConfigFromSettings,
+  type ResumeTemplateType,
+} from "./templates/templateSettings";
 
 /** 默认样式，与 ResumePreview / 后端 DEFAULT_STYLE 一致 */
 export const DEFAULT_STYLE_CONFIG: Record<string, string> = {
+  template: "reference",
+  pageSize: "A4",
   primaryColor: "#222222",
   accentColor: "#666666",
-  bodySize: "10",
-  headingSize: "12",
-  lineHeight: "1.5",
-  pageMargin: "2",
-  sectionGap: "14",
+  bodySize: "11",
+  headingSize: "15",
+  lineHeight: "1.38",
+  pageMargin: "8",
+  sectionGap: "20",
+  marginTop: "8",
+  marginRight: "8",
+  marginBottom: "8",
+  marginLeft: "8",
+  sectionSpacing: "3",
+  itemSpacing: "2",
+  lineHeightLevel: "3",
+  fontSize: "3",
+  headerScale: "3",
+  headerFont: "serif",
+  bodyFont: "sans-serif",
+  compactMode: "false",
+  showContactIcons: "false",
+  accentColorName: "blue",
 };
 
 /** 样式参数的最小值（智能排版下限） */
@@ -35,7 +57,7 @@ export const MIN_STYLE_CONFIG: Record<string, number> = {
   bodySize: 8,
   headingSize: 10,
   lineHeight: 1.0,
-  pageMargin: 1.0,
+  pageMargin: 5,
   sectionGap: 6,
 };
 
@@ -64,6 +86,42 @@ interface StyleToolbarProps {
   fitting?: boolean;
 }
 
+function bodySizeToLevel(value: string) {
+  const parsed = Number(value);
+  if (parsed <= 11) return "1";
+  if (parsed <= 13) return "2";
+  if (parsed <= 14) return "3";
+  if (parsed <= 15) return "4";
+  return "5";
+}
+
+function headingSizeToLevel(value: string) {
+  const parsed = Number(value);
+  if (parsed <= 11) return "1";
+  if (parsed <= 13) return "2";
+  if (parsed <= 15) return "3";
+  if (parsed <= 17) return "4";
+  return "5";
+}
+
+function gapToLevel(value: string) {
+  const parsed = Number(value);
+  if (parsed <= 8) return "1";
+  if (parsed <= 12) return "2";
+  if (parsed <= 18) return "3";
+  if (parsed <= 22) return "4";
+  return "5";
+}
+
+function lineHeightToLevel(value: string) {
+  const parsed = Number(value);
+  if (parsed <= 1.2) return "1";
+  if (parsed <= 1.35) return "2";
+  if (parsed <= 1.5) return "3";
+  if (parsed <= 1.7) return "4";
+  return "5";
+}
+
 /**
  * Figma 风格属性工具栏
  * ─────────────────────────────────────────────
@@ -73,9 +131,28 @@ interface StyleToolbarProps {
  */
 export default function StyleToolbar({ config, onChange, onFitOnePage, fitting }: StyleToolbarProps) {
   const update = (key: string, value: string) => {
-    onChange({ ...config, [key]: value });
+    const next = { ...config, [key]: value };
+    if (key === "bodySize") next.fontSize = bodySizeToLevel(value);
+    if (key === "headingSize") next.headerScale = headingSizeToLevel(value);
+    if (key === "sectionGap") next.sectionSpacing = gapToLevel(value);
+    if (key === "lineHeight") next.lineHeightLevel = lineHeightToLevel(value);
+    if (key === "pageMargin") {
+      next.marginTop = value;
+      next.marginRight = value;
+      next.marginBottom = value;
+      next.marginLeft = value;
+    }
+    onChange(next);
   };
   const val = (key: string) => config[key] || DEFAULT_STYLE_CONFIG[key];
+  const templateSettings = normalizeTemplateSettings(config);
+
+  const updateTemplate = (template: ResumeTemplateType) => {
+    onChange({
+      ...config,
+      ...styleConfigFromSettings({ ...templateSettings, template }),
+    });
+  };
 
   /** 通用工具栏按钮样式 — Bauhaus 小按钮 */
   const toolBtnClass = "h-10 min-w-10 gap-1 rounded-none border-2 border-black bg-white px-2 text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] transition-all hover:-translate-y-[1px] data-[open=true]:bg-[#F0C020]";
@@ -92,6 +169,9 @@ export default function StyleToolbar({ config, onChange, onFitOnePage, fitting }
 
   return (
     <div className="flex items-center gap-0.5">
+      <TemplateSelector value={templateSettings.template} onChange={updateTemplate} />
+
+      <div className="mx-0.5 h-6 w-px bg-black/15" />
       {/* ---- 主色调 ---- */}
       <Popover placement="bottom">
         <PopoverTrigger>
@@ -212,9 +292,9 @@ export default function StyleToolbar({ config, onChange, onFitOnePage, fitting }
         </PopoverTrigger>
         <PopoverContent className={popoverClassName}>
           <p className="mb-3 text-[11px] font-black tracking-[0.06em] text-black/60">页边距</p>
-          <PropertyRow label="边距" value={`${val("pageMargin")}cm`} />
+          <PropertyRow label="边距" value={`${val("pageMargin")}mm`} />
           <Slider
-            size="sm" step={0.1} minValue={1.0} maxValue={3.0}
+            size="sm" step={1} minValue={5} maxValue={25}
             value={parseFloat(val("pageMargin"))}
             onChange={(v) => update("pageMargin", String(v))}
             classNames={{ track: "bg-black/10", filler: "bg-[#1040C0]" }}

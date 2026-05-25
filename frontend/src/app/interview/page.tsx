@@ -52,9 +52,9 @@ const item = {
 };
 
 const categoryConfig: Record<string, { label: string; chipClass: string }> = {
-  behavioral: { label: "行为类", chipClass: "border-2 border-black bg-[#1040C0] text-white font-semibold" },
-  technical: { label: "技术类", chipClass: "border-2 border-black bg-[#F0C020] text-black font-semibold" },
-  case: { label: "案例类", chipClass: "border-2 border-black bg-[#D02020] text-white font-semibold" },
+  behavioral: { label: "行为类", chipClass: "border-2 border-black bg-[#e4ece6] text-black font-semibold" },
+  technical: { label: "技术类", chipClass: "border-2 border-black bg-[#f3ead2] text-black font-semibold" },
+  case: { label: "案例类", chipClass: "border-2 border-black bg-[#f7ece9] text-black font-semibold" },
   motivation: { label: "动机类", chipClass: "border-2 border-black bg-white text-black font-semibold" },
 };
 
@@ -91,7 +91,6 @@ export default function InterviewPage() {
   const [answerMap, setAnswerMap] = useState<Record<number, string>>({});
   const [interviewError, setInterviewError] = useState("");
 
-  // 错误横幅 5.5s 自动消失
   useEffect(() => {
     if (!interviewError) return;
     const t = setTimeout(() => setInterviewError(""), 5500);
@@ -157,15 +156,15 @@ export default function InterviewPage() {
       <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Interview Library</span>
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">面试题库</span>
             <div>
-              <p className="bauhaus-label text-black/55">Question Board</p>
+              <p className="bauhaus-label text-black/55">题目面板</p>
               <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Collect
+                收集
                 <br />
-                Extract
+                提取
                 <br />
-                Answer
+                作答
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
                 把散落在社群、帖子和个人记录里的面经重新组织成可搜索题库，再基于档案生成回答思路，
@@ -175,16 +174,16 @@ export default function InterviewPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Questions</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/55">题目</p>
               <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{questions?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Experiences</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/55">经验</p>
               <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{experiences?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Action</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/55">行动</p>
               <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">AI 提炼 / AI 回答</p>
             </div>
           </div>
@@ -226,7 +225,7 @@ export default function InterviewPage() {
       </motion.section>
 
       {interviewError && (
-        <motion.div variants={item} role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[#D02020] px-5 py-3 text-sm font-bold text-white">
+        <motion.div variants={item} role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[#f7ece9] px-5 py-3 text-sm font-bold text-[#b7483c]">
           <span>{interviewError}</span>
           <button onClick={() => setInterviewError("")} className="ml-4 font-black" aria-label="关闭错误提示">✕</button>
         </motion.div>
@@ -237,7 +236,7 @@ export default function InterviewPage() {
           <Chip
             variant="flat"
             className={`cursor-pointer border-2 border-black font-semibold ${
-              categoryFilter === "all" ? "bg-[#F0C020] text-black" : "bg-white text-black"
+              categoryFilter === "all" ? "bg-[#f3ead2] text-black" : "bg-white text-black"
             }`}
             onClick={() => setCategoryFilter("all")}
           >
@@ -276,7 +275,7 @@ export default function InterviewPage() {
                             </Chip>
                             <span className="text-xs font-bold tracking-[0.08em] text-black/55" aria-label={`难度 ${question.difficulty}/5`}>{difficultyStars(question.difficulty)}</span>
                             {question.frequency > 1 && (
-                              <Chip size="sm" variant="flat" className="border-2 border-black bg-[#D02020] font-semibold text-white">
+                              <Chip size="sm" variant="flat" className="border-2 border-black bg-[#f7ece9] font-semibold text-[#b7483c]">
                                 出现 {question.frequency} 次
                               </Chip>
                             )}
@@ -311,11 +310,11 @@ export default function InterviewPage() {
             })
           ) : (
             <motion.div variants={item}>
-              <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+              <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-black shadow-none">
                 <CardBody className="p-10 text-center">
-                  <GraduationCap size={54} className="mx-auto" aria-hidden="true" />
-                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">Question Bank Empty</p>
-                  <p className="mt-3 text-sm font-medium text-white/80">
+                  <GraduationCap size={54} className="mx-auto text-black/30" aria-hidden="true" />
+                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">题库为空</p>
+                  <p className="mt-3 text-sm font-medium text-black/60">
                     点击右上角「粘贴面经」添加第一条原始记录，AI 会自动提炼问题。
                   </p>
                 </CardBody>
@@ -335,10 +334,10 @@ export default function InterviewPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2 text-black">
-                          <Building2 size={14} className="text-[#1040C0]" />
+                          <Building2 size={14} className="text-black/45" />
                           <span className="text-lg font-black tracking-[-0.04em]">{experience.company}</span>
                           <span className="text-black/35">·</span>
-                          <Briefcase size={14} className="text-[#D02020]" />
+                          <Briefcase size={14} className="text-black/45" />
                           <span className="text-sm font-bold">{experience.role}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium text-black/45">
@@ -365,11 +364,11 @@ export default function InterviewPage() {
             ))
           ) : (
             <motion.div variants={item}>
-              <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+              <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-black shadow-none">
                 <CardBody className="p-10 text-center">
-                  <GraduationCap size={54} className="mx-auto" aria-hidden="true" />
-                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Experiences Yet</p>
-                  <p className="mt-3 text-sm font-medium text-white/80">点击右上角「粘贴面经」开始收集。</p>
+                  <GraduationCap size={54} className="mx-auto text-black/30" aria-hidden="true" />
+                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无经验</p>
+                  <p className="mt-3 text-sm font-medium text-black/60">点击右上角「粘贴面经」开始收集。</p>
                 </CardBody>
               </Card>
             </motion.div>
@@ -379,7 +378,7 @@ export default function InterviewPage() {
 
       <Modal isOpen={isCollectOpen} onClose={onCollectClose} size="2xl" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="flex items-center gap-2 border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="flex items-center gap-2 border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
             <GraduationCap size={20} aria-hidden="true" />
             粘贴面经原文
           </ModalHeader>

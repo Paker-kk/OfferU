@@ -171,7 +171,178 @@ export const configApi = {
     request("/api/config/", { method: "PUT", body: JSON.stringify(data) }),
 };
 
+// ---- Harness Agent API ----
+export interface HarnessAgentMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface HarnessAgentToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  result: unknown;
+  action_id?: string;
+}
+
+export interface HarnessAgentProposedAction {
+  id: string;
+  tool: string;
+  summary: string;
+  risk_level: "read" | "write" | "confirm";
+  requires_confirmation: boolean;
+  args: Record<string, unknown>;
+}
+
+export interface HarnessAgentCareerPath {
+  title: string;
+  industry: string;
+  fit_reason: string;
+  entry_route: string;
+  salary_range: string;
+  search_keywords: string[];
+  application_strategy: string;
+}
+
+export interface HarnessAgentJobCard {
+  id: number;
+  title: string;
+  company: string;
+  location: string;
+  salary_text: string;
+  source: string;
+  apply_url: string;
+  summary?: string;
+}
+
+export interface HarnessAgentAlert {
+  code: string;
+  severity: "low" | "medium" | "high" | string;
+  title: string;
+  message: string;
+  action?: string;
+}
+
+export interface HarnessAgentProactiveSuggestion {
+  title: string;
+  description: string;
+  prompt: string;
+}
+
+export interface HarnessAgentMemorySnapshot {
+  schema_version: string;
+  user_stage: "unknown" | "campus" | "experienced" | string;
+  confidence: number;
+  facts: string[];
+  preferences: string[];
+  goals: string[];
+  risks: string[];
+  events: string[];
+  updated_at: string;
+}
+
+export interface HarnessAgentConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message: string;
+}
+
+export interface HarnessAgentConversationDetail {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: HarnessAgentMessage[];
+}
+
+export interface HarnessAgentResponse {
+  assistant_message: string;
+  mode: string;
+  requires_confirmation: boolean;
+  tool_calls: HarnessAgentToolCall[];
+  proposed_actions: HarnessAgentProposedAction[];
+  career_paths?: HarnessAgentCareerPath[];
+  job_cards?: HarnessAgentJobCard[];
+  next_steps?: string[];
+  transferable_skills_summary?: string;
+  quick_wins?: string[];
+  reality_check?: Record<string, any>;
+  user_stage?: "unknown" | "campus" | "experienced" | string;
+  stage_confidence?: number;
+  stage_signals?: string[];
+  memory_snapshot?: HarnessAgentMemorySnapshot;
+  alerts?: HarnessAgentAlert[];
+  proactive_suggestions?: HarnessAgentProactiveSuggestion[];
+  conversation_id?: string;
+  conversation_title?: string;
+}
+
+export const harnessAgentApi = {
+  chat: (data: {
+    messages: HarnessAgentMessage[];
+    confirmed_action_ids?: string[];
+    memory?: Record<string, any>;
+    conversation_id?: string | null;
+  }) =>
+    request<HarnessAgentResponse>("/api/harness-agent/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  conversations: () =>
+    request<{ conversations: HarnessAgentConversationSummary[] }>("/api/harness-agent/conversations"),
+  conversation: (id: string) =>
+    request<HarnessAgentConversationDetail>(`/api/harness-agent/conversations/${encodeURIComponent(id)}`),
+  deleteConversation: (id: string) =>
+    request<{ ok: boolean }>(`/api/harness-agent/conversations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  exportMemory: (format: "json" | "markdown" = "json") =>
+    request<{ format: string; content: any; memory: HarnessAgentMemorySnapshot }>(
+      `/api/harness-agent/memory/export?${buildQuery({ format })}`
+    ),
+  importMemory: (content: Record<string, any> | string) =>
+    request<{ ok: boolean; memory: HarnessAgentMemorySnapshot }>("/api/harness-agent/memory/import", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+};
+
 // ---- Profile API ----
+export interface ProfileAgentPatch {
+  action: "ask_user" | "propose_patch" | "apply_patch" | "generate_resume" | "finish";
+  assistant_message: string;
+  base_info: Record<string, string>;
+  target_roles: string[];
+  sections: {
+    section_type: string;
+    category_label?: string;
+    title: string;
+    content_json: Record<string, any>;
+    confidence: number;
+  }[];
+  next_question?: string;
+  confidence?: number;
+}
+
+export interface ProfileAgentResponse {
+  session_id: number;
+  state: Record<string, any>;
+  assistant_message: string;
+  patch: ProfileAgentPatch;
+  agent_trace?: Record<string, any>[];
+  stop_reason?: string;
+}
+
+export interface ProfileAgentSessionDetail {
+  id: number;
+  status: string;
+  state: Record<string, any>;
+  pending_patch?: ProfileAgentPatch | null;
+  messages_json: Record<string, any>[];
+}
+
 export const profileApi = {
   get: () => request("/api/profile/"),
 
@@ -216,10 +387,11 @@ export const profileApi = {
     return res;
   },
 
-  importResume: async (file: File) => {
+  importResume: async (file: File, parseMode: "ai" | "mechanical" = "ai") => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/profile/import-resume`, {
+    const params = new URLSearchParams({ parse_mode: parseMode });
+    const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
       method: "POST",
       body: formData,
     });
@@ -241,4 +413,41 @@ export const profileApi = {
 
   generateNarrative: () =>
     request("/api/profile/generate-narrative", { method: "POST" }),
+
+  startProfileAgent: async (data: {
+    file?: File | null;
+    resume_text?: string;
+    target_role?: string;
+    target_city?: string;
+    job_goal?: string;
+  }): Promise<ProfileAgentResponse> => {
+    const formData = new FormData();
+    if (data.file) formData.append("file", data.file);
+    formData.append("resume_text", data.resume_text || "");
+    formData.append("target_role", data.target_role || "");
+    formData.append("target_city", data.target_city || "");
+    formData.append("job_goal", data.job_goal || "");
+
+    const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  },
+
+  sendProfileAgentMessage: (data: { session_id: number; message: string }) =>
+    request<ProfileAgentResponse>("/api/profile/agent/message", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getProfileAgentSession: (sessionId: number) =>
+    request<ProfileAgentSessionDetail>(`/api/profile/agent/sessions/${sessionId}`),
+
+  applyProfileAgentPatch: (data: { session_id: number; patch?: ProfileAgentPatch }) =>
+    request("/api/profile/agent/apply-patch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

@@ -13,6 +13,7 @@ python-multipart==0.0.9
 weasyprint>=60.0
 reportlab>=4.0.0
 PyMuPDF>=1.24.0
+playwright>=1.51.0
 jinja2>=3.1.0
 python-docx>=1.1.0
 pypdf>=4.0.0

@@ -1,710 +1,626 @@
-// =============================================
-// ProfileOnboarding — 5步 Profile 冷启动向导
-// =============================================
-// Step 1: 基础信息表单 (姓名/学校/专业/学位/GPA/邮箱/电话)
-// Step 2: 目标岗位选择 (多选 + 自定义 + fit_level)
-// Step 2.5: 即时价值钩子 (3段经历 → AI秒出简历框架)
-// Step 3-4: AI 对话引导 (进入主 Profile 页面)
-// Step 5: 职业叙事总结 (headline + exit_story)
-// =============================================
-
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Button,
-  Input,
-  Textarea,
-  Card,
-  CardBody,
-  Chip,
-  Select,
-  SelectItem,
-  Spinner,
-} from "@nextui-org/react";
+import { useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Button, Chip, Input, Spinner, Textarea } from "@nextui-org/react";
 import {
   ArrowLeft,
   ArrowRight,
-  User,
-  Target,
-  Zap,
-  MessageSquare,
-  Sparkles,
-  X,
-  Plus,
+  BriefcaseBusiness,
   CheckCircle2,
+  FileText,
+  GraduationCap,
+  Sparkles,
+  Upload,
+  X,
 } from "lucide-react";
-import { profileApi } from "@/lib/api";
+import {
+  type PersonalArchive,
+  SHARED_ROOT_PATHS,
+  applyResumeToApplicationSync,
+  buildProfileBaseInfoForSave,
+  createDefaultPersonalArchive,
+  normalizePersonalArchiveFromProfile,
+  personalArchiveFactories,
+} from "@/lib/personalArchive";
+import {
+  importProfileResume,
+  updateProfileData,
+  type ProfileData,
+  type ProfileImportResult,
+  type ResumeImportParseMode,
+} from "@/lib/hooks";
+import AIImportModal from "./AIImportModal";
 
 interface ProfileOnboardingProps {
-  onComplete: () => void;
+  currentArchive?: PersonalArchive;
+  profile?: ProfileData | null;
+  onComplete: (archive: PersonalArchive) => void | Promise<void>;
+  onClose?: () => void;
 }
 
-const TOTAL_STEPS = 5;
+type RoleFit = "primary" | "secondary" | "adjacent";
 
-// 预设岗位标签
-const PRESET_ROLES = [
-  "运营", "市场", "产品", "行政", "教育",
-  "BD", "HR", "财务", "内容", "策划",
-];
+interface OnboardingFormState {
+  name: string;
+  phone: string;
+  email: string;
+  currentCity: string;
+  school: string;
+  major: string;
+  degree: string;
+  graduationDate: string;
+  gpa: string;
+  targetRoles: Array<{ title: string; fit: RoleFit }>;
+  experiences: string[];
+  skillsText: string;
+  summary: string;
+}
 
-const FIT_LEVELS = [
-  { value: "primary", label: "首选" },
-  { value: "secondary", label: "次选" },
-  { value: "adjacent", label: "相关" },
-];
-
-// 动画变体
-const slideVariants = {
-  enter: (dir: number) => ({
-    x: dir > 0 ? 300 : -300,
-    opacity: 0,
-  }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({
-    x: dir < 0 ? 300 : -300,
-    opacity: 0,
-  }),
+const STEP_LABELS = ["身份", "方向", "经历", "检查"];
+const ROLE_OPTIONS = ["AI产品运营", "产品助理", "内容运营", "用户运营", "市场策划", "数据运营", "项目助理", "人力资源"];
+const DEFAULT_FORM: OnboardingFormState = {
+  name: "",
+  phone: "",
+  email: "",
+  currentCity: "",
+  school: "",
+  major: "",
+  degree: "本科",
+  graduationDate: "",
+  gpa: "",
+  targetRoles: [],
+  experiences: ["", "", ""],
+  skillsText: "",
+  summary: "",
 };
 
-export function ProfileOnboarding({ onComplete }: ProfileOnboardingProps) {
+function clean(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(/[,，、；;\n|]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function textToHtml(value: string): string {
+  const lines = value
+    .split(/\n+/g)
+    .map((item) => item.replace(/^[•·●▪◦*+\-\d.)、\s]+/, "").trim())
+    .filter(Boolean);
+  if (lines.length === 0) return "";
+  if (lines.length === 1) return `<p>${lines[0]}</p>`;
+  return `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
+}
+
+function buildImportedArchive(imported: ProfileImportResult | null, profile?: ProfileData | null): PersonalArchive {
+  if (!imported) return createDefaultPersonalArchive();
+  return normalizePersonalArchiveFromProfile({
+    id: profile?.id || 0,
+    name: clean(imported.base_info?.name || profile?.name),
+    headline: profile?.headline || "",
+    exit_story: profile?.exit_story || "",
+    cross_cutting_advantage: profile?.cross_cutting_advantage || "",
+    base_info_json: {
+      ...(profile?.base_info_json || {}),
+      ...(imported.base_info || {}),
+      personal_archive: undefined,
+    },
+    is_default: true,
+    created_at: profile?.created_at || "",
+    updated_at: profile?.updated_at || new Date().toISOString(),
+    target_roles: profile?.target_roles || [],
+    sections:
+      imported.bullets?.map((item) => ({
+        id: item.index,
+        profile_id: profile?.id || 0,
+        section_type: item.section_type,
+        raw_section_type: item.section_type,
+        category_key: item.section_type,
+        category_label: "",
+        is_custom_category: false,
+        parent_id: null,
+        title: item.title || "",
+        sort_order: item.index,
+        content_json: item.content_json || {},
+        source: "ai_import",
+        confidence: item.confidence ?? 0.7,
+        created_at: "",
+        updated_at: "",
+      })) || [],
+  });
+}
+
+export function buildOnboardingArchive(
+  form: OnboardingFormState,
+  imported: ProfileImportResult | null,
+  profile?: ProfileData | null
+): PersonalArchive {
+  const base = buildImportedArchive(imported, profile);
+  const archive = JSON.parse(JSON.stringify(base)) as PersonalArchive;
+  const resume = archive.resumeArchive;
+  const primaryRole = form.targetRoles[0]?.title || resume.basicInfo.jobIntention;
+
+  resume.basicInfo = {
+    ...resume.basicInfo,
+    name: form.name.trim() || resume.basicInfo.name,
+    phone: form.phone.trim() || resume.basicInfo.phone,
+    email: form.email.trim() || resume.basicInfo.email,
+    currentCity: form.currentCity.trim() || resume.basicInfo.currentCity,
+    jobIntention: form.targetRoles.map((item) => item.title).join(" / ") || resume.basicInfo.jobIntention,
+  };
+  resume.personalSummary =
+    form.summary.trim() ||
+    resume.personalSummary ||
+    (primaryRole ? `面向${primaryRole}方向，具备学习能力、执行推进和项目复盘意识。` : "");
+
+  if (form.school.trim() && !resume.education.some((item) => item.schoolName.trim())) {
+    resume.education.unshift({
+      ...personalArchiveFactories.createEmptyEducation(),
+      schoolName: form.school.trim(),
+      degree: form.degree.trim(),
+      educationLevel: form.degree.trim(),
+      major: form.major.trim(),
+      endDate: form.graduationDate.trim(),
+      gpa: form.gpa.trim(),
+      description: form.gpa.trim() ? `<p>GPA：${form.gpa.trim()}</p>` : "",
+    });
+  }
+
+  const hasCoreExperience =
+    resume.workExperiences.some((item) => item.companyName.trim()) ||
+    resume.internshipExperiences.some((item) => item.companyName.trim()) ||
+    resume.projects.some((item) => item.projectName.trim());
+
+  if (!hasCoreExperience) {
+    form.experiences
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .forEach((item, index) => {
+        resume.projects.push({
+          ...personalArchiveFactories.createEmptyProject(),
+          projectName: `补充经历 ${index + 1}`,
+          projectRole: primaryRole ? `${primaryRole}候选人` : "",
+          description: textToHtml(item),
+        });
+      });
+  }
+
+  const existingSkills = new Set(resume.skills.map((item) => item.skillName.trim()).filter(Boolean));
+  for (const skill of splitList(form.skillsText)) {
+    if (existingSkills.has(skill)) continue;
+    resume.skills.push({
+      ...personalArchiveFactories.createEmptySkill(),
+      skillName: skill,
+    });
+    existingSkills.add(skill);
+  }
+
+  const synced = applyResumeToApplicationSync(archive, [...SHARED_ROOT_PATHS], true).nextArchive;
+  const basic = synced.resumeArchive.basicInfo;
+  synced.applicationArchive.identityContact = {
+    ...synced.applicationArchive.identityContact,
+    chineseName: basic.name,
+    phone: basic.phone,
+    email: basic.email,
+    currentCity: basic.currentCity,
+  };
+  synced.applicationArchive.jobPreference = {
+    ...synced.applicationArchive.jobPreference,
+    expectedPosition: basic.jobIntention,
+    expectedCities: basic.currentCity ? [basic.currentCity] : synced.applicationArchive.jobPreference.expectedCities,
+    employmentType: synced.applicationArchive.jobPreference.employmentType || "实习/校招",
+    currentJobSearchStatus: synced.applicationArchive.jobPreference.currentJobSearchStatus || "正在投递",
+  };
+  synced.applicationArchive.campusFields = {
+    ...synced.applicationArchive.campusFields,
+    isFreshGraduate: synced.applicationArchive.campusFields.isFreshGraduate || "是",
+    graduationDate: form.graduationDate.trim() || synced.applicationArchive.campusFields.graduationDate,
+    gpa: form.gpa.trim() || synced.applicationArchive.campusFields.gpa,
+  };
+  synced.updatedAt = new Date().toISOString();
+  return synced;
+}
+
+function getDeliverableMissing(archive: PersonalArchive): string[] {
+  const resume = archive.resumeArchive;
+  const app = archive.applicationArchive;
+  const missing: string[] = [];
+  if (!resume.basicInfo.name.trim()) missing.push("姓名");
+  if (!resume.basicInfo.phone.trim()) missing.push("手机号");
+  if (!resume.basicInfo.email.trim()) missing.push("邮箱");
+  if (!resume.basicInfo.jobIntention.trim()) missing.push("目标岗位");
+  if (!resume.education.some((item) => item.schoolName.trim() && item.major.trim())) missing.push("教育经历");
+  if (
+    !resume.workExperiences.some((item) => item.companyName.trim()) &&
+    !resume.internshipExperiences.some((item) => item.companyName.trim()) &&
+    !resume.projects.some((item) => item.projectName.trim())
+  ) {
+    missing.push("至少一段经历");
+  }
+  if (!resume.skills.some((item) => item.skillName.trim()) && resume.certificates.length === 0) missing.push("技能/证书");
+  if (!app.identityContact.chineseName.trim() || !app.jobPreference.expectedPosition.trim()) missing.push("网申同步字段");
+  return missing;
+}
+
+export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose }: ProfileOnboardingProps) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-
-  // Step 1: 基础信息
-  const [name, setName] = useState("");
-  const [school, setSchool] = useState("");
-  const [major, setMajor] = useState("");
-  const [degree, setDegree] = useState("本科");
-  const [gpa, setGpa] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-
-  // Step 2: 目标岗位
-  const [selectedRoles, setSelectedRoles] = useState<
-    { title: string; fit_level: string }[]
-  >([]);
+  const [form, setForm] = useState<OnboardingFormState>(() => {
+    const resume = currentArchive?.resumeArchive;
+    return {
+      ...DEFAULT_FORM,
+      name: resume?.basicInfo.name || "",
+      phone: resume?.basicInfo.phone || "",
+      email: resume?.basicInfo.email || "",
+      currentCity: resume?.basicInfo.currentCity || "",
+      school: resume?.education[0]?.schoolName || "",
+      major: resume?.education[0]?.major || "",
+      degree: resume?.education[0]?.degree || resume?.education[0]?.educationLevel || "本科",
+      graduationDate: resume?.education[0]?.endDate || "",
+      gpa: resume?.education[0]?.gpa || "",
+      skillsText: resume?.skills.map((item) => item.skillName).filter(Boolean).join("、") || "",
+      summary: resume?.personalSummary || "",
+    };
+  });
   const [customRole, setCustomRole] = useState("");
-
-  // Step 2.5: 即时价值
-  const [experiences, setExperiences] = useState(["", "", ""]);
-  const [generating, setGenerating] = useState(false);
-  const [draftGenerated, setDraftGenerated] = useState(false);
-
-  // Step 5: 叙事
-  const [headline, setHeadline] = useState("");
-  const [exitStory, setExitStory] = useState("");
-  const [narrativeLoading, setNarrativeLoading] = useState(false);
-
-  // 全局
+  const [imported, setImported] = useState<ProfileImportResult | null>(null);
+  const [importing, setImporting] = useState<ResumeImportParseMode | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [aiImportOpen, setAiImportOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const importModeRef = useRef<ResumeImportParseMode>("ai");
+
+  const previewArchive = useMemo(() => buildOnboardingArchive(form, imported, profile), [form, imported, profile]);
+  const missing = useMemo(() => getDeliverableMissing(previewArchive), [previewArchive]);
+  const deliverableScore = Math.max(0, Math.round(((8 - Math.min(missing.length, 8)) / 8) * 100));
+
+  const update = (patch: Partial<OnboardingFormState>) => setForm((prev) => ({ ...prev, ...patch }));
+  const canGoNext =
+    step === 0
+      ? Boolean(form.name.trim() && form.phone.trim() && form.email.trim() && form.school.trim() && form.major.trim())
+      : step === 1
+        ? form.targetRoles.length > 0
+        : step === 2
+          ? Boolean(imported || form.experiences.some((item) => item.trim()))
+          : true;
 
   const goNext = () => {
     setDirection(1);
-    setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+    setStep((prev) => Math.min(prev + 1, STEP_LABELS.length - 1));
   };
   const goBack = () => {
     setDirection(-1);
-    setStep((s) => Math.max(s - 1, 0));
+    setStep((prev) => Math.max(prev - 1, 0));
   };
 
-  // Step 1 → 保存基础信息
-  const handleSaveBasic = async () => {
-    setSaving(true);
-    try {
-      await profileApi.update({
-        name: name.trim(),
-        base_info_json: {
-          email: email.trim(),
-          phone: phone.trim(),
-          school: school.trim(),
-          major: major.trim(),
-          degree,
-          gpa: gpa.trim(),
-        },
-      });
-      goNext();
-    } catch {
-      // 允许继续
-      goNext();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Step 2 → 保存目标岗位
-  const handleSaveRoles = async () => {
-    setSaving(true);
-    try {
-      for (const role of selectedRoles) {
-        await profileApi.addTargetRole(role);
-      }
-      goNext();
-    } catch {
-      goNext();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // 添加岗位
   const toggleRole = (title: string) => {
-    setSelectedRoles((prev) => {
-      const exists = prev.find((r) => r.title === title);
-      if (exists) return prev.filter((r) => r.title !== title);
-      return [...prev, { title, fit_level: "primary" }];
+    setForm((prev) => {
+      const exists = prev.targetRoles.some((item) => item.title === title);
+      return {
+        ...prev,
+        targetRoles: exists
+          ? prev.targetRoles.filter((item) => item.title !== title)
+          : [...prev.targetRoles, { title, fit: prev.targetRoles.length === 0 ? "primary" : "secondary" }],
+      };
     });
   };
 
   const addCustomRole = () => {
-    if (!customRole.trim()) return;
-    const t = customRole.trim();
-    if (!selectedRoles.find((r) => r.title === t)) {
-      setSelectedRoles((prev) => [
-        ...prev,
-        { title: t, fit_level: "primary" },
-      ]);
-    }
+    const title = customRole.trim();
+    if (!title) return;
+    toggleRole(title);
     setCustomRole("");
   };
 
-  const updateFitLevel = (title: string, level: string) => {
-    setSelectedRoles((prev) =>
-      prev.map((r) => (r.title === title ? { ...r, fit_level: level } : r))
-    );
+  const handleAiImport = (result: ProfileImportResult) => {
+    setImported(result);
+    const base = result.base_info || {};
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || clean(base.name),
+      phone: prev.phone || clean(base.phone),
+      email: prev.email || clean(base.email),
+      currentCity: prev.currentCity || clean(base.current_city),
+      summary: prev.summary || clean(base.summary || base.personal_summary),
+    }));
   };
 
-  // Step 2.5 → 即时草稿
-  const handleInstantDraft = async () => {
-    const filled = experiences.filter((e) => e.trim());
-    if (filled.length === 0) return;
-    setGenerating(true);
+  const openResumeImport = (parseMode: ResumeImportParseMode) => {
+    importModeRef.current = parseMode;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const parseMode = importModeRef.current;
+    event.target.value = "";
+    if (!file) return;
+    setImporting(parseMode);
+    setError("");
     try {
-      await profileApi.instantDraft({ experiences: filled });
-      setDraftGenerated(true);
-    } catch {
-      // 允许继续
+      const result = await importProfileResume(file, parseMode);
+      setImported(result);
+      const base = result.base_info || {};
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || clean(base.name),
+        phone: prev.phone || clean(base.phone),
+        email: prev.email || clean(base.email),
+        currentCity: prev.currentCity || clean(base.current_city),
+        summary: prev.summary || clean(base.summary || base.personal_summary),
+      }));
+      if (typeof window !== "undefined" && result.agent_session_id) {
+        window.dispatchEvent(
+          new CustomEvent("offeru:open-profile-agent", {
+            detail: {
+              sessionId: result.agent_session_id,
+              source: "resume_import",
+              parseMode,
+            },
+          })
+        );
+      }
+    } catch (err: any) {
+      setError(err.message || "导入失败，请改用手填经历。");
     } finally {
-      setGenerating(false);
+      setImporting(null);
     }
   };
 
-  // Step 5 → 生成叙事
-  const handleGenerateNarrative = async () => {
-    setNarrativeLoading(true);
-    try {
-      const result: any = await profileApi.generateNarrative();
-      if (result.headline) setHeadline(result.headline);
-      if (result.exit_story) setExitStory(result.exit_story);
-    } catch {
-      // ignore
-    } finally {
-      setNarrativeLoading(false);
-    }
-  };
-
-  // 完成向导
   const handleFinish = async () => {
     setSaving(true);
+    setError("");
     try {
-      // 保存叙事到 Profile
-      if (headline || exitStory) {
-        await profileApi.update({ headline, exit_story: exitStory });
-      }
-      onComplete();
-    } catch {
-      onComplete();
+      const archive = buildOnboardingArchive(form, imported, profile);
+      const baseInfoPayload = buildProfileBaseInfoForSave(profile?.base_info_json, archive);
+      await updateProfileData({
+        name: archive.resumeArchive.basicInfo.name || "默认档案",
+        base_info_json: {
+          ...(profile?.base_info_json || {}),
+          ...baseInfoPayload,
+          onboarding_completed_at: new Date().toISOString(),
+        },
+      });
+      await onComplete(archive);
+    } catch (err: any) {
+      setError(err.message || "保存失败，请稍后重试。");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl"
-      >
-        {/* 进度条 */}
-        <div className="flex items-center gap-2 mb-6 justify-center">
-          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                i <= step
-                  ? "bg-blue-500 w-12"
-                  : "bg-white/10 w-8"
-              }`}
-            />
-          ))}
-          <span className="text-xs text-white/30 ml-2">
-            {step + 1}/{TOTAL_STEPS}
-          </span>
+    <div className="fixed inset-0 z-50 bg-[#f6f3ed]/95 p-4 text-black backdrop-blur-md">
+      <div className="mx-auto flex h-full max-w-6xl flex-col">
+        <div className="flex items-center justify-between border-b border-black/10 py-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-black/45">OfferU Onboarding</p>
+            <h2 className="text-xl font-semibold text-black">新人投递档案向导</h2>
+          </div>
+          <Button isIconOnly variant="light" aria-label="关闭新人向导" onPress={onClose}>
+            <X size={18} />
+          </Button>
         </div>
 
-        {/* Step Content */}
-        <Card className="bg-white/5 border border-white/10 overflow-hidden">
-          <CardBody className="p-8">
+        <div className="grid min-h-0 flex-1 gap-5 py-5 lg:grid-cols-[260px_1fr_300px]">
+          <aside className="space-y-3 border-r border-black/10 pr-4">
+            {STEP_LABELS.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition ${
+                  index === step ? "bg-black text-white" : "text-black/60 hover:bg-black/5"
+                }`}
+                onClick={() => {
+                  setDirection(index > step ? 1 : -1);
+                  setStep(index);
+                }}
+              >
+                <span className="grid h-6 w-6 place-items-center rounded-full border border-current text-xs">
+                  {index + 1}
+                </span>
+                {label}
+              </button>
+            ))}
+          </aside>
+
+          <main className="min-h-0 overflow-y-auto">
             <AnimatePresence mode="wait" custom={direction}>
               {step === 0 && (
-                <StepWrapper key="s0" dir={direction}>
-                  <StepHeader
-                    icon={User}
-                    title="基础信息"
-                    subtitle="让我们先了解你的基本情况"
-                  />
-                  <div className="grid grid-cols-2 gap-4 mt-6">
-                    <Input
-                      label="姓名"
-                      isRequired
-                      value={name}
-                      onValueChange={setName}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Input
-                      label="学校"
-                      isRequired
-                      value={school}
-                      onValueChange={setSchool}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Input
-                      label="专业"
-                      isRequired
-                      value={major}
-                      onValueChange={setMajor}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Select
-                      label="学位"
-                      selectedKeys={[degree]}
-                      onSelectionChange={(keys) => {
-                        const v = Array.from(keys)[0] as string;
-                        if (v) setDegree(v);
-                      }}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    >
-                      <SelectItem key="本科">本科</SelectItem>
-                      <SelectItem key="硕士">硕士</SelectItem>
-                      <SelectItem key="博士">博士</SelectItem>
-                      <SelectItem key="大专">大专</SelectItem>
-                    </Select>
-                    <Input
-                      label="GPA (可选)"
-                      value={gpa}
-                      onValueChange={setGpa}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Input
-                      label="邮箱"
-                      isRequired
-                      type="email"
-                      value={email}
-                      onValueChange={setEmail}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Input
-                      label="电话"
-                      isRequired
-                      value={phone}
-                      onValueChange={setPhone}
-                      variant="bordered"
-                      classNames={inputClasses}
-                      className="col-span-2 sm:col-span-1"
-                    />
+                <StepFrame key="identity" direction={direction} icon={GraduationCap} title="先把实名和教育信息打牢" subtitle="这些字段会同时进入简历档案和网申档案。">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input label="姓名" value={form.name} onValueChange={(name) => update({ name })} variant="bordered" />
+                    <Input label="手机号" value={form.phone} onValueChange={(phone) => update({ phone })} variant="bordered" />
+                    <Input label="邮箱" value={form.email} onValueChange={(email) => update({ email })} variant="bordered" />
+                    <Input label="当前城市" value={form.currentCity} onValueChange={(currentCity) => update({ currentCity })} variant="bordered" />
+                    <Input label="学校" value={form.school} onValueChange={(school) => update({ school })} variant="bordered" />
+                    <Input label="专业" value={form.major} onValueChange={(major) => update({ major })} variant="bordered" />
+                    <Input label="学历" value={form.degree} onValueChange={(degree) => update({ degree })} variant="bordered" />
+                    <Input label="毕业时间" placeholder="例如 2026-06" value={form.graduationDate} onValueChange={(graduationDate) => update({ graduationDate })} variant="bordered" />
+                    <Input label="GPA / 成绩" value={form.gpa} onValueChange={(gpa) => update({ gpa })} variant="bordered" className="md:col-span-2" />
                   </div>
-                  <div className="flex justify-end mt-6">
-                    <Button
-                      color="primary"
-                      endContent={<ArrowRight size={16} />}
-                      isLoading={saving}
-                      isDisabled={!name.trim() || !school.trim() || !major.trim()}
-                      onPress={handleSaveBasic}
-                    >
-                      下一步
-                    </Button>
-                  </div>
-                </StepWrapper>
+                </StepFrame>
               )}
 
               {step === 1 && (
-                <StepWrapper key="s1" dir={direction}>
-                  <StepHeader
-                    icon={Target}
-                    title="目标岗位"
-                    subtitle="选择你感兴趣的岗位类型（可多选）"
-                  />
-                  {/* 预设标签 */}
-                  <div className="flex flex-wrap gap-2 mt-6">
-                    {PRESET_ROLES.map((role) => {
-                      const selected = selectedRoles.some(
-                        (r) => r.title === role
-                      );
+                <StepFrame key="role" direction={direction} icon={BriefcaseBusiness} title="选一个能直接投递的岗位方向" subtitle="先聚焦 1-3 个方向，后面 AI 优化和岗位推荐会沿着它走。">
+                  <div className="flex flex-wrap gap-2">
+                    {ROLE_OPTIONS.map((role) => {
+                      const selected = form.targetRoles.some((item) => item.title === role);
                       return (
-                        <Chip
-                          key={role}
-                          variant={selected ? "solid" : "bordered"}
-                          color={selected ? "primary" : "default"}
-                          className="cursor-pointer"
-                          onClick={() => toggleRole(role)}
-                        >
+                        <Chip key={role} variant={selected ? "solid" : "bordered"} color={selected ? "primary" : "default"} className="cursor-pointer" onClick={() => toggleRole(role)}>
                           {role}
                         </Chip>
                       );
                     })}
                   </div>
-
-                  {/* 自定义输入 */}
-                  <div className="flex gap-2 mt-4">
-                    <Input
-                      size="sm"
-                      placeholder="输入其他岗位..."
-                      value={customRole}
-                      onValueChange={setCustomRole}
-                      onKeyDown={(e) => e.key === "Enter" && addCustomRole()}
-                      variant="bordered"
-                      classNames={inputClasses}
-                    />
-                    <Button
-                      size="sm"
-                      isIconOnly
-                      variant="flat"
-                      onPress={addCustomRole}
-                    >
-                      <Plus size={16} />
-                    </Button>
+                  <div className="mt-4 flex gap-2">
+                    <Input placeholder="输入其他岗位，例如 商业分析实习生" value={customRole} onValueChange={setCustomRole} variant="bordered" onKeyDown={(event) => event.key === "Enter" && addCustomRole()} />
+                    <Button onPress={addCustomRole}>添加</Button>
                   </div>
-
-                  {/* Fit Level 设定 */}
-                  {selectedRoles.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs text-white/40">
-                        为每个岗位设置匹配度（可选）:
-                      </p>
-                      {selectedRoles.map((role) => (
-                        <div
-                          key={role.title}
-                          className="flex items-center gap-3"
-                        >
-                          <Chip
-                            variant="flat"
-                            onClose={() => toggleRole(role.title)}
-                          >
-                            {role.title}
-                          </Chip>
-                          <div className="flex gap-1">
-                            {FIT_LEVELS.map((fl) => (
-                              <Chip
-                                key={fl.value}
-                                size="sm"
-                                variant={
-                                  role.fit_level === fl.value
-                                    ? "solid"
-                                    : "bordered"
-                                }
-                                color={
-                                  role.fit_level === fl.value
-                                    ? "primary"
-                                    : "default"
-                                }
-                                className="cursor-pointer text-xs"
-                                onClick={() =>
-                                  updateFitLevel(role.title, fl.value)
-                                }
-                              >
-                                {fl.label}
-                              </Chip>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      variant="light"
-                      startContent={<ArrowLeft size={16} />}
-                      onPress={goBack}
-                    >
-                      上一步
-                    </Button>
-                    <Button
-                      color="primary"
-                      endContent={<ArrowRight size={16} />}
-                      isLoading={saving}
-                      isDisabled={selectedRoles.length === 0}
-                      onPress={handleSaveRoles}
-                    >
-                      下一步
-                    </Button>
+                  <div className="mt-5 space-y-2">
+                    {form.targetRoles.map((role, index) => (
+                      <div key={role.title} className="flex items-center justify-between rounded-md border border-black/10 px-3 py-2">
+                        <span className="text-sm font-medium">{role.title}</span>
+                        <Chip size="sm" variant="flat">{index === 0 ? "主投" : "备选"}</Chip>
+                      </div>
+                    ))}
                   </div>
-                </StepWrapper>
+                </StepFrame>
               )}
 
               {step === 2 && (
-                <StepWrapper key="s2" dir={direction}>
-                  <StepHeader
-                    icon={Zap}
-                    title="快速预览简历"
-                    subtitle="分享你的 3 段经历（随便聊，AI 会理解）"
+                <StepFrame key="experience" direction={direction} icon={FileText} title="导入简历，或者先手填三段经历" subtitle="新人没有完整简历也没关系，先把可投递素材写进档案。">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      className="w-full justify-center"
+                      color="primary"
+                      startContent={importing === "ai" ? <Spinner size="sm" /> : <Sparkles size={16} />}
+                      onPress={() => openResumeImport("ai")}
+                      isDisabled={Boolean(importing)}
+                    >
+                      {importing === "ai" ? "AI 正在精准解析..." : imported?.parse_mode === "ai" ? `AI 已导入 ${imported.filename}` : "AI 精准解析简历"}
+                    </Button>
+                    <Button
+                      className="w-full justify-center"
+                      variant="bordered"
+                      startContent={importing === "mechanical" ? <Spinner size="sm" /> : <Upload size={16} />}
+                      onPress={() => openResumeImport("mechanical")}
+                      isDisabled={Boolean(importing)}
+                    >
+                      {importing === "mechanical"
+                        ? "机械解析中..."
+                        : imported?.parse_mode === "mechanical"
+                          ? `机械已导入 ${imported.filename}`
+                          : "原版机械解析"}
+                    </Button>
+                  </div>
+                  <div className="mt-2">
+                    <Button className="w-full justify-center" variant="bordered" startContent={<Sparkles size={16} />} onPress={() => setAiImportOpen(true)}>
+                      {imported ? `已导入 ${imported.filename === "ai-import" ? "AI 解析结果" : imported.filename}` : "AI 对话导入简历"}
+                    </Button>
+                  </div>
+                  <AIImportModal
+                    open={aiImportOpen}
+                    onClose={() => setAiImportOpen(false)}
+                    onImport={handleAiImport}
                   />
-                  <div className="space-y-3 mt-6">
-                    {experiences.map((exp, i) => (
+                  <div className="mt-4 space-y-3">
+                    {form.experiences.map((value, index) => (
                       <Textarea
-                        key={i}
-                        label={`经历 ${i + 1}`}
-                        placeholder={
-                          i === 0
-                            ? "例: 在字节跳动实习3个月，做短视频剪辑"
-                            : i === 1
-                            ? "例: 参加过创业比赛，做了产品经理"
-                            : "例: 在学生会外联部拉了5万赞助"
-                        }
-                        value={exp}
-                        onValueChange={(v) =>
-                          setExperiences((prev) => {
-                            const next = [...prev];
-                            next[i] = v;
-                            return next;
-                          })
-                        }
-                        minRows={2}
+                        key={index}
+                        label={`经历 ${index + 1}`}
+                        minRows={3}
+                        value={value}
+                        onValueChange={(next) => {
+                          const experiences = [...form.experiences];
+                          experiences[index] = next;
+                          update({ experiences });
+                        }}
+                        placeholder="写背景、你负责什么、结果是什么。比如：负责学院公众号选题和推文撰写，单篇最高阅读 8000+。"
                         variant="bordered"
-                        classNames={inputClasses}
                       />
                     ))}
                   </div>
-
-                  {/* AI 秒出简历框架 */}
-                  <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                    {draftGenerated ? (
-                      <div className="flex items-center gap-2 text-green-400">
-                        <CheckCircle2 size={18} />
-                        <span className="text-sm font-medium">
-                          已为你生成简历框架！完成向导后可在"简历"页查看
-                        </span>
-                      </div>
-                    ) : (
-                      <Button
-                        color="primary"
-                        variant="flat"
-                        startContent={
-                          generating ? (
-                            <Spinner size="sm" />
-                          ) : (
-                            <Zap size={16} />
-                          )
-                        }
-                        isDisabled={
-                          generating ||
-                          experiences.every((e) => !e.trim())
-                        }
-                        onPress={handleInstantDraft}
-                        className="w-full"
-                      >
-                        {generating
-                          ? "AI 正在分析你的经历..."
-                          : "⚡ AI 秒出简历框架"}
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      variant="light"
-                      startContent={<ArrowLeft size={16} />}
-                      onPress={goBack}
-                    >
-                      上一步
-                    </Button>
-                    <Button
-                      color="primary"
-                      endContent={<ArrowRight size={16} />}
-                      onPress={goNext}
-                    >
-                      {draftGenerated ? "继续完善" : "跳过"}
-                    </Button>
-                  </div>
-                </StepWrapper>
+                </StepFrame>
               )}
 
               {step === 3 && (
-                <StepWrapper key="s3" dir={direction}>
-                  <StepHeader
-                    icon={MessageSquare}
-                    title="AI 对话引导"
-                    subtitle="接下来通过对话，让 AI 帮你挖掘更多经历细节"
-                  />
-                  <div className="mt-6 text-center py-8">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/20 flex items-center justify-center">
-                      <MessageSquare size={28} className="text-blue-400" />
+                <StepFrame key="review" direction={direction} icon={Sparkles} title="补齐技能，然后生成可投递档案" subtitle="这里会把简历档案和网申档案一起写好。">
+                  <Textarea label="技能 / 工具 / 证书" minRows={3} value={form.skillsText} onValueChange={(skillsText) => update({ skillsText })} placeholder="例如：Excel、SQL、Canva、用户访谈、公众号排版、英语六级" variant="bordered" />
+                  <Textarea label="个人简介" minRows={3} value={form.summary} onValueChange={(summary) => update({ summary })} placeholder="一句话总结你的方向和优势；不填也会自动生成基础版本。" variant="bordered" className="mt-3" />
+                  <div className="mt-4 rounded-md border border-black/10 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">可投递度 {deliverableScore}%</span>
+                      {missing.length === 0 ? <CheckCircle2 className="text-green-600" size={18} /> : <span className="text-xs text-black/50">还差 {missing.length} 项</span>}
                     </div>
-                    <p className="text-white/70 text-sm">
-                      点击"开始对话"进入 Profile 构建页面
-                    </p>
-                    <p className="text-white/40 text-xs mt-2">
-                      AI 会按主题（教育→实习→项目→社团→技能）逐一引导你
-                    </p>
-                  </div>
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      variant="light"
-                      startContent={<ArrowLeft size={16} />}
-                      onPress={goBack}
-                    >
-                      上一步
-                    </Button>
-                    <Button
-                      color="primary"
-                      endContent={<ArrowRight size={16} />}
-                      onPress={goNext}
-                    >
-                      开始对话
-                    </Button>
-                  </div>
-                </StepWrapper>
-              )}
-
-              {step === 4 && (
-                <StepWrapper key="s4" dir={direction}>
-                  <StepHeader
-                    icon={Sparkles}
-                    title="职业叙事"
-                    subtitle="基于你的经历，生成你的职业故事"
-                  />
-
-                  <div className="mt-6 space-y-4">
-                    <Button
-                      variant="flat"
-                      color="secondary"
-                      startContent={
-                        narrativeLoading ? (
-                          <Spinner size="sm" />
-                        ) : (
-                          <Sparkles size={16} />
-                        )
-                      }
-                      onPress={handleGenerateNarrative}
-                      isDisabled={narrativeLoading}
-                    >
-                      {narrativeLoading
-                        ? "AI 正在生成..."
-                        : "🎯 AI 一键生成职业叙事"}
-                    </Button>
-
-                    <div>
-                      <label className="text-xs text-white/40 mb-1 block">
-                        Headline（一句话自我介绍）
-                      </label>
-                      <Textarea
-                        value={headline}
-                        onValueChange={setHeadline}
-                        placeholder="运营从业者，擅长内容策略与用户增长..."
-                        minRows={2}
-                        variant="bordered"
-                        classNames={inputClasses}
-                      />
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10">
+                      <div className="h-full bg-black transition-all" style={{ width: `${deliverableScore}%` }} />
                     </div>
-
-                    <div>
-                      <label className="text-xs text-white/40 mb-1 block">
-                        Exit Story（你为什么选择这个方向）
-                      </label>
-                      <Textarea
-                        value={exitStory}
-                        onValueChange={setExitStory}
-                        placeholder="我热爱创意创作与用户交互..."
-                        minRows={3}
-                        variant="bordered"
-                        classNames={inputClasses}
-                      />
-                    </div>
+                    {missing.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {missing.map((item) => (
+                          <Chip key={item} size="sm" variant="flat" color="warning">{item}</Chip>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  <div className="flex justify-between mt-6">
-                    <Button
-                      variant="light"
-                      startContent={<ArrowLeft size={16} />}
-                      onPress={goBack}
-                    >
-                      上一步
-                    </Button>
-                    <Button
-                      color="success"
-                      endContent={<CheckCircle2 size={16} />}
-                      isLoading={saving}
-                      onPress={handleFinish}
-                    >
-                      完成
-                    </Button>
-                  </div>
-                </StepWrapper>
+                </StepFrame>
               )}
             </AnimatePresence>
-          </CardBody>
-        </Card>
-      </motion.div>
+
+            {error && <div className="mt-4 rounded-md bg-red-600 px-4 py-3 text-sm text-white">{error}</div>}
+          </main>
+
+          <aside className="border-l border-black/10 pl-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Result</p>
+            <h3 className="mt-2 text-2xl font-semibold">{deliverableScore}%</h3>
+            <p className="mt-1 text-sm text-black/55">{missing.length === 0 ? "已经可以作为第一版投递档案。" : `还差 ${missing.join("、")}。`}</p>
+            <div className="mt-5 space-y-3 text-sm">
+              <PreviewLine label="姓名" value={previewArchive.resumeArchive.basicInfo.name} />
+              <PreviewLine label="目标岗位" value={previewArchive.resumeArchive.basicInfo.jobIntention} />
+              <PreviewLine label="教育" value={previewArchive.resumeArchive.education[0]?.schoolName} />
+              <PreviewLine label="经历数" value={String(previewArchive.resumeArchive.projects.length + previewArchive.resumeArchive.workExperiences.length + previewArchive.resumeArchive.internshipExperiences.length)} />
+              <PreviewLine label="技能数" value={String(previewArchive.resumeArchive.skills.length + previewArchive.resumeArchive.certificates.length)} />
+            </div>
+          </aside>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-black/10 py-3">
+          <Button variant="light" startContent={<ArrowLeft size={16} />} isDisabled={step === 0 || saving} onPress={goBack}>上一步</Button>
+          {step < STEP_LABELS.length - 1 ? (
+            <Button color="primary" endContent={<ArrowRight size={16} />} isDisabled={!canGoNext} onPress={goNext}>下一步</Button>
+          ) : (
+            <Button color="primary" startContent={<CheckCircle2 size={16} />} isLoading={saving} isDisabled={missing.length > 0} onPress={handleFinish}>生成可投递档案</Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-// ---- Helper Components ----
-
-function StepWrapper({
-  children,
-  dir,
-}: {
-  children: React.ReactNode;
-  dir: number;
-}) {
-  return (
-    <motion.div
-      custom={dir}
-      variants={slideVariants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-function StepHeader({
-  icon: Icon,
-  title,
-  subtitle,
-}: {
+function StepFrame(props: {
+  direction: number;
   icon: React.ElementType;
   title: string;
   subtitle: string;
+  children: React.ReactNode;
 }) {
+  const Icon = props.icon;
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-        <Icon size={20} className="text-blue-400" />
+    <motion.section
+      custom={props.direction}
+      initial={{ opacity: 0, x: props.direction > 0 ? 24 : -24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: props.direction > 0 ? -24 : 24 }}
+      transition={{ duration: 0.18 }}
+      className="mx-auto max-w-3xl"
+    >
+      <div className="mb-5 flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-black text-white">
+          <Icon size={19} />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold text-black">{props.title}</h2>
+          <p className="mt-1 text-sm text-black/55">{props.subtitle}</p>
+        </div>
       </div>
-      <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <p className="text-sm text-white/50">{subtitle}</p>
-      </div>
-    </div>
+      {props.children}
+    </motion.section>
   );
 }
 
-// 统一 Input 暗色样式
-const inputClasses = {
-  input: "text-white/80",
-  inputWrapper: "bg-white/5 border-white/10 hover:border-white/20",
-  label: "text-white/50",
-};
+function PreviewLine(props: { label: string; value?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-black/10 pb-2">
+      <span className="text-black/45">{props.label}</span>
+      <span className="max-w-[160px] truncate text-right font-medium">{props.value?.trim() || "未填写"}</span>
+    </div>
+  );
+}

@@ -116,7 +116,7 @@ def _serialize_profile(profile: Profile, sections: list, roles: list) -> dict:
 
 def _serialize_job(job: Job) -> dict:
     internal = _to_internal_status(job.triage_status or "inbox")
-    outward = "unscreened" if internal == "inbox" else ("screened" if internal == "picked" else "ignored")
+    outward = "inbox" if internal == "inbox" else ("picked" if internal == "picked" else "ignored")
     return {
         "id": job.id,
         "title": job.title,
@@ -196,7 +196,7 @@ async def list_pools() -> list[dict]:
             cnt_r = await db.execute(
                 select(func.count(Job.id)).where(
                     Job.pool_id == p.id,
-                    Job.triage_status.in_(_status_filter_values("screened")),
+                    Job.triage_status.in_(_status_filter_values("picked")),
                 )
             )
             cnt = cnt_r.scalar() or 0
@@ -222,7 +222,7 @@ async def list_jobs(
     page_size: int = 20,
 ) -> dict:
     """分页浏览岗位列表，支持按分拣状态/池/关键词筛选。
-    triage_status: unscreened | screened | ignored
+    triage_status: inbox | picked | ignored
     返回岗位摘要列表和总数。"""
     async with async_session() as db:
         q = select(Job)
@@ -281,11 +281,11 @@ async def triage_job(
     status: str,
     pool_id: Optional[int] = None,
 ) -> dict:
-    """将岗位分拣为 screened（已筛选）/ ignored（忽略），可同时分配到某个池。
-    status: screened | ignored | unscreened"""
+    """将岗位分拣为 picked（已筛选）/ ignored（忽略），可同时分配到某个池。
+    status: picked | ignored | inbox"""
     internal = _to_internal_status(status)
     if internal not in ("inbox", "picked", "ignored"):
-        return {"error": "status 必须是 screened/unscreened/ignored（兼容 picked/inbox）"}
+        return {"error": "status 必须是 inbox/picked/ignored"}
 
     async with async_session() as db:
         job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
@@ -312,7 +312,7 @@ async def batch_triage(
     """批量分拣多个岗位。"""
     internal = _to_internal_status(status)
     if internal not in ("inbox", "picked", "ignored"):
-        return {"error": "status 必须是 screened/unscreened/ignored（兼容 picked/inbox）"}
+        return {"error": "status 必须是 inbox/picked/ignored"}
 
     async with async_session() as db:
         values: dict = {"triage_status": internal}
@@ -322,7 +322,7 @@ async def batch_triage(
             update(Job).where(Job.id.in_(job_ids)).values(**values)
         )
         await db.commit()
-        outward = "unscreened" if internal == "inbox" else ("screened" if internal == "picked" else "ignored")
+        outward = "inbox" if internal == "inbox" else ("picked" if internal == "picked" else "ignored")
         return {"ok": True, "updated": len(job_ids), "status": outward}
 
 
@@ -554,7 +554,7 @@ async def job_stats() -> dict:
     async with async_session() as db:
         # 分拣状态计数
         counts: dict[str, int] = {}
-        for st in ("unscreened", "screened", "ignored"):
+        for st in ("inbox", "picked", "ignored"):
             cnt = (await db.execute(
                 select(func.count(Job.id)).where(Job.triage_status.in_(_status_filter_values(st)))
             )).scalar() or 0

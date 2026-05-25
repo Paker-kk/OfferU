@@ -11,6 +11,11 @@ import type { ExtractedJob, JobSource, MergeResponse, Message, StatusResponse } 
 import { buildHashKey, canonicalUrl, cleanText, parseSalary } from "./lib/collect-utils.js";
 import { PLATFORM_CONFIGS } from "./content/platforms/index.js";
 import type { PlatformConfig } from "./content/platforms/types.js";
+import { scanFieldsSync } from "./content/smartfill-v2/scan/scanner.js";
+import { runSmartFillPipeline } from "./content/smartfill-v2/pipeline.js";
+import { PendingFieldHighlighter } from "./content/smartfill-v2/ui/highlighter.js";
+import { setDebugEnabled, logDebug as logSmartFillDebug } from "./content/smartfill-v2/shared/logger.js";
+import type { ScannedField } from "./content/smartfill-v2/core/types.js";
 
 const PLATFORMS: PlatformConfig[] = PLATFORM_CONFIGS;
 
@@ -68,7 +73,7 @@ const DOCK_COMPACT_HEIGHT = 44;
 const DOCK_EXPANDED_WIDTH = 260;
 const DOCK_EXPANDED_HEIGHT = 50;
 const DOCK_PANEL_WIDTH = 260;
-const DOCK_PANEL_HEIGHT = 114;
+const DOCK_PANEL_HEIGHT = 208;
 const EDGE_DOCK_LENGTH_REDUCTION = 30;
 const EDGE_DOCK_SIDE_WIDTH = Math.max(60, Math.round(DOCK_COMPACT_WIDTH / 2) - EDGE_DOCK_LENGTH_REDUCTION);
 const EDGE_DOCK_SIDE_HEIGHT = DOCK_COMPACT_HEIGHT;
@@ -2102,6 +2107,120 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       border-color: #0f66e9;
       color: #ffffff;
     }
+    .smart-fill-card {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+    }
+    .smart-fill-btn {
+      all: initial;
+      font-family: inherit;
+      border-radius: 14px;
+      min-height: 44px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 1px solid #1f88ff;
+      background: linear-gradient(135deg, #0f66e9, #1f88ff);
+      color: #ffffff;
+      line-height: 1.2;
+      text-align: center;
+      transition: transform 0.18s var(--motion), opacity 0.18s var(--motion);
+    }
+    .smart-fill-btn[disabled] {
+      opacity: 0.7;
+      cursor: default;
+    }
+    .smart-fill-btn.is-busy {
+      animation: offeruSmartFillBreath 1.15s ease-in-out infinite;
+    }
+    .smart-fill-link {
+      all: initial;
+      font-family: inherit;
+      cursor: pointer;
+      color: #0f66e9;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .smart-fill-nav {
+      margin-top: 2px;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto auto;
+      gap: 6px;
+      align-items: center;
+      font-size: 11px;
+      color: #4b5563;
+    }
+    .smart-fill-nav.hidden,
+    .smart-fill-link.hidden {
+      display: none;
+    }
+    .smart-fill-nav button {
+      all: initial;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      padding: 2px 6px;
+      font-size: 11px;
+      color: #374151;
+      background: #fff;
+      text-align: center;
+      min-width: 20px;
+    }
+    .smart-fill-nav button.exit {
+      min-width: auto;
+      padding: 2px 8px;
+    }
+    .smart-fill-checklist {
+      margin-top: 6px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.72);
+      max-height: 132px;
+      overflow: auto;
+      padding: 4px;
+      display: grid;
+      gap: 4px;
+    }
+    .smart-fill-checklist.hidden {
+      display: none;
+    }
+    .smart-fill-checklist-item {
+      all: initial;
+      font-family: inherit;
+      cursor: pointer;
+      display: block;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      background: #fff5f5;
+      color: #991b1b;
+      padding: 5px 7px;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .smart-fill-checklist-item[data-resolved="false"] {
+      border-color: #fca5a5;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .smart-fill-checklist-item .tag {
+      font-size: 10px;
+      margin-left: 4px;
+      color: #dc2626;
+    }
+    @keyframes offeruSmartFillBreath {
+      0% { opacity: 0.72; transform: scale(0.995); }
+      50% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0.72; transform: scale(0.995); }
+    }
     .meta {
       margin-top: 8px;
       font-size: 11px;
@@ -2152,6 +2271,36 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       background: linear-gradient(135deg, #1d4ed8, #2563eb);
       border-color: #2563eb;
       color: #ffffff;
+    }
+    .dock.theme-dark .smart-fill-btn {
+      border-color: #2563eb;
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      color: #ffffff;
+    }
+    .dock.theme-dark .smart-fill-link {
+      color: #93c5fd;
+    }
+    .dock.theme-dark .smart-fill-nav {
+      color: #9ca3af;
+    }
+    .dock.theme-dark .smart-fill-nav button {
+      border-color: #52525b;
+      background: #3f3f46;
+      color: #e5e7eb;
+    }
+    .dock.theme-dark .smart-fill-checklist {
+      border-color: #52525b;
+      background: rgba(39, 39, 42, 0.65);
+    }
+    .dock.theme-dark .smart-fill-checklist-item {
+      border-color: #7f1d1d;
+      background: #450a0a;
+      color: #fecaca;
+    }
+    .dock.theme-dark .smart-fill-checklist-item[data-resolved="false"] {
+      border-color: #b91c1c;
+      background: #3f0a0a;
+      color: #fca5a5;
     }
     .dock.theme-dark .meta {
       color: #9ca3af;
@@ -2321,14 +2470,32 @@ function createFloatingDock(platform: PlatformConfig | null): void {
 
   const badgeEl = root.querySelector("#offeruFloatingBadge") as HTMLSpanElement | null;
   const toggleGlyphEl = root.querySelector("#offeruFloatingToggleGlyph") as HTMLElement | null;
+  const pendingHighlighter = new PendingFieldHighlighter();
 
   let panel: HTMLDivElement | null = null;
   let panelController: AbortController | null = null;
   let metaEl: HTMLDivElement | null = null;
   let collectabilityEl: HTMLDivElement | null = null;
+  let smartFillBtnEl: HTMLButtonElement | null = null;
+  let smartFillLinkEl: HTMLButtonElement | null = null;
+  let smartFillNavEl: HTMLDivElement | null = null;
+  let smartFillNavIndexEl: HTMLSpanElement | null = null;
+  let smartFillChecklistEl: HTMLDivElement | null = null;
   let latestMetaText = "草稿 0 条 | 可同步 0 条";
   let latestCollectabilityText = "当前页面：检测中";
   let latestCollectabilityTone: "ok" | "warn" = "warn";
+  let smartFillBusy = false;
+  let smartFillFilledCount = 0;
+  let smartFillPendingCount = 0;
+  let smartFillStatus: "idle" | "running" | "success" | "partial" | "failed" = "idle";
+  let smartFillStatusText = "一键智填";
+  let smartFillSubText = "";
+  let smartFillResetTimer: number | null = null;
+  let smartFillLastRunAt = 0;
+  let smartFillRunToken = 0;
+  let smartFillRunActive = false;
+  let smartFillAbortController: AbortController | null = null;
+  let smartFillChecklistData: Array<{ fieldId: string; title: string; resolved: boolean; reason: string }> = [];
 
   let expanded = false;
   let edgeDocked = false;
@@ -2445,6 +2612,35 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     };
   }
 
+  function resolveSmartFillCollectability(currentPlatform: PlatformConfig | null): {
+    text: string;
+    tone: "ok" | "warn";
+  } {
+    const fieldCount = scanFieldsSync(document).length;
+    if (fieldCount > 0) {
+      return {
+        text: "当前页面：支持智填",
+        tone: "ok",
+      };
+    }
+
+    if (!currentPlatform) {
+      return {
+        text: "当前页面：未检测到可填写表单",
+        tone: "warn",
+      };
+    }
+
+    const collectability = resolvePageCollectability(currentPlatform);
+    if (collectability.tone === "ok") {
+      return {
+        text: "当前页面：可采集但未检测到可填写表单",
+        tone: "warn",
+      };
+    }
+    return collectability;
+  }
+
   function syncPanelSummaryText(): void {
     if (metaEl) {
       metaEl.textContent = latestMetaText;
@@ -2457,7 +2653,265 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     }
   }
 
-  function handlePanelAction(action: string): void {
+  function clearSmartFillResetTimer(): void {
+    if (smartFillResetTimer !== null) {
+      window.clearTimeout(smartFillResetTimer);
+      smartFillResetTimer = null;
+    }
+  }
+
+  function syncSmartFillNavigationText(): void {
+    if (!smartFillNavIndexEl) return;
+    if (smartFillPendingCount <= 0) {
+      smartFillNavIndexEl.textContent = "0/0";
+      return;
+    }
+    smartFillNavIndexEl.textContent = `${pendingHighlighter.currentIndex()}/${smartFillPendingCount}`;
+  }
+
+  function buildChecklistTitle(field: ScannedField): string {
+    const label = (field.semanticLabel || field.label || "未命名字段").trim();
+    const moduleName = (field.moduleName || "").trim();
+    if (!moduleName) return label;
+    return `${moduleName} / ${label}`;
+  }
+
+  function resolveChecklistReason(field: ScannedField): string {
+    const reason = field.runtime?.failureReason || "no_match";
+    // Distinguish: AI/rule match failure vs write success failure
+    switch (reason) {
+      case "no_match": return "档案中无匹配数据";
+      case "write_failed": return "已匹配但写入失败";
+      case "write_blocked": return "控件不可写或只读";
+      case "verify_failed": return "写入后未通过校验";
+      case "control_not_supported": return "复杂控件待手动补充";
+      case "validation_error": return "页面校验未通过";
+      case "aborted": return "操作已中止";
+      case "not_found": return "控件已从页面移除";
+      default: return "待手动确认";
+    }
+  }
+
+  function buildChecklistDataFromHighlighter(): Array<{ fieldId: string; title: string; resolved: boolean; reason: string }> {
+    return pendingHighlighter
+      .checklist()
+      .map(({ field, resolved }) => ({
+        fieldId: field.fieldId,
+        title: buildChecklistTitle(field),
+        resolved,
+        reason: resolveChecklistReason(field),
+      }));
+  }
+
+  function renderSmartFillChecklist(): void {
+    if (!smartFillChecklistEl) return;
+    const show = smartFillChecklistData.length > 0 && smartFillPendingCount > 0;
+    smartFillChecklistEl.classList.toggle("hidden", !show);
+    if (!show) {
+      smartFillChecklistEl.innerHTML = "";
+      return;
+    }
+
+    smartFillChecklistEl.innerHTML = smartFillChecklistData
+      .map((item, index) => {
+        const safeTitle = item.title
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const safeReason = item.reason
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const unresolvedTag = item.resolved ? "" : `<span class="tag">待定位</span>`;
+        return `<button class="smart-fill-checklist-item" data-action="smart-fill-focus-item" data-field-id="${item.fieldId}" data-resolved="${item.resolved ? "true" : "false"}">#${index + 1} ${safeTitle}${unresolvedTag}<br/>${safeReason}</button>`;
+      })
+      .join("");
+  }
+
+  function updateSmartFillUi(): void {
+    if (!smartFillBtnEl) return;
+
+    smartFillBtnEl.disabled = smartFillBusy;
+    smartFillBtnEl.classList.toggle("is-busy", smartFillBusy);
+    smartFillBtnEl.textContent = smartFillBusy
+      ? `⏸ ${smartFillStatusText}`
+      : smartFillStatusText;
+
+    if (smartFillLinkEl) {
+      const showLink = smartFillPendingCount > 0;
+      smartFillLinkEl.classList.toggle("hidden", !showLink);
+      smartFillLinkEl.textContent = smartFillSubText || "查看待补字段 ›";
+    }
+
+    if (smartFillNavEl) {
+      const showNav = smartFillPendingCount > 0;
+      smartFillNavEl.classList.toggle("hidden", !showNav);
+      syncSmartFillNavigationText();
+    }
+    renderSmartFillChecklist();
+  }
+
+  function resetSmartFillState(): void {
+    clearSmartFillResetTimer();
+    smartFillBusy = false;
+    smartFillFilledCount = 0;
+    smartFillPendingCount = 0;
+    smartFillStatus = "idle";
+    smartFillStatusText = "一键智填";
+    smartFillSubText = "";
+    smartFillChecklistData = [];
+    pendingHighlighter.clear();
+    updateSmartFillUi();
+  }
+
+  async function runSmartFillFlow(): Promise<void> {
+    if (smartFillBusy && smartFillAbortController) {
+      smartFillAbortController.abort();
+      smartFillAbortController = null;
+      smartFillBusy = false;
+      smartFillRunActive = false;
+      smartFillStatus = "idle";
+      smartFillStatusText = "已暂停";
+      smartFillSubText = "";
+      updateSmartFillUi();
+      return;
+    }
+
+    const now = Date.now();
+    if (smartFillBusy || smartFillRunActive) return;
+    if (now - smartFillLastRunAt < 800) return;
+    smartFillRunToken += 1;
+    const runToken = smartFillRunToken;
+    smartFillRunActive = true;
+    smartFillLastRunAt = now;
+    clearSmartFillResetTimer();
+
+    smartFillBusy = true;
+    smartFillFilledCount = 0;
+    smartFillPendingCount = 0;
+    smartFillChecklistData = [];
+    pendingHighlighter.clear();
+    smartFillStatus = "running";
+    smartFillStatusText = "正在识别页面";
+    smartFillSubText = "";
+    updateSmartFillUi();
+
+    const slowHintTimer = window.setTimeout(() => {
+      if (!smartFillBusy) return;
+      smartFillStatusText = "AI 正在分析页面，请稍候…";
+      updateSmartFillUi();
+    }, 18000);
+
+    smartFillAbortController = new AbortController();
+
+    try {
+      const result = await runSmartFillPipeline({
+        signal: smartFillAbortController.signal,
+        onProgress: (progress) => {
+          if (runToken !== smartFillRunToken) return;
+          smartFillStatusText = progress.detail;
+          updateSmartFillUi();
+        },
+      });
+
+      if (runToken !== smartFillRunToken) return;
+      const { outcome } = result;
+
+      smartFillFilledCount = outcome.filledCount;
+      smartFillPendingCount = outcome.pendingCount;
+
+      if (result.fields.length === 0) {
+        smartFillStatus = "failed";
+        smartFillStatusText = "未检测到表单";
+        smartFillSubText = "当前页面暂无可填写内容";
+        smartFillChecklistData = [];
+        pendingHighlighter.clear();
+        return;
+      }
+
+      if (outcome.pendingCount <= 0) {
+        smartFillStatus = "success";
+        smartFillStatusText = `已填写 ${outcome.filledCount} 项`;
+        smartFillSubText = "已完成本页智填";
+        smartFillChecklistData = [];
+        pendingHighlighter.clear();
+        smartFillResetTimer = window.setTimeout(() => {
+          resetSmartFillState();
+        }, 2000);
+        return;
+      }
+
+      smartFillStatus = "partial";
+      smartFillStatusText = outcome.aiUsed
+        ? `已填 ${outcome.filledCount} 项｜待补 ${outcome.pendingCount} 项`
+        : `已用规则智填｜待补 ${outcome.pendingCount} 项`;
+      smartFillSubText = "查看待补字段 ›";
+      pendingHighlighter.setPending(outcome.pendingFields);
+      smartFillChecklistData = buildChecklistDataFromHighlighter();
+      const unresolvedCount = pendingHighlighter.unresolvedCount();
+      const highlightedCount = pendingHighlighter.size();
+      smartFillPendingCount = outcome.pendingCount;
+      if (smartFillPendingCount <= 0 && highlightedCount > 0) {
+        smartFillPendingCount = highlightedCount;
+      }
+      if (smartFillPendingCount <= 0) {
+        smartFillStatus = "success";
+        smartFillStatusText = `已填写 ${outcome.filledCount} 项`;
+        smartFillSubText = "已完成本页智填";
+        smartFillChecklistData = [];
+        pendingHighlighter.clear();
+        smartFillResetTimer = window.setTimeout(() => {
+          resetSmartFillState();
+        }, 2000);
+        return;
+      }
+      const suffix = unresolvedCount > 0 ? `（其中 ${unresolvedCount} 项待定位）` : "";
+      smartFillStatusText = outcome.aiUsed
+        ? `已填 ${outcome.filledCount} 项｜待补 ${smartFillPendingCount} 项${suffix}`
+        : `已用规则智填｜待补 ${smartFillPendingCount} 项${suffix}`;
+      if (highlightedCount > 0) {
+        pendingHighlighter.focusFirst();
+      }
+    } catch (error: unknown) {
+      if (runToken !== smartFillRunToken) return;
+      smartFillStatus = "failed";
+      const text = error instanceof Error ? error.message : String(error);
+      if (smartFillPendingCount > 0) {
+        smartFillSubText = "查看待补字段 ›";
+      } else {
+        pendingHighlighter.clear();
+        smartFillPendingCount = 0;
+        smartFillChecklistData = [];
+      }
+      if (/档案|profile/i.test(text)) {
+        smartFillStatusText = "未读取到档案";
+        smartFillSubText = "请检查 OfferU 后端连接";
+      } else if (/超时/i.test(text)) {
+        smartFillStatusText = "智填超时，请重试";
+        smartFillSubText = "";
+      } else if (/fetch|网络|连接失败|Failed to fetch/i.test(text)) {
+        smartFillStatusText = "AI 服务调用失败";
+        smartFillSubText = "请检查网络或 AI 配置";
+      } else if (/Failed to set|Permission denied|read.only/i.test(text)) {
+        smartFillStatusText = "部分字段写入失败";
+        smartFillSubText = smartFillPendingCount > 0 ? "查看待补字段 ›" : "";
+      } else {
+        smartFillStatusText = "部分字段未写入";
+        smartFillSubText = smartFillPendingCount > 0 ? "查看待补字段 ›" : "";
+      }
+    } finally {
+      smartFillAbortController = null;
+      if (runToken === smartFillRunToken) {
+        smartFillRunActive = false;
+      }
+      smartFillBusy = false;
+      window.clearTimeout(slowHintTimer);
+      updateSmartFillUi();
+      void refreshFloatingStatus();
+    }
+  }
+
+  function handlePanelAction(action: string, trigger?: HTMLElement | null): void {
     if (action === "collect") {
       const currentPlatform = resolveCurrentPlatform() || platform;
       collectFromCurrentContext(currentPlatform, (resp) => {
@@ -2471,6 +2925,48 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       triggerSyncToServer(() => {
         void refreshFloatingStatus();
       });
+      return;
+    }
+
+    if (action === "smart-fill") {
+      void runSmartFillFlow();
+      return;
+    }
+
+    if (action === "smart-fill-focus") {
+      pendingHighlighter.focusFirst();
+      syncSmartFillNavigationText();
+      return;
+    }
+
+    if (action === "smart-fill-focus-item") {
+      const node = trigger?.closest<HTMLElement>("[data-field-id]") || null;
+      const fieldId = node?.dataset.fieldId || "";
+      const focused = pendingHighlighter.focusByFieldId(fieldId);
+      if (!focused) {
+        pendingHighlighter.focusFirst();
+      }
+      syncSmartFillNavigationText();
+      return;
+    }
+
+    if (action === "smart-fill-prev") {
+      pendingHighlighter.focusPrev();
+      syncSmartFillNavigationText();
+      return;
+    }
+
+    if (action === "smart-fill-next") {
+      pendingHighlighter.focusNext();
+      syncSmartFillNavigationText();
+      return;
+    }
+
+    if (action === "smart-fill-exit") {
+      resetSmartFillState();
+      latestCollectabilityText = "当前页面：支持智填";
+      latestCollectabilityTone = "ok";
+      syncPanelSummaryText();
     }
   }
 
@@ -2487,6 +2983,18 @@ function createFloatingDock(platform: PlatformConfig | null): void {
         <button class="action-btn" data-action="collect" type="button">+ 加入</button>
         <button class="action-btn primary" data-action="sync" type="button">去同步</button>
       </div>
+      <div class="smart-fill-card">
+        <button class="smart-fill-btn" data-action="smart-fill" type="button">一键智填</button>
+        <button class="smart-fill-link hidden" data-action="smart-fill-focus" type="button">查看待补字段 ›</button>
+      </div>
+      <div class="smart-fill-nav hidden" id="offeruSmartFillNav">
+        <span>待补导航</span>
+        <span id="offeruSmartFillNavIndex">0/0</span>
+        <button type="button" data-action="smart-fill-prev">←</button>
+        <button type="button" data-action="smart-fill-next">→</button>
+        <button type="button" class="exit" data-action="smart-fill-exit">退出高亮</button>
+      </div>
+      <div class="smart-fill-checklist hidden" id="offeruSmartFillChecklist"></div>
       <div class="meta" id="offeruFloatingMeta">${latestMetaText}</div>
       <div class="meta meta-secondary" id="offeruFloatingCollectability">${latestCollectabilityText}</div>
     `;
@@ -2496,9 +3004,14 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       "click",
       (event) => {
         const target = event.target as HTMLElement;
+        if (target.closest("[data-action='smart-fill-focus-item']")) {
+          const node = target.closest<HTMLElement>("[data-action='smart-fill-focus-item']");
+          handlePanelAction("smart-fill-focus-item", node);
+          return;
+        }
         const action = target.closest<HTMLButtonElement>("button[data-action]")?.dataset.action;
         if (!action) return;
-        handlePanelAction(action);
+        handlePanelAction(action, target);
       },
       { signal: panelController.signal },
     );
@@ -2508,7 +3021,13 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     panel = nextPanel;
     metaEl = panel.querySelector("#offeruFloatingMeta") as HTMLDivElement | null;
     collectabilityEl = panel.querySelector("#offeruFloatingCollectability") as HTMLDivElement | null;
+    smartFillBtnEl = panel.querySelector(".smart-fill-btn") as HTMLButtonElement | null;
+    smartFillLinkEl = panel.querySelector(".smart-fill-link") as HTMLButtonElement | null;
+    smartFillNavEl = panel.querySelector("#offeruSmartFillNav") as HTMLDivElement | null;
+    smartFillNavIndexEl = panel.querySelector("#offeruSmartFillNavIndex") as HTMLSpanElement | null;
+    smartFillChecklistEl = panel.querySelector("#offeruSmartFillChecklist") as HTMLDivElement | null;
     syncPanelSummaryText();
+    updateSmartFillUi();
     return nextPanel;
   }
 
@@ -2522,6 +3041,11 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     panel = null;
     metaEl = null;
     collectabilityEl = null;
+    smartFillBtnEl = null;
+    smartFillLinkEl = null;
+    smartFillNavEl = null;
+    smartFillNavIndexEl = null;
+    smartFillChecklistEl = null;
   }
 
   function currentPeekTransform(): string {
@@ -2793,7 +3317,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
 
   async function refreshFloatingStatus(): Promise<void> {
     const currentPlatform = resolveCurrentPlatform() || platform;
-    const collectability = resolvePageCollectability(currentPlatform);
+    const collectability = resolveSmartFillCollectability(currentPlatform);
     latestCollectabilityText = collectability.text;
     latestCollectabilityTone = collectability.tone;
 
@@ -2989,6 +3513,10 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     }
 
     undockTo(currentLeft, currentTop);
+  });
+
+  window.addEventListener("beforeunload", () => {
+    pendingHighlighter.clear();
   });
 
   document.addEventListener("keydown", handleShortcutKeydown, true);

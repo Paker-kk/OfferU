@@ -10,6 +10,8 @@ import { AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { HarnessAgentDock } from "@/components/ai/HarnessAgentDock";
+import { ProfileAgentDock } from "@/components/ai/ProfileAgentDock";
 import { useOnboarding } from "@/lib/useOnboarding";
 
 const API_BASE =
@@ -99,6 +101,9 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isProfilePage = pathname === "/profile";
+
   return (
     <SWRConfig
       value={{
@@ -111,6 +116,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <AgentContextReporter />
         <OnboardingGate>
           {children}
+          {isProfilePage ? <ProfileAgentDock /> : <HarnessAgentDock />}
         </OnboardingGate>
       </NextUIProvider>
     </SWRConfig>

@@ -88,13 +88,17 @@ export function useOnboarding() {
   /** 根据真实数据刷新步骤状态 */
   const syncFromData = useCallback(
     (data: { hasApiKey: boolean; hasResume: boolean; hasJobs: boolean }) => {
-      update({
+      const current = loadState();
+      const next = {
+        ...current,
         apiKeyConfigured: data.hasApiKey,
         resumeCreated: data.hasResume,
         jobsScraped: data.hasJobs,
-      });
+      };
+      setState(next);
+      saveState(next);
     },
-    [update]
+    []
   );
 
   /** 所有引导步骤完成 */

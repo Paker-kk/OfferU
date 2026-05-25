@@ -87,6 +87,107 @@ select {
   border: 2px solid var(--background);
 }
 
+.prose-chat {
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: #121212;
+}
+
+.prose-chat p {
+  margin: 0 0 0.5em;
+}
+
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-chat strong {
+  font-weight: 700;
+}
+
+.prose-chat em {
+  font-style: italic;
+}
+
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.prose-chat li {
+  margin: 0.25em 0;
+}
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3 {
+  font-weight: 700;
+  margin: 0.75em 0 0.25em;
+}
+
+.prose-chat h1 { font-size: 1.25em; }
+.prose-chat h2 { font-size: 1.125em; }
+.prose-chat h3 { font-size: 1em; }
+
+.prose-chat code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.prose-chat blockquote {
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 0.75em 0;
+}
+
+.prose-chat a {
+  color: var(--primary-blue);
+  text-decoration: underline;
+}
+
+.prose-chat pre {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border-radius: 3px;
+}
+
+.prose-chat pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.8em;
+}
+
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  padding: 0.35em 0.5em;
+  text-align: left;
+}
+
+.prose-chat th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
 @layer components {
   .bauhaus-panel {
     border: 1.5px solid var(--border-strong);
@@ -309,4 +410,22 @@ select {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.2em;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.2em;
+}
+
+.ProseMirror li {
+  margin-bottom: 0.25em;
+}
+
+.ProseMirror li p {
+  margin: 0;
 }

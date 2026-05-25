@@ -1,82 +1,62 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-const rootDir = resolve(process.cwd());
-const outputDir = resolve(rootDir, ".output", "chrome-mv3");
+const EXT_ROOT = resolve(import.meta.dirname, "..");
+const WXT_OUTPUT = join(EXT_ROOT, ".output", "chrome-mv3");
+const STATIC_DIR = join(EXT_ROOT, "static");
 
-function ensureParentDir(path) {
-  mkdirSync(dirname(path), { recursive: true });
+const SYNC_TARGETS = [
+  "manifest.json",
+  "background.js",
+  "popup.html",
+  "content-scripts",
+  "assets",
+  "chunks",
+];
+
+const STATIC_SYNC_TARGETS = ["offscreen", "popup.css"];
+
+if (!existsSync(WXT_OUTPUT)) {
+  console.error("[sync-root-build] WXT output not found:", WXT_OUTPUT);
+  console.error("[sync-root-build] Run 'wxt build' first.");
+  process.exit(1);
 }
 
-function copyRequiredFile(fromRelativePath, toRelativePath) {
-  const source = resolve(outputDir, fromRelativePath);
-  const target = resolve(rootDir, toRelativePath);
+for (const target of SYNC_TARGETS) {
+  const src = join(WXT_OUTPUT, target);
+  const dest = join(EXT_ROOT, target);
 
-  if (!existsSync(source)) {
-    throw new Error(`Missing build artifact: ${source}`);
+  if (!existsSync(src)) {
+    console.warn("[sync-root-build] Skip missing:", target);
+    continue;
   }
 
-  ensureParentDir(target);
-  copyFileSync(source, target);
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(src, dest, { recursive: true, force: true });
+  console.log("[sync-root-build] Synced:", target);
 }
 
-function copyOptionalDir(dirName) {
-  const source = resolve(outputDir, dirName);
-  if (!existsSync(source)) return;
+for (const target of STATIC_SYNC_TARGETS) {
+  const src = join(STATIC_DIR, target);
+  const dest = join(EXT_ROOT, target);
 
-  const target = resolve(rootDir, dirName);
-  if (existsSync(target)) {
-    rmSync(target, { recursive: true, force: true });
+  if (!existsSync(src)) {
+    console.warn("[sync-root-build] Skip missing static:", target);
+    continue;
   }
-  copyDirectory(source, target);
+
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(src, dest, { recursive: true, force: true });
+  console.log("[sync-root-build] Synced static:", target);
 }
 
-function copyOptionalDirFromRoot(sourceRelativePath, targetRelativePath) {
-  const source = resolve(rootDir, sourceRelativePath);
-  if (!existsSync(source)) return;
-
-  const target = resolve(rootDir, targetRelativePath);
-  if (existsSync(target)) {
-    rmSync(target, { recursive: true, force: true });
-  }
-  copyDirectory(source, target);
-}
-
-function copyOptionalDirToOutput(sourceRelativePath, targetRelativePath) {
-  const source = resolve(rootDir, sourceRelativePath);
-  if (!existsSync(source)) return;
-
-  const target = resolve(outputDir, targetRelativePath);
-  if (existsSync(target)) {
-    rmSync(target, { recursive: true, force: true });
-  }
-  copyDirectory(source, target);
-}
-
-function copyDirectory(source, target) {
-  mkdirSync(target, { recursive: true });
-
-  for (const entry of readdirSync(source)) {
-    const sourcePath = resolve(source, entry);
-    const targetPath = resolve(target, entry);
-
-    if (statSync(sourcePath).isDirectory()) {
-      copyDirectory(sourcePath, targetPath);
-    } else {
-      ensureParentDir(targetPath);
-      copyFileSync(sourcePath, targetPath);
-    }
+const stalePatterns = ["dist"];
+for (const pattern of stalePatterns) {
+  const staleDir = join(EXT_ROOT, pattern);
+  if (existsSync(staleDir)) {
+    rmSync(staleDir, { recursive: true, force: true });
+    console.log("[sync-root-build] Cleaned stale:", pattern);
   }
 }
 
-copyRequiredFile("background.js", "background.js");
-copyRequiredFile("content-scripts/content.js", "content-scripts/content.js");
-copyRequiredFile("content-scripts/content.js", "content.js");
-copyRequiredFile("manifest.json", "manifest.json");
-copyRequiredFile("popup.html", "popup.html");
-copyOptionalDir("chunks");
-copyOptionalDir("assets");
-copyOptionalDirFromRoot("static/offscreen", "offscreen");
-copyOptionalDirToOutput("static/offscreen", "offscreen");
-
-console.log("[sync-root-build] Synced build artifacts to extension root.");
+console.log("[sync-root-build] Done. Extension root is ready for browser loading.");

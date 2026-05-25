@@ -24,6 +24,8 @@ import {
   bauhausModalContentClassName,
   bauhausTabsClassNames,
 } from "@/lib/bauhaus";
+import CascadeDatePicker from "./components/CascadeDatePicker";
+import CascadeTimePicker from "./components/CascadeTimePicker";
 
 const FullCalendar = dynamic(() => import("@fullcalendar/react"), { ssr: false });
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -51,12 +53,12 @@ export default function CalendarPage() {
       end: event.end_time || undefined,
       backgroundColor:
         event.event_type === "interview"
-          ? "#1040C0"
+          ? "#e4ece6"
           : event.event_type === "deadline"
-            ? "#D02020"
-            : "#F0C020",
+            ? "#f7ece9"
+            : "#f3ead2",
       borderColor: "#121212",
-      textColor: event.event_type === "deadline" || event.event_type === "interview" ? "#FFFFFF" : "#121212",
+      textColor: "#121212",
       extendedProps: {
         location: event.location,
         description: event.description,
@@ -86,11 +88,11 @@ export default function CalendarPage() {
   const typeTone = (type: string) => {
     switch (type) {
       case "interview":
-        return "bg-[#1040C0] text-white";
+        return "bg-[#e4ece6] text-black";
       case "deadline":
-        return "bg-[#D02020] text-white";
+        return "bg-[#f7ece9] text-black";
       default:
-        return "bg-[#F0C020] text-black";
+        return "bg-[#f3ead2] text-black";
     }
   };
 
@@ -104,15 +106,15 @@ export default function CalendarPage() {
       <section className="bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#F0C020]">Interview Calendar</span>
+            <span className="bauhaus-chip bg-[#f3ead2] text-black">日程日历</span>
             <div>
-              <p className="bauhaus-label text-black/55">Schedule Board</p>
+              <p className="bauhaus-label text-black/55">日程面板</p>
               <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                Plan
+                规划
                 <br />
-                Time
+                时间
                 <br />
-                Move
+                行动
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72">
                 把笔试、面试和截止日期收束到一块几何日历板上，避免信息散落在邮件和聊天记录里，
@@ -122,17 +124,17 @@ export default function CalendarPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#1040C0] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Events</p>
+            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
+              <p className="bauhaus-label text-black/55">事件</p>
               <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{events?.length ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#F0C020] p-4 text-black">
-              <p className="bauhaus-label text-black/60">Modes</p>
+            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
+              <p className="bauhaus-label text-black/55">模式</p>
               <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">2</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#D02020] p-4 text-white">
-              <p className="bauhaus-label text-white/70">Capture</p>
-              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">Interview / Deadline</p>
+            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
+              <p className="bauhaus-label text-black/55">收录</p>
+              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">面试 / 截止</p>
             </div>
           </div>
         </div>
@@ -215,11 +217,11 @@ export default function CalendarPage() {
             ))}
           </div>
         ) : (
-          <Card className="bauhaus-panel rounded-none bg-[#1040C0] text-white shadow-none">
+          <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-black shadow-none">
             <CardBody className="p-10 text-center">
-              <CalendarIcon size={54} className="mx-auto" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">No Events Yet</p>
-              <p className="mt-3 text-sm font-medium text-white/80">
+              <CalendarIcon size={54} className="mx-auto text-black/30" />
+              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无日程</p>
+              <p className="mt-3 text-sm font-medium text-black/60">
                 点击「添加日程」或使用 AI 自动填充，把面试和截止时间收拢进这块时间板。
               </p>
             </CardBody>
@@ -229,13 +231,35 @@ export default function CalendarPage() {
 
       <Modal isOpen={isOpen} onClose={onClose} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-black/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
             添加日程
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">
             <Input label="标题" variant="bordered" value={newEvent.title} onValueChange={(v) => setNewEvent((p) => ({ ...p, title: v }))} classNames={bauhausFieldClassNames} />
-            <Input label="开始时间" variant="bordered" type="datetime-local" value={newEvent.start_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, start_time: v }))} classNames={bauhausFieldClassNames} />
-            <Input label="结束时间" variant="bordered" type="datetime-local" value={newEvent.end_time} onValueChange={(v) => setNewEvent((p) => ({ ...p, end_time: v }))} classNames={bauhausFieldClassNames} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <CascadeDatePicker
+                label="开始日期"
+                value={newEvent.start_time}
+                onChange={(v) => setNewEvent((p) => ({ ...p, start_time: v }))}
+              />
+              <CascadeTimePicker
+                label="开始时分"
+                value={newEvent.start_time}
+                onChange={(v) => setNewEvent((p) => ({ ...p, start_time: v }))}
+              />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <CascadeDatePicker
+                label="结束日期"
+                value={newEvent.end_time}
+                onChange={(v) => setNewEvent((p) => ({ ...p, end_time: v }))}
+              />
+              <CascadeTimePicker
+                label="结束时分"
+                value={newEvent.end_time}
+                onChange={(v) => setNewEvent((p) => ({ ...p, end_time: v }))}
+              />
+            </div>
             <Input label="地点" variant="bordered" value={newEvent.location} onValueChange={(v) => setNewEvent((p) => ({ ...p, location: v }))} classNames={bauhausFieldClassNames} />
             <Input label="描述" variant="bordered" value={newEvent.description} onValueChange={(v) => setNewEvent((p) => ({ ...p, description: v }))} classNames={bauhausFieldClassNames} />
           </ModalBody>

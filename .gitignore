@@ -14,6 +14,15 @@ frontend/.next-dev/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 extension/.output/
+extension/.wxt/
+extension/chunks/
+extension/assets/
+extension/content-scripts/
+extension/entrypoints/
+extension/offscreen/
+extension/background.js
+extension/manifest.json
+extension/popup.html
 backend/*.db
 *.db
 backend/data/
@@ -49,16 +58,26 @@ npm-debug.log*
 coverage/
 .pytest_cache/
 docs/
-artifacts/chrome-e2e-profile/
-artifacts/page-dumps/
-artifacts/screenshots/
+artifacts/
+
+# ---- 备份文件 ----
+*.bak
+backup/
+
+# ---- 敏感替换文件 ----
+replacements.txt
 
 # ---- 本地敏感讨论文档 ----
 docs/产品分歧分析_*.md
+md/
 
 # ---- Trae 本地元数据 ----
 .trae/
 .Trae/
 
+# ---- Claude AI 配置 ----
+.claude/
+
 # ---- 本地参考仓库（不入库） ----
 references/
+reference/

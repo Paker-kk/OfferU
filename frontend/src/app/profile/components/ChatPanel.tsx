@@ -26,11 +26,72 @@ interface ChatPanelProps {
 }
 
 const TOPIC_GREETINGS: Record<ChatTopic, string> = {
-  education: "我们先从教育经历开始，你可以先说学校、专业和亮点。",
-  internship: "接下来聊实习经历：公司、岗位、你做了什么、结果如何。",
-  project: "现在说项目经历：背景、角色、动作、结果。",
-  activity: "再聊活动经历：社团/志愿者/比赛，重点是你的贡献。",
-  skill: "最后补充技能与证书：工具、语言能力、证书和熟练度。",
+  education: "先聊教育经历。你不用只写学校专业，可以补：绩点/排名、核心课程、论文/研究、奖学金、和目标岗位有关的一门课。",
+  internship: "聊实习或工作经历时，按「公司/岗位 - 你负责什么 - 做出了什么结果」说就行。数字不确定也可以先给范围。",
+  project: "聊项目经历时，先说背景、你的角色、具体动作和结果。作品链接、用户数、比赛名、上线情况都很有用。",
+  activity: "聊校园、社团、志愿者或比赛经历时，重点不是头衔，而是你拉了什么资源、组织了多少人、解决了什么问题。",
+  skill: "最后补技能和证书。可以按工具、方法、语言、证书、AI 工具使用经验来讲，不需要一次说完整。",
+};
+
+const PROMPT_SCAFFOLDS: Record<ChatTopic, { label: string; text: string }[]> = {
+  education: [
+    {
+      label: "课程亮点",
+      text: "我在学校/专业里比较能证明目标岗位能力的是：课程/论文/研究主题是...我做了...结果/成绩是...",
+    },
+    {
+      label: "成绩证明",
+      text: "我的 GPA/排名/奖学金情况是...如果和岗位有关，我想突出的是...",
+    },
+  ],
+  internship: [
+    {
+      label: "实习 STAR",
+      text: "我在...公司/组织做...岗位，当时目标是...我负责...最后带来了...数据/反馈是...",
+    },
+    {
+      label: "补数字",
+      text: "这段经历里可以量化的是：人数...金额...增长/下降...周期...排名/覆盖范围...",
+    },
+  ],
+  project: [
+    {
+      label: "项目框架",
+      text: "项目叫...背景是...我是...角色，主要做了...上线/参赛/交付结果是...用户数/成绩/反馈是...",
+    },
+    {
+      label: "作品证明",
+      text: "这个项目能拿出来看的东西有：链接/报告/原型/视频/代码...我最想让面试官看到的是...",
+    },
+  ],
+  activity: [
+    {
+      label: "组织经历",
+      text: "我在...活动/社团里负责...我协调了...人/资源，最后活动规模/赞助/参与/反馈是...",
+    },
+    {
+      label: "比赛经历",
+      text: "我参加过...比赛，担任...角色，负责...最后获得...名次/奖项/评审反馈...",
+    },
+  ],
+  skill: [
+    {
+      label: "工具清单",
+      text: "我会的工具/技能有：...熟练度分别是...其中最适合目标岗位的是...",
+    },
+    {
+      label: "AI 工具",
+      text: "我用过的 AI/数据/办公工具有...用它们完成过...效率或结果变化是...",
+    },
+  ],
+};
+
+const TOPIC_PLACEHOLDERS: Record<ChatTopic, string> = {
+  education: "写学校/专业之外的亮点：课程、成绩、论文、奖学金、研究...",
+  internship: "按公司/岗位、你负责什么、结果数字来写...",
+  project: "按背景、角色、动作、结果、作品链接来写...",
+  activity: "写活动/社团/比赛里的资源、规模、贡献和结果...",
+  skill: "写工具、方法、语言、证书、AI 工具和熟练度...",
 };
 
 function toBulletCandidate(payload: any): BulletCandidate | null {
@@ -214,13 +275,26 @@ export function ChatPanel({
       </CardBody>
 
       <div className="px-4 pb-3 pt-2 border-t border-white/10 space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {PROMPT_SCAFFOLDS[topic].map((prompt) => (
+            <Button
+              key={prompt.label}
+              size="sm"
+              variant="flat"
+              className="h-7 bg-white/10 px-2 text-xs text-white/70"
+              onPress={() => setText(prompt.text)}
+            >
+              {prompt.label}
+            </Button>
+          ))}
+        </div>
         <div className="flex items-end gap-2">
           <Textarea
             value={text}
             onValueChange={setText}
             minRows={1}
             maxRows={4}
-            placeholder="输入你的经历..."
+            placeholder={TOPIC_PLACEHOLDERS[topic]}
             variant="bordered"
             classNames={{
               input: "text-sm text-white/90",

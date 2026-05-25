@@ -23,7 +23,7 @@ export default function ArchiveSettingsDialog(props: ArchiveSettingsDialogProps)
           <div className="space-y-2">
             <div className="text-sm font-semibold text-black">保持简历档案与投递档案同步</div>
             <p className="text-xs leading-relaxed text-black/65">
-              开启后，简历档案中的共享字段发生变更时，会自动同步到投递档案中的对应字段。
+              开启后，简历档案中的共享字段变化时，会自动同步到投递档案中的对应字段。
             </p>
             <Switch isSelected={props.autoSyncEnabled} onValueChange={props.onAutoSyncChange}>
               {props.autoSyncEnabled ? "已开启" : "已关闭"}
@@ -33,7 +33,7 @@ export default function ArchiveSettingsDialog(props: ArchiveSettingsDialogProps)
           <div className="space-y-2">
             <div className="text-sm font-semibold text-black">一键同步到投递档案</div>
             <p className="text-xs leading-relaxed text-black/65">
-              将当前简历档案中的共享字段立即同步到投递档案。已被手动覆盖的字段会先进行确认。
+              将当前简历档案中的共享字段立即同步到投递档案。手动覆盖过的字段会按同步设置处理。
             </p>
             <Button
               startContent={<RefreshCcw size={14} />}
