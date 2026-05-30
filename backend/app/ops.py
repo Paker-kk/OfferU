@@ -9,7 +9,7 @@ from typing import Any, Awaitable, Callable, Optional
 from sqlalchemy import func, select
 
 from app.database import async_session
-from app.mcp_server import (
+from app.services.agent_operations import (
     batch_triage,
     create_application,
     generate_cover_letter,
